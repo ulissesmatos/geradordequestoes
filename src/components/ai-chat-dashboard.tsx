@@ -170,7 +170,7 @@ export function AiChatDashboard({
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] -my-8 flex h-[calc(100vh-73px)] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] -my-8 flex h-[calc(100svh-61px)] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100vh-73px)]">
       <aside
         className={cn(
           "hidden border-r border-[var(--border)] bg-[var(--surface-subtle)] transition-all duration-200 md:flex md:flex-col",
@@ -270,7 +270,7 @@ export function AiChatDashboard({
               </p>
             </div>
           ) : (
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-32">
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 pb-36 md:pb-32">
               {displayMessages.map((chatMessage) => (
                 <ChatBubble key={chatMessage.id} message={chatMessage} />
               ))}
@@ -300,7 +300,7 @@ export function AiChatDashboard({
           )}
         </section>
 
-        <div className="shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-4 pt-2">
+        <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
           {state?.suggestions && state.suggestions.length > 0 && (
             <div className="mx-auto mb-3 max-w-3xl">
               <p className="mb-2 px-1 text-xs font-medium text-[var(--muted-foreground)]">Sugestões prontas</p>
@@ -324,7 +324,7 @@ export function AiChatDashboard({
           <form ref={formRef} action={formAction} className="mx-auto max-w-3xl" onSubmit={handleSubmit}>
             <PendingStateBridge onPendingChange={setIsSubmitting} />
             {activeSessionId && <input type="hidden" name="sessionId" value={activeSessionId} />}
-            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-md">
+            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-lg">
               <textarea
                 ref={textareaRef}
                 name="prompt"
@@ -334,7 +334,7 @@ export function AiChatDashboard({
                 required
                 rows={1}
                 placeholder="Ex.: gere 10 questões de crase em Português no formato Certo/Errado..."
-                className="min-h-[74px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+                className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
               />
               <div className="flex items-center justify-end px-3 pb-3">
                 <ChatSubmitButton canSend={Boolean(message.trim())} />
