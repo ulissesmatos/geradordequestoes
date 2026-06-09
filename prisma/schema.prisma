@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum QuestionAnswer {
+  CERTO
+  ERRADO
+}
+
+enum Difficulty {
+  FACIL
+  MEDIO
+  DIFICIL
+}
+
+enum QuestionStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum SourceType {
+  AI
+  MANUAL
+}
+
+enum AiProvider {
+  OPENAI
+  CLAUDE
+  OPENROUTER
+}
+
+enum AiChatPresetUsageLevel {
+  NENHUM
+  POUCO
+  MEDIO
+  ALTO
+}
+
+enum AiUsageEventType {
+  CHAT_RESPONSE
+  QUESTION_GENERATION
+}
+
+enum AiUsageEventStatus {
+  SUCCESS
+  ERROR
+}
+
+enum QuestionFormat {
+  CERTO_ERRADO
+  MULTIPLA_ESCOLHA
+}
+
+enum QuestionSetMode {
+  ESTUDO
+  SIMULADO
+  REVISAO
+}
+
+enum QuestionSetStatus {
+  READY
+  ARCHIVED
+}
+
+enum AiChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  EXPIRED
+  PAST_DUE
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+model User {
+  id                String             @id @default(cuid())
+  name              String
+  email             String             @unique
+  passwordHash      String
+  role              Role               @default(USER)
+  isBlocked         Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  createdQuestions  Question[]         @relation("CreatedQuestions")
+  reviewedQuestions Question[]         @relation("ReviewedQuestions")
+  attempts          QuestionAttempt[]
+  favorites         FavoriteQuestion[]
+  aiLogs            AiGenerationLog[]
+  aiUsageEvents     AiUsageEvent[]
+  questionSets      QuestionSet[]
+  aiChatSessions    AiChatSession[]
+  subscriptions     UserSubscription[]
+}
+
+model AiProviderSetting {
+  id                   String                 @id @default("default")
+  provider             AiProvider             @default(OPENAI)
+  apiKey               String?
+  model                String                 @default("gpt-4.1-mini")
+  baseUrl              String?
+  siteUrl              String?
+  appName              String?
+  chatPresetUsageLevel AiChatPresetUsageLevel @default(MEDIO)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+}
+
+model Subject {
+  id           String            @id @default(cuid())
+  name         String
+  slug         String            @unique
+  description  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  topics       Topic[]
+  questions    Question[]
+  aiLogs       AiGenerationLog[]
+  questionSets QuestionSet[]
+}
+
+model Topic {
+  id           String            @id @default(cuid())
+  subjectId    String
+  name         String
+  slug         String
+  description  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  subject      Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions    Question[]
+  aiLogs       AiGenerationLog[]
+  questionSets QuestionSet[]
+
+  @@unique([subjectId, slug])
+}
+
+model Question {
+  id            String             @id @default(cuid())
+  subjectId     String
+  topicId       String
+  questionSetId String?
+  orderInSet    Int?
+  format        QuestionFormat     @default(CERTO_ERRADO)
+  statement     String
+  answer        QuestionAnswer?
+  explanation   String
+  difficulty    Difficulty
+  status        QuestionStatus     @default(PENDING_REVIEW)
+  sourceType    SourceType         @default(MANUAL)
+  aiModel       String?
+  createdById   String?
+  reviewedById  String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  subject       Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic         Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questionSet   QuestionSet?       @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+  createdBy     User?              @relation("CreatedQuestions", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy    User?              @relation("ReviewedQuestions", fields: [reviewedById], references: [id], onDelete: SetNull)
+  options       QuestionOption[]
+  attempts      QuestionAttempt[]
+  favorites     FavoriteQuestion[]
+}
+
+model QuestionOption {
+  id         String            @id @default(cuid())
+  questionId String
+  label      String
+  text       String
+  isCorrect  Boolean           @default(false)
+  order      Int
+  question   Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  attempts   QuestionAttempt[]
+
+  @@unique([questionId, label])
+}
+
+model QuestionAttempt {
+  id               String          @id @default(cuid())
+  userId           String
+  questionId       String
+  userAnswer       QuestionAnswer?
+  selectedOptionId String?
+  userAnswerText   String?
+  isCorrect        Boolean
+  timeSpentSeconds Int
+  createdAt        DateTime        @default(now())
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question         Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption   QuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+}
+
+model FavoriteQuestion {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+}
+
+model AiGenerationLog {
+  id           String     @id @default(cuid())
+  adminId      String
+  subjectId    String
+  topicId      String
+  difficulty   Difficulty
+  quantity     Int
+  model        String
+  prompt       String
+  status       String
+  errorMessage String?
+  createdAt    DateTime   @default(now())
+  admin        User       @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic        Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+model AiUsageEvent {
+  id           String             @id @default(cuid())
+  userId       String
+  type         AiUsageEventType
+  status       AiUsageEventStatus @default(SUCCESS)
+  model        String?
+  prompt       String?
+  errorMessage String?
+  createdAt    DateTime           @default(now())
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model QuestionSet {
+  id                String            @id @default(cuid())
+  userId            String
+  subjectId         String
+  topicId           String
+  chatSessionId     String?
+  title             String
+  prompt            String
+  mode              QuestionSetMode   @default(ESTUDO)
+  format            QuestionFormat    @default(CERTO_ERRADO)
+  alternativesCount Int?
+  difficulty        Difficulty
+  quantity          Int
+  aiModel           String?
+  status            QuestionSetStatus @default(READY)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject           Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic             Topic             @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  chatSession       AiChatSession?    @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  questions         Question[]
+  messages          AiChatMessage[]
+}
+
+model AiChatSession {
+  id           String          @id @default(cuid())
+  userId       String
+  title        String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     AiChatMessage[]
+  questionSets QuestionSet[]
+}
+
+model AiChatMessage {
+  id            String        @id @default(cuid())
+  sessionId     String
+  questionSetId String?
+  role          AiChatRole
+  content       String
+  createdAt     DateTime      @default(now())
+  session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionSet   QuestionSet?  @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+}
+
+model SubscriptionPlan {
+  id                  String             @id @default(cuid())
+  name                String
+  slug                String             @unique
+  description         String?
+  priceCents          Int
+  aiGenerationsPerDay Int
+  isActive            Boolean            @default(true)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  subscriptions       UserSubscription[]
+}
+
+model UserSubscription {
+  id        String             @id @default(cuid())
+  userId    String
+  planId    String
+  couponId  String?
+  status    SubscriptionStatus @default(ACTIVE)
+  startsAt  DateTime           @default(now())
+  endsAt    DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  coupon    Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+}
+
+model Coupon {
+  id            String             @id @default(cuid())
+  code          String             @unique
+  type          CouponType
+  value         Int
+  maxUses       Int?
+  usedCount     Int                @default(0)
+  expiresAt     DateTime?
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  subscriptions UserSubscription[]
+}
