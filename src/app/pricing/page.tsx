@@ -17,7 +17,7 @@ export default async function PricingPage() {
       <header className="border-b border-[var(--border)] bg-[var(--background)]/88 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/brand/logo.png" alt="Gerador de Questões" width={260} height={108} className="h-10 w-auto max-w-[180px] object-contain md:h-12 md:max-w-[260px]" priority />
+            <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]" priority />
           </Link>
           <nav className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">

@@ -67,7 +67,7 @@ export default async function HomePage() {
       <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/88 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/brand/logo.png" alt="Gerador de Questões" width={260} height={108} className="h-10 w-auto max-w-[180px] object-contain md:h-12 md:max-w-[260px]" priority />
+            <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]" priority />
           </Link>
           <nav className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm">
@@ -218,7 +218,7 @@ export default async function HomePage() {
       <footer className="border-t border-[var(--border)]">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-[var(--muted-foreground)] md:flex-row md:items-center md:justify-between md:px-6">
           <div className="flex items-center gap-3">
-            <Image src="/brand/logo.png" alt="Gerador de Questões" width={180} height={77} className="h-8 w-auto object-contain" />
+            <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-8 w-auto object-contain" />
           </div>
           <div className="flex gap-4">
             <Link href="/pricing" className="hover:text-[var(--foreground)]">Planos</Link>
