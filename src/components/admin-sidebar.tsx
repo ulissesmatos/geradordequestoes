@@ -1,19 +1,47 @@
 import Link from "next/link";
-import { BarChart3, Bot, BookOpen, CreditCard, FileQuestion, ListChecks, Settings, Users } from "lucide-react";
+import { BarChart3, Bot, BookOpen, CreditCard, FileQuestion, FolderCog, ListChecks, Settings, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 
-const links = [
-  { href: "/admin", label: "Painel", icon: BarChart3 },
-  { href: "/admin/materias", label: "Matérias", icon: BookOpen },
-  { href: "/admin/assuntos", label: "Assuntos", icon: ListChecks },
-  { href: "/admin/questoes", label: "Questões", icon: FileQuestion },
-  { href: "/admin/questoes/gerar", label: "Gerar IA", icon: Bot },
-  { href: "/admin/ia", label: "Config IA", icon: Settings },
-  { href: "/admin/questoes/revisar", label: "Revisar", icon: ListChecks },
-  { href: "/admin/usuarios", label: "Usuários", icon: Users },
-  { href: "/admin/planos", label: "Planos", icon: CreditCard },
-  { href: "/admin/logs-ia", label: "Logs IA", icon: Bot }
+const groups = [
+  {
+    label: "Operação",
+    links: [
+      { href: "/admin", label: "Dashboard", icon: BarChart3 },
+      { href: "/admin/usuarios", label: "Usuários", icon: Users }
+    ]
+  },
+  {
+    label: "Receita",
+    links: [
+      { href: "/admin/planos", label: "Planos & Pricing", icon: CreditCard },
+      { href: "/admin/pagamentos", label: "Pagamentos", icon: CreditCard }
+    ]
+  },
+  {
+    label: "IA",
+    links: [
+      { href: "/admin/ia", label: "Provedores e limites", icon: Settings },
+      { href: "/admin/logs-ia", label: "Logs IA", icon: Bot },
+      { href: "/admin/questoes/gerar", label: "Gerar questões", icon: Bot }
+    ]
+  },
+  {
+    label: "Conteúdo",
+    links: [
+      { href: "/admin/questoes", label: "Questões", icon: FileQuestion },
+      { href: "/admin/questoes/revisar", label: "Revisar questões", icon: ListChecks },
+      { href: "/admin/materiais-ia", label: "Materiais IA", icon: FolderCog },
+      { href: "/admin/materias", label: "Matérias", icon: BookOpen },
+      { href: "/admin/assuntos", label: "Assuntos", icon: ListChecks }
+    ]
+  },
+  {
+    label: "Plataforma",
+    links: [
+      { href: "/admin/branding", label: "Branding", icon: Settings }
+    ]
+  }
 ];
 
 export function AdminSidebar() {
@@ -24,16 +52,21 @@ export function AdminSidebar() {
           Administração
         </Link>
       </div>
-      <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
-        {links.map((link) => (
-          <Link
-            key={link.href}
-            className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm text-white/85 hover:bg-white/10 hover:text-white"
-            href={link.href}
-          >
-            <link.icon className="h-4 w-4" />
-            {link.label}
-          </Link>
+      <nav className="flex gap-3 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
+        {groups.map((group) => (
+          <div key={group.label} className="min-w-max space-y-1 md:min-w-0">
+            <p className="px-3 text-xs font-semibold uppercase tracking-wide text-white/45">{group.label}</p>
+            {group.links.map((link) => (
+              <Link
+                key={link.href}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-white/85 hover:bg-white/10 hover:text-white"
+                href={link.href}
+              >
+                <link.icon className="h-4 w-4" />
+                {link.label}
+              </Link>
+            ))}
+          </div>
         ))}
         <Button asChild variant="secondary" size="sm" className="mt-2">
           <Link href="/dashboard">Área do aluno</Link>

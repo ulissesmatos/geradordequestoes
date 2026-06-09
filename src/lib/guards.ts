@@ -9,7 +9,7 @@ export async function requireUser() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, name: true, email: true, role: true, isBlocked: true }
+    select: { id: true, name: true, email: true, role: true, isBlocked: true, stripeCustomerId: true }
   });
 
   if (!user || user.isBlocked) redirect("/login?error=blocked");

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Bot, Play } from "lucide-react";
 import { useActionState } from "react";
-import { generateUserQuestionsAction } from "@/app/(app)/study-actions";
+import { generateUserQuestionsAction } from "@/app/(app)/actions/question-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +22,7 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
     subject.topics.map((topic) => ({ id: topic.id, name: topic.name, subjectName: subject.name }))
   );
   const studyHref = state?.questionSetId
-    ? `/questoes/estudar?setId=${state.questionSetId}`
+    ? `/biblioteca?setId=${state.questionSetId}`
     : "";
 
   return (

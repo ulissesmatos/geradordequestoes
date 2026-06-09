@@ -7,23 +7,18 @@ import { getAiUsageStatus, hasActiveSubscription } from "@/lib/subscriptions";
 export default async function DashboardPage({
   searchParams
 }: {
-  searchParams: Promise<{ sessionId?: string; new?: string }>;
+  searchParams: Promise<{ sessionId?: string; new?: string; prompt?: string }>;
 }) {
   const user = await requireUser();
   const allowed = await hasActiveSubscription(user);
   if (!allowed) return <Paywall />;
 
   const params = await searchParams;
-  const [sessions, recentSets, usage] = await Promise.all([
+  const [sessions, usage] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
       take: 30
-    }),
-    prisma.questionSet.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 8
     }),
     getAiUsageStatus(user)
   ]);
@@ -48,6 +43,7 @@ export default async function DashboardPage({
         userName={user.name}
         currentSessionId={session?.id ?? null}
         usage={usage}
+        initialPrompt={params.prompt ? params.prompt.slice(0, 500) : undefined}
         sessions={sessions.map((item) => ({
           id: item.id,
           title: item.title,
@@ -57,14 +53,8 @@ export default async function DashboardPage({
           id: message.id,
           role: message.role,
           content: message.content,
-          questionSetId: message.questionSetId
-        }))}
-        recentSets={recentSets.map((set) => ({
-          id: set.id,
-          title: set.title,
-          mode: set.mode,
-          format: set.format,
-          quantity: set.quantity
+          questionSetId: message.questionSetId,
+          studyMaterialId: message.studyMaterialId
         }))}
       />
     </div>

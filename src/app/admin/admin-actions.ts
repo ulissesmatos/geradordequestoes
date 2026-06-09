@@ -153,6 +153,13 @@ export async function createPlanAction(formData: FormData) {
       name,
       slug: await uniquePlanSlug(name),
       description: String(formData.get("description") ?? ""),
+      marketingSubtitle: String(formData.get("marketingSubtitle") ?? ""),
+      ctaText: String(formData.get("ctaText") || "Assinar com cartão"),
+      displayOrder: Number(formData.get("displayOrder") ?? 0),
+      isHighlighted: formData.get("isHighlighted") === "on",
+      features: parseFeatures(String(formData.get("features") ?? "")),
+      stripePriceId: String(formData.get("stripePriceId") || "") || null,
+      mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
       isActive: formData.get("isActive") === "on"
@@ -161,6 +168,7 @@ export async function createPlanAction(formData: FormData) {
   revalidatePath("/admin/planos");
   revalidatePath("/pricing");
   revalidatePath("/");
+  revalidatePath("/assinatura");
 }
 
 export async function updatePlanAction(formData: FormData) {
@@ -176,6 +184,13 @@ export async function updatePlanAction(formData: FormData) {
       name,
       slug: name !== current.name ? await uniquePlanSlug(name, planId) : current.slug,
       description: String(formData.get("description") ?? ""),
+      marketingSubtitle: String(formData.get("marketingSubtitle") ?? ""),
+      ctaText: String(formData.get("ctaText") || "Assinar com cartão"),
+      displayOrder: Number(formData.get("displayOrder") ?? 0),
+      isHighlighted: formData.get("isHighlighted") === "on",
+      features: parseFeatures(String(formData.get("features") ?? "")),
+      stripePriceId: String(formData.get("stripePriceId") || "") || null,
+      mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
       isActive: formData.get("isActive") === "on"
@@ -184,6 +199,99 @@ export async function updatePlanAction(formData: FormData) {
   revalidatePath("/admin/planos");
   revalidatePath("/pricing");
   revalidatePath("/");
+  revalidatePath("/assinatura");
+}
+
+export async function updatePricingContentAction(formData: FormData) {
+  await requireAdmin();
+  await prisma.pricingContent.upsert({
+    where: { id: "default" },
+    update: {
+      headline: String(formData.get("headline") ?? ""),
+      subheadline: String(formData.get("subheadline") ?? ""),
+      paywallTitle: String(formData.get("paywallTitle") ?? ""),
+      paywallDescription: String(formData.get("paywallDescription") ?? "")
+    },
+    create: {
+      id: "default",
+      headline: String(formData.get("headline") ?? ""),
+      subheadline: String(formData.get("subheadline") ?? ""),
+      paywallTitle: String(formData.get("paywallTitle") ?? ""),
+      paywallDescription: String(formData.get("paywallDescription") ?? "")
+    }
+  });
+  revalidatePath("/admin/planos");
+  revalidatePath("/pricing");
+  revalidatePath("/");
+  revalidatePath("/assinatura");
+}
+
+export async function updateAppSettingsAction(formData: FormData) {
+  await requireAdmin();
+  await prisma.appSetting.upsert({
+    where: { id: "default" },
+    update: {
+      appName: String(formData.get("appName") || "Gerador de Questões"),
+      logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
+      faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
+      primaryColor: String(formData.get("primaryColor") || "#13666a"),
+      accentColor: String(formData.get("accentColor") || "#f6d979"),
+      publicUrl: String(formData.get("publicUrl") || "") || null,
+      adminEmails: String(formData.get("adminEmails") || ""),
+      institutionalText: String(formData.get("institutionalText") || ""),
+      termsUrl: String(formData.get("termsUrl") || "") || null,
+      privacyUrl: String(formData.get("privacyUrl") || "") || null
+    },
+    create: {
+      id: "default",
+      appName: String(formData.get("appName") || "Gerador de Questões"),
+      logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
+      faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
+      primaryColor: String(formData.get("primaryColor") || "#13666a"),
+      accentColor: String(formData.get("accentColor") || "#f6d979"),
+      publicUrl: String(formData.get("publicUrl") || "") || null,
+      adminEmails: String(formData.get("adminEmails") || ""),
+      institutionalText: String(formData.get("institutionalText") || ""),
+      termsUrl: String(formData.get("termsUrl") || "") || null,
+      privacyUrl: String(formData.get("privacyUrl") || "") || null
+    }
+  });
+  revalidatePath("/");
+  revalidatePath("/pricing");
+  revalidatePath("/admin/branding");
+}
+
+export async function updatePaymentGatewaySettingsAction(formData: FormData) {
+  await requireAdmin();
+  const stripeSecretKey = String(formData.get("stripeSecretKey") ?? "").trim();
+  const stripeWebhookSecret = String(formData.get("stripeWebhookSecret") ?? "").trim();
+  const mercadoPagoAccessToken = String(formData.get("mercadoPagoAccessToken") ?? "").trim();
+  const mercadoPagoWebhookSecret = String(formData.get("mercadoPagoWebhookSecret") ?? "").trim();
+  const mercadoPagoPublicKey = String(formData.get("mercadoPagoPublicKey") ?? "").trim();
+
+  await prisma.paymentGatewaySetting.upsert({
+    where: { id: "default" },
+    update: {
+      ...(stripeSecretKey ? { stripeSecretKey } : {}),
+      ...(stripeWebhookSecret ? { stripeWebhookSecret } : {}),
+      ...(mercadoPagoAccessToken ? { mercadoPagoAccessToken } : {}),
+      ...(mercadoPagoWebhookSecret ? { mercadoPagoWebhookSecret } : {}),
+      mercadoPagoPublicKey: mercadoPagoPublicKey || null,
+      stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
+      testMode: formData.get("testMode") === "on"
+    },
+    create: {
+      id: "default",
+      stripeSecretKey: stripeSecretKey || null,
+      stripeWebhookSecret: stripeWebhookSecret || null,
+      mercadoPagoAccessToken: mercadoPagoAccessToken || null,
+      mercadoPagoWebhookSecret: mercadoPagoWebhookSecret || null,
+      mercadoPagoPublicKey: mercadoPagoPublicKey || null,
+      stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
+      testMode: formData.get("testMode") === "on"
+    }
+  });
+  revalidatePath("/admin/pagamentos");
 }
 
 export async function createCouponAction(formData: FormData) {
@@ -247,6 +355,13 @@ async function uniquePlanSlug(name: string, excludePlanId?: string) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
+}
+
+function parseFeatures(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export async function generateQuestionsAction(_: { ok?: boolean; logId?: string; error?: string } | null, formData: FormData) {

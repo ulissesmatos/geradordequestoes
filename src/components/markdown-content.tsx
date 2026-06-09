@@ -1,0 +1,111 @@
+import type { ReactNode } from "react";
+
+export function MarkdownContent({ content, compact = false }: { content: string; compact?: boolean }) {
+  const lines = normalizeContent(content).split("\n");
+  const blocks: ReactNode[] = [];
+  let bulletItems: string[] = [];
+  let numberedItems: Array<{ number: number; text: string }> = [];
+  let nextOrderedNumber = 1;
+
+  function flushBullets() {
+    if (!bulletItems.length) return;
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="list-disc space-y-1 pl-5">
+        {bulletItems.map((item, index) => (
+          <li key={`${item}-${index}`}>{renderInline(item)}</li>
+        ))}
+      </ul>
+    );
+    bulletItems = [];
+  }
+
+  function flushNumbers() {
+    if (!numberedItems.length) return;
+    blocks.push(
+      <div key={`ol-${blocks.length}`} className="space-y-2">
+        {numberedItems.map((item, index) => (
+          <div key={`${item.number}-${item.text}-${index}`} className="grid grid-cols-[1.25rem_1fr] gap-1">
+            <span className="text-right tabular-nums">{item.number}.</span>
+            <div>{renderInline(item.text)}</div>
+          </div>
+        ))}
+      </div>
+    );
+    numberedItems = [];
+  }
+
+  function flushLists() {
+    flushBullets();
+    flushNumbers();
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushLists();
+      continue;
+    }
+    if (/^-{3,}$/.test(line)) {
+      flushLists();
+      blocks.push(<hr key={`hr-${blocks.length}`} className="border-[var(--border)]" />);
+      continue;
+    }
+    if (line.startsWith("### ")) {
+      flushLists();
+      blocks.push(<h3 key={`h3-${blocks.length}`} className="text-lg font-semibold">{renderInline(line.slice(4))}</h3>);
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      flushLists();
+      blocks.push(<h2 key={`h2-${blocks.length}`} className="pt-2 text-2xl font-semibold">{renderInline(line.slice(3))}</h2>);
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      flushLists();
+      blocks.push(<h1 key={`h1-${blocks.length}`} className="text-3xl font-bold">{renderInline(line.slice(2))}</h1>);
+      continue;
+    }
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      flushNumbers();
+      bulletItems.push(bullet[1]);
+      continue;
+    }
+    const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    if (numbered) {
+      flushBullets();
+      const sourceNumber = Number(numbered[1]);
+      const displayNumber = sourceNumber === 1 && nextOrderedNumber > 1 ? nextOrderedNumber : sourceNumber;
+      numberedItems.push({ number: displayNumber, text: numbered[2] });
+      nextOrderedNumber = displayNumber + 1;
+      continue;
+    }
+    flushLists();
+    blocks.push(<p key={`p-${blocks.length}`} className={compact ? undefined : "leading-7"}>{renderInline(line)}</p>);
+  }
+  flushLists();
+
+  return <div className={compact ? "space-y-3" : "space-y-4"}>{blocks.length ? blocks : <p>{content}</p>}</div>;
+}
+
+function normalizeContent(content: string) {
+  let text = content.trim();
+
+  // Algumas respostas de IA vêm com listas inline ("texto - item - item") sem quebras de linha.
+  if (!text.includes("\n") && /\s-\s+/.test(text)) {
+    text = text
+      .replace(/:\s+-\s+/g, ":\n- ")
+      .replace(/\s+-\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9])/g, "\n- ");
+  }
+
+  return text.replace(/\n{3,}/g, "\n\n");
+}
+
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}

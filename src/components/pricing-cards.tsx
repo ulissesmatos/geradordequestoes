@@ -9,29 +9,36 @@ import { cn } from "@/lib/utils";
 type PricingPlan = {
   id: string;
   name: string;
+  slug: string;
   description: string | null;
+  marketingSubtitle?: string | null;
+  ctaText?: string;
+  isHighlighted?: boolean;
+  features: string[];
   priceCents: number;
   aiGenerationsPerDay: number;
 };
 
 export function PricingCards({
   plans,
-  compact = false
+  compact = false,
+  headline = "Planos para estudar com IA todos os dias.",
+  subheadline = "Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados e revisões pelo painel."
 }: {
   plans: PricingPlan[];
   compact?: boolean;
+  headline?: string;
+  subheadline?: string;
 }) {
-  const highlightedIndex = plans.length > 1 ? Math.floor(plans.length / 2) : 0;
-
   return (
     <section className={cn("w-full", compact ? "py-12" : "py-16 lg:py-24")}>
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-col items-center gap-4 text-center">
           <Badge variant="secondary">Planos</Badge>
           <div className="space-y-3">
-            <h2 className="text-3xl font-semibold tracking-tight md:text-5xl">Planos para estudar com IA todos os dias.</h2>
+            <h2 className="text-3xl font-semibold tracking-tight md:text-5xl">{headline}</h2>
             <p className="mx-auto max-w-2xl text-base leading-7 text-[var(--muted-foreground)]">
-              Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados e revisões pelo painel.
+              {subheadline}
             </p>
           </div>
         </div>
@@ -44,8 +51,8 @@ export function PricingCards({
           </Card>
         ) : (
           <div className="grid gap-5 pt-12 md:grid-cols-2 lg:grid-cols-3">
-            {plans.map((plan, index) => {
-              const highlighted = index === highlightedIndex;
+            {plans.map((plan) => {
+              const highlighted = Boolean(plan.isHighlighted);
               return (
                 <Card
                   key={plan.id}
@@ -65,7 +72,7 @@ export function PricingCards({
                       )}
                     </div>
                     <CardDescription className="min-h-10 leading-6">
-                      {plan.description || "Geração de questões com IA para rotina de estudos."}
+                      {plan.marketingSubtitle || plan.description || "Geração de questões com IA para rotina de estudos."}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -75,16 +82,22 @@ export function PricingCards({
                         <span className="pb-1 text-sm text-[var(--muted-foreground)]">/ mês</span>
                       </p>
                       <div className="space-y-4 text-sm">
-                        <Feature>Até {plan.aiGenerationsPerDay} usos de IA por dia</Feature>
-                        <Feature>Chat para gerar questões, simulados e revisões</Feature>
-                        <Feature>Histórico salvo com blocos gerados</Feature>
-                        <Feature>Revisão com base em erros e favoritos</Feature>
+                        {plan.features.map((feature) => (
+                          <Feature key={feature}>{feature}</Feature>
+                        ))}
                       </div>
-                      <Button asChild variant={highlighted ? "default" : "outline"} className="w-full">
-                        <Link href="/register">
-                          Criar conta <MoveRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
+                      <div className="grid gap-2">
+                        <Button asChild variant={highlighted ? "default" : "outline"} className="w-full">
+                          <Link href={`/checkout/stripe?plan=${plan.slug}`}>
+                            {plan.ctaText || "Assinar com cartão"} <MoveRight className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button asChild variant="outline" className="w-full">
+                          <Link href={`/checkout/mercado-pago?plan=${plan.slug}`}>
+                            Pagar com Pix
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

@@ -18,6 +18,8 @@ import { PricingCards } from "@/components/pricing-cards";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getAppSettings } from "@/lib/app-settings";
+import { getPricingContent, planFeatures } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -58,17 +60,22 @@ const productHighlights = [
 ];
 
 export default async function HomePage() {
-  const plans = await prisma.subscriptionPlan.findMany({
-    where: { isActive: true },
-    orderBy: { priceCents: "asc" }
-  });
+  const [plans, pricingContent, appSettings] = await Promise.all([
+    prisma.subscriptionPlan.findMany({
+      where: { isActive: true },
+      orderBy: [{ displayOrder: "asc" }, { priceCents: "asc" }]
+    }),
+    getPricingContent(),
+    getAppSettings()
+  ]);
+  const pricedPlans = plans.map((plan) => ({ ...plan, features: planFeatures(plan) }));
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/88 backdrop-blur">
         <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]" priority />
+            <Image src={appSettings.logoUrl} alt={appSettings.appName} width={744} height={179} className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]" priority />
           </Link>
           <details className="group md:hidden">
             <summary className="flex h-10 w-10 list-none items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm marker:hidden">
@@ -224,7 +231,7 @@ export default async function HomePage() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 md:px-6">
-        <PricingCards plans={plans} compact />
+        <PricingCards plans={pricedPlans} compact headline={pricingContent.headline} subheadline={pricingContent.subheadline} />
       </div>
 
       <footer className="border-t border-[var(--border)]">

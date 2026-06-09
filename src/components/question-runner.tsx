@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Check, Heart, X } from "lucide-react";
-import { answerQuestionAction, toggleFavoriteAction } from "@/app/(app)/study-actions";
+import { answerQuestionAction, toggleFavoriteAction } from "@/app/(app)/actions/question-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -119,9 +119,12 @@ export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[
         <p className="text-sm text-[var(--muted-foreground)]">
           {current.subject.name} / {current.topic.name} / {current.format === "MULTIPLA_ESCOLHA" ? "Múltipla escolha" : "Certo/Errado"}
         </p>
+        {mode === "simulado" && (
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">Simulado — correção ao final</p>
+        )}
       </CardHeader>
       <CardContent className="space-y-5">
-        <p className="text-lg leading-8">{current.statement}</p>
+        <p className="text-base leading-7 md:text-lg md:leading-8">{current.statement}</p>
         <div className="grid gap-3">
           {options.map((option) => (
             <Button
@@ -129,7 +132,10 @@ export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[
               disabled={Boolean(selected) || isPending}
               size="lg"
               variant="outline"
-              className="h-auto justify-start whitespace-normal py-4 text-left"
+              aria-pressed={selected?.label === option.label}
+              className={`h-auto justify-start whitespace-normal py-4 text-left ${
+                selected?.label === option.label ? "border-[var(--primary)] ring-2 ring-[var(--primary)] !opacity-100" : ""
+              }`}
               onClick={() => submit(option)}
             >
               {option.icon}

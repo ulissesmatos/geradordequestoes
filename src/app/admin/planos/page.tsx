@@ -1,57 +1,104 @@
-import { createCouponAction, createPlanAction, updatePlanAction } from "@/app/admin/admin-actions";
+import { createCouponAction, createPlanAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { defaultPlanFeatures, getPricingContent } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminPlansPage() {
-  const [plans, coupons] = await Promise.all([
-    prisma.subscriptionPlan.findMany({ orderBy: { priceCents: "asc" } }),
-    prisma.coupon.findMany({ orderBy: { createdAt: "desc" } })
+  const [plans, coupons, pricingContent] = await Promise.all([
+    prisma.subscriptionPlan.findMany({ orderBy: [{ displayOrder: "asc" }, { priceCents: "asc" }] }),
+    prisma.coupon.findMany({ orderBy: { createdAt: "desc" } }),
+    getPricingContent()
   ]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Planos e cupons</h1>
+      <div>
+        <h1 className="text-3xl font-bold">Planos & Pricing</h1>
+        <p className="text-[var(--muted-foreground)]">Controle planos, features, textos públicos, cupons e IDs dos gateways.</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Textos públicos do pricing</CardTitle>
+          <CardDescription>Esses textos aparecem na landing, /pricing e paywall.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updatePricingContentAction} className="grid gap-3">
+            <Input name="headline" defaultValue={pricingContent.headline} placeholder="Headline dos planos" required />
+            <Textarea name="subheadline" defaultValue={pricingContent.subheadline} placeholder="Subheadline dos planos" required />
+            <Input name="paywallTitle" defaultValue={pricingContent.paywallTitle} placeholder="Título do paywall" required />
+            <Textarea name="paywallDescription" defaultValue={pricingContent.paywallDescription} placeholder="Descrição do paywall" required />
+            <SubmitButton>Salvar textos</SubmitButton>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Novo plano</CardTitle>
-          <CardDescription>Planos são ativados manualmente em Usuários nesta etapa.</CardDescription>
+          <CardDescription>Use {"{limit}"} nas features para inserir automaticamente o limite diário.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={createPlanAction} className="grid gap-3 md:grid-cols-5">
-            <Input name="name" placeholder="Nome" required />
-            <Input name="price" type="number" step="0.01" min="0" placeholder="Preço mensal" required />
-            <Input name="aiGenerationsPerDay" type="number" min="1" placeholder="Gerações/dia" required />
-            <Textarea name="description" placeholder="Descrição" />
-            <label className="flex items-center gap-2 text-sm">
-              <input name="isActive" type="checkbox" defaultChecked /> Ativo
-            </label>
+          <form action={createPlanAction} className="grid gap-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <Input name="name" placeholder="Nome" required />
+              <Input name="price" type="number" step="0.01" min="0" placeholder="Preço mensal" required />
+              <Input name="aiGenerationsPerDay" type="number" min="1" placeholder="Gerações/dia" required />
+              <Input name="displayOrder" type="number" defaultValue={plans.length + 1} placeholder="Ordem" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input name="marketingSubtitle" placeholder="Subtítulo comercial" />
+              <Input name="ctaText" defaultValue="Assinar com cartão" placeholder="Texto do botão principal" />
+            </div>
+            <Textarea name="description" placeholder="Descrição interna/geral" />
+            <Textarea name="features" defaultValue={defaultPlanFeatures.join("\n")} placeholder="Uma feature por linha" />
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input name="stripePriceId" placeholder="Stripe Price ID" />
+              <Input name="mercadoPagoReference" placeholder="Referência Mercado Pago" />
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked /> Ativo</label>
+              <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" /> Destacar como popular</label>
+            </div>
             <SubmitButton>Criar plano</SubmitButton>
           </form>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         {plans.map((plan) => (
           <Card key={plan.id}>
             <CardHeader>
               <CardTitle>{plan.name}</CardTitle>
-              <CardDescription>{plan.isActive ? "Ativo na página pública de planos" : "Oculto na página pública de planos"}</CardDescription>
+              <CardDescription>{plan.isActive ? "Ativo publicamente" : "Oculto publicamente"} {plan.isHighlighted ? "/ destacado" : ""}</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={updatePlanAction} className="space-y-3">
                 <input type="hidden" name="planId" value={plan.id} />
-                <Input name="name" defaultValue={plan.name} required />
-                <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
-                <Input name="aiGenerationsPerDay" type="number" min="1" defaultValue={plan.aiGenerationsPerDay} required />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input name="name" defaultValue={plan.name} required />
+                  <Input name="displayOrder" type="number" defaultValue={plan.displayOrder} />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
+                  <Input name="aiGenerationsPerDay" type="number" min="1" defaultValue={plan.aiGenerationsPerDay} required />
+                </div>
+                <Input name="marketingSubtitle" defaultValue={plan.marketingSubtitle ?? ""} placeholder="Subtítulo comercial" />
+                <Input name="ctaText" defaultValue={plan.ctaText} placeholder="Texto do botão principal" />
                 <Textarea name="description" defaultValue={plan.description ?? ""} placeholder="Descrição" />
-                <label className="flex items-center gap-2 text-sm">
-                  <input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo
-                </label>
+                <Textarea name="features" defaultValue={(plan.features.length ? plan.features : defaultPlanFeatures).join("\n")} placeholder="Uma feature por linha" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input name="stripePriceId" defaultValue={plan.stripePriceId ?? ""} placeholder="Stripe Price ID" />
+                  <Input name="mercadoPagoReference" defaultValue={plan.mercadoPagoReference ?? ""} placeholder="Referência Mercado Pago" />
+                </div>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo</label>
+                  <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" defaultChecked={plan.isHighlighted} /> Destacado</label>
+                </div>
                 <SubmitButton className="w-full">Salvar plano</SubmitButton>
               </form>
             </CardContent>

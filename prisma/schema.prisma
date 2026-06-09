@@ -87,6 +87,45 @@ enum SubscriptionStatus {
   PAST_DUE
 }
 
+enum StudyMaterialStatus {
+  DRAFT
+  READY
+  ARCHIVED
+}
+
+enum PaymentProvider {
+  STRIPE
+  MERCADO_PAGO
+  MANUAL
+}
+
+enum PaymentCheckoutStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  CANCELED
+  ERROR
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+  CANCELED
+  ERROR
+}
+
+enum SubscriptionEventType {
+  CREATED
+  UPDATED
+  PAID
+  PAST_DUE
+  CANCELED
+  EXPIRED
+  MANUAL
+}
+
 enum CouponType {
   PERCENT
   FIXED
@@ -99,6 +138,7 @@ model User {
   passwordHash      String
   role              Role               @default(USER)
   isBlocked         Boolean            @default(false)
+  stripeCustomerId  String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   createdQuestions  Question[]         @relation("CreatedQuestions")
@@ -110,6 +150,10 @@ model User {
   questionSets      QuestionSet[]
   aiChatSessions    AiChatSession[]
   subscriptions     UserSubscription[]
+  studyMaterials     StudyMaterial[]
+  checkoutSessions   PaymentCheckoutSession[]
+  paymentTransactions PaymentTransaction[]
+  subscriptionEvents SubscriptionEvent[]
 }
 
 model AiProviderSetting {
@@ -136,6 +180,7 @@ model Subject {
   questions    Question[]
   aiLogs       AiGenerationLog[]
   questionSets QuestionSet[]
+  studyMaterials StudyMaterial[]
 }
 
 model Topic {
@@ -150,6 +195,7 @@ model Topic {
   questions    Question[]
   aiLogs       AiGenerationLog[]
   questionSets QuestionSet[]
+  studyMaterials StudyMaterial[]
 
   @@unique([subjectId, slug])
 }
@@ -276,25 +322,48 @@ model QuestionSet {
 }
 
 model AiChatSession {
-  id           String          @id @default(cuid())
-  userId       String
-  title        String
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages     AiChatMessage[]
-  questionSets QuestionSet[]
+  id              String          @id @default(cuid())
+  userId          String
+  title           String
+  summary         String?
+  summarizedCount Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages        AiChatMessage[]
+  questionSets    QuestionSet[]
 }
 
 model AiChatMessage {
-  id            String        @id @default(cuid())
-  sessionId     String
-  questionSetId String?
-  role          AiChatRole
-  content       String
-  createdAt     DateTime      @default(now())
-  session       AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  questionSet   QuestionSet?  @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+  id              String         @id @default(cuid())
+  sessionId       String
+  questionSetId   String?
+  studyMaterialId String?
+  role            AiChatRole
+  content         String
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  session         AiChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionSet     QuestionSet?   @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+  studyMaterial   StudyMaterial? @relation(fields: [studyMaterialId], references: [id], onDelete: SetNull)
+}
+
+model StudyMaterial {
+  id          String              @id @default(cuid())
+  userId      String
+  subjectId   String?
+  topicId     String?
+  title       String
+  prompt      String
+  content     String
+  aiModel     String?
+  status      StudyMaterialStatus @default(READY)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject     Subject?            @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topic       Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  messages    AiChatMessage[]
 }
 
 model SubscriptionPlan {
@@ -302,12 +371,21 @@ model SubscriptionPlan {
   name                String
   slug                String             @unique
   description         String?
+  marketingSubtitle   String?
+  ctaText             String             @default("Criar conta")
+  displayOrder        Int                @default(0)
+  isHighlighted       Boolean            @default(false)
+  features            String[]           @default([])
+  stripePriceId       String?
+  mercadoPagoReference String?
   priceCents          Int
   aiGenerationsPerDay Int
   isActive            Boolean            @default(true)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
   subscriptions       UserSubscription[]
+  checkoutSessions    PaymentCheckoutSession[]
+  paymentTransactions PaymentTransaction[]
 }
 
 model UserSubscription {
@@ -323,6 +401,7 @@ model UserSubscription {
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan      SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
   coupon    Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  events    SubscriptionEvent[]
 }
 
 model Coupon {
@@ -337,4 +416,98 @@ model Coupon {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   subscriptions UserSubscription[]
+}
+
+model PricingContent {
+  id                  String   @id @default("default")
+  headline            String   @default("Planos para estudar com IA todos os dias.")
+  subheadline         String   @default("Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados, revisões e materiais pelo painel.")
+  paywallTitle        String   @default("Assinatura necessária")
+  paywallDescription  String   @default("A geração de questões, estudos, simulados, revisão e materiais por IA ficam disponíveis para usuários com plano ativo.")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AppSetting {
+  id                String   @id @default("default")
+  appName           String   @default("Gerador de Questões")
+  logoUrl           String   @default("/brand/logo.png")
+  faviconUrl        String   @default("/brand/favicon.png")
+  primaryColor      String   @default("#13666a")
+  accentColor       String   @default("#f6d979")
+  publicUrl         String?
+  adminEmails       String   @default("")
+  institutionalText String   @default("Plataforma AI-first para gerar questões, simulados, revisões e materiais de estudo para concursos públicos.")
+  termsUrl          String?
+  privacyUrl        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PaymentGatewaySetting {
+  id                          String          @id @default("default")
+  stripeSecretKey             String?
+  stripeWebhookSecret         String?
+  stripePortalEnabled         Boolean         @default(true)
+  mercadoPagoAccessToken      String?
+  mercadoPagoWebhookSecret    String?
+  mercadoPagoPublicKey        String?
+  testMode                    Boolean         @default(true)
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+}
+
+model PaymentCheckoutSession {
+  id                 String                @id @default(cuid())
+  userId             String
+  planId             String
+  provider           PaymentProvider
+  status             PaymentCheckoutStatus @default(PENDING)
+  externalId         String?
+  checkoutUrl        String?
+  amountCents        Int
+  currency           String                @default("BRL")
+  metadata           Json?
+  expiresAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan               SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  transactions       PaymentTransaction[]
+
+  @@index([provider, externalId])
+}
+
+model PaymentTransaction {
+  id                String                   @id @default(cuid())
+  userId            String
+  planId            String
+  checkoutSessionId String?
+  provider          PaymentProvider
+  status            PaymentTransactionStatus @default(PENDING)
+  externalId        String?
+  amountCents       Int
+  currency          String                   @default("BRL")
+  paidAt            DateTime?
+  rawPayload        Json?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              SubscriptionPlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  checkoutSession   PaymentCheckoutSession?  @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalId])
+}
+
+model SubscriptionEvent {
+  id             String                @id @default(cuid())
+  userId         String
+  subscriptionId String?
+  provider       PaymentProvider
+  type           SubscriptionEventType
+  externalId     String?
+  payload        Json?
+  createdAt      DateTime              @default(now())
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   UserSubscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 }

@@ -1,24 +1,29 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BookOpen, ClipboardList, Home, Menu, RotateCcw, User } from "lucide-react";
+import { BookOpen, FolderOpen, Home, Menu, Settings, User } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 
 const links = [
   { href: "/dashboard", label: "Chat IA", icon: Home },
-  { href: "/materias", label: "Matérias", icon: BookOpen },
-  { href: "/questoes/estudar", label: "Estudar", icon: ClipboardList },
-  { href: "/questoes/simulado", label: "Simulado", icon: ClipboardList },
-  { href: "/revisao", label: "Revisão", icon: RotateCcw },
-  { href: "/perfil", label: "Perfil", icon: User }
+  { href: "/biblioteca", label: "Biblioteca", icon: FolderOpen },
+  { href: "/materiais", label: "Materiais", icon: BookOpen }
 ];
 
-export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
+export function AppNav({
+  isAdmin = false,
+  logoUrl = "/brand/logo.png",
+  appName = "Gerador de Questões"
+}: {
+  isAdmin?: boolean;
+  logoUrl?: string;
+  appName?: string;
+}) {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
       <div className="relative flex w-full items-center justify-between gap-3 px-4 py-3 md:px-6">
         <Link className="flex items-center" href="/dashboard">
-          <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-9 w-auto max-w-[190px] object-contain md:h-12 md:max-w-[270px]" />
+          <Image src={logoUrl} alt={appName} width={744} height={179} className="h-9 w-auto max-w-[190px] object-contain md:h-12 md:max-w-[270px]" />
         </Link>
         <details className="group md:hidden">
           <summary className="flex h-10 w-10 list-none items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm marker:hidden">
@@ -32,8 +37,13 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
                 {link.label}
               </Link>
             ))}
+            <Link href="/perfil" className="mt-1 flex items-center gap-3 rounded-md px-3 py-3 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">
+              <User className="h-4 w-4" />
+              Perfil e assinatura
+            </Link>
             {isAdmin && (
               <Link href="/admin" className="mt-1 flex items-center gap-3 rounded-md bg-[var(--accent-soft)] px-3 py-3 text-sm font-semibold text-[var(--accent-foreground)] hover:bg-[var(--accent-soft-hover)]">
+                <Settings className="h-4 w-4" />
                 Admin
               </Link>
             )}
@@ -53,16 +63,21 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
               </Link>
             </Button>
           ))}
-          {isAdmin && (
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/admin">Admin</Link>
-            </Button>
-          )}
-          <form action={logoutAction}>
-            <Button variant="outline" size="sm" type="submit">
-              Sair
-            </Button>
-          </form>
+          <details className="relative">
+            <summary className="flex h-9 list-none items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-semibold marker:hidden">
+              <User className="h-4 w-4" />
+              Conta
+            </summary>
+            <div className="absolute right-0 top-11 z-40 w-56 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
+              <Link href="/perfil" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Perfil e assinatura</Link>
+              {isAdmin && <Link href="/admin" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Admin</Link>}
+              <form action={logoutAction}>
+                <button type="submit" className="mt-1 block w-full rounded-md border border-[var(--border)] px-3 py-2 text-left text-sm font-semibold hover:bg-[var(--surface-subtle)]">
+                  Sair
+                </button>
+              </form>
+            </div>
+          </details>
         </nav>
       </div>
     </header>

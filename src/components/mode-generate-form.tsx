@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Play, Sparkles } from "lucide-react";
 import { useActionState } from "react";
-import { generateUserQuestionsAction } from "@/app/(app)/study-actions";
+import { generateUserQuestionsAction } from "@/app/(app)/actions/question-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +80,7 @@ export function ModeGenerateForm({
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
               <span>Bloco gerado e salvo.</span>
               <Button asChild size="sm">
-                <Link href={`/questoes/estudar?setId=${state.questionSetId}`}>
+                <Link href={`/biblioteca?setId=${state.questionSetId}`}>
                   <Play className="h-4 w-4" />
                   Responder agora
                 </Link>
