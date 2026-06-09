@@ -18,7 +18,7 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
       <div className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
         <Link className="flex items-center" href="/dashboard">
-          <Image src="/brand/logo.png" alt="Gerador de Questões" width={190} height={81} className="h-8 w-auto max-w-[160px] object-contain md:h-9 md:max-w-none" />
+          <Image src="/brand/logo.png" alt="Gerador de Questões" width={240} height={100} className="h-9 w-auto max-w-[180px] object-contain md:h-11 md:max-w-[240px]" />
         </Link>
         <nav className="flex flex-wrap items-center gap-1">
           {links.map((link) => (
