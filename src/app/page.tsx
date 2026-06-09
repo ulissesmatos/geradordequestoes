@@ -1,189 +1,231 @@
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Bot, CheckCircle2, ClipboardCheck, History, Layers3, LockKeyhole, MessageSquareText, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  BrainCircuit,
+  CheckCircle2,
+  ClipboardCheck,
+  History,
+  Layers3,
+  MessageSquareText,
+  ShieldCheck,
+  Sparkles,
+  Target
+} from "lucide-react";
+import { PricingCards } from "@/components/pricing-cards";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 const heroImage =
   "https://images.pexels.com/photos/8199759/pexels-photo-8199759.jpeg?auto=compress&cs=tinysrgb&w=1600";
+const studyImage =
+  "https://images.pexels.com/photos/4778621/pexels-photo-4778621.jpeg?auto=compress&cs=tinysrgb&w=1200";
 
 const features = [
   {
     icon: Bot,
-    title: "Chat que entende o pedido",
-    text: "O aluno escreve como pensa: a IA identifica matéria, formato, dificuldade e quantidade."
+    title: "Chat AI-first",
+    text: "O aluno escreve do jeito dele e a IA organiza matéria, formato, dificuldade e quantidade."
   },
   {
     icon: ClipboardCheck,
-    title: "Questões salvas por bloco",
-    text: "Cada geração vira um bloco no histórico para responder agora, revisar depois ou transformar em simulado."
+    title: "Blocos salvos",
+    text: "Cada geração vira um bloco de questões para responder agora ou retomar depois."
   },
   {
     icon: History,
     title: "Revisão com memória",
-    text: "Erros, acertos e favoritos entram como contexto para novos treinos, sem copiar enunciados antigos."
+    text: "Erros, acertos e favoritos entram como contexto para novos treinos."
   },
   {
     icon: ShieldCheck,
-    title: "Banco revisado pelo admin",
-    text: "Questões privadas podem ser aprovadas antes de virar base pública para outros alunos."
+    title: "Controle administrativo",
+    text: "Planos, usuários, provedores de IA e revisão de questões ficam no painel admin."
   }
 ];
 
-const steps = [
-  "Peça do seu jeito",
-  "A IA organiza o bloco",
-  "Responda agora ou salve",
-  "Revise com base no desempenho"
+const productHighlights = [
+  { icon: Layers3, title: "Banco crescente", text: "Questões geradas alimentam histórico e revisão administrativa." },
+  { icon: Target, title: "Treino direcionado", text: "A IA pode usar erros, acertos e favoritas para criar revisões." },
+  { icon: ClipboardCheck, title: "Simulados", text: "Gere blocos por formato, dificuldade e quantidade." },
+  { icon: ShieldCheck, title: "Admin seguro", text: "Planos, usuários e provedores ficam configuráveis." }
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const plans = await prisma.subscriptionPlan.findMany({
+    where: { isActive: true },
+    orderBy: { priceCents: "asc" }
+  });
+
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="fixed left-0 right-0 top-0 z-30 border-b border-white/20 bg-[var(--surface-strong)]/50 backdrop-blur">
-        <div className="flex w-full items-center justify-between px-4 py-3 md:px-8">
-          <Link href="/" className="text-base font-extrabold tracking-tight text-white">
-            Questões C/E
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/88 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
+          <Link href="/" className="flex items-center gap-3">
+            <Image src="/brand/logo.png" alt="Gerador de Questões" width={220} height={94} className="h-8 w-auto max-w-[150px] object-contain md:h-10 md:max-w-none" priority />
           </Link>
           <nav className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm" className="!text-white hover:bg-white/15">
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/pricing">Planos</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
               <Link href="/login">Entrar</Link>
             </Button>
-            <Button asChild size="sm" className="bg-[var(--surface)] !text-[var(--foreground)] hover:bg-[var(--muted)]">
+            <Button asChild size="sm">
               <Link href="/register">Criar conta</Link>
             </Button>
           </nav>
         </div>
       </header>
 
-      <section className="relative flex min-h-[78vh] items-end overflow-hidden">
-        <img src={heroImage} alt="Estudantes em biblioteca usando notebook e livros" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-[var(--surface-strong)]/64" />
-        <div className="relative z-10 w-full px-4 pb-14 pt-28 md:px-8 lg:pb-20">
-          <div className="max-w-4xl">
-            <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-sm font-semibold text-white backdrop-blur">
-              <Sparkles className="h-4 w-4" />
-              SaaS AI-first para questões de concurso público
-            </p>
-            <h1 className="max-w-4xl text-4xl font-extrabold leading-tight text-white md:text-7xl">
-              Gere, responda e revise questões com IA sem perder o histórico.
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/85">
-              O aluno conversa com a IA, cria blocos de estudo em Certo/Errado ou múltipla escolha, salva tudo no painel e revisa com base no próprio desempenho.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Button asChild size="lg" className="bg-[var(--surface)] !text-[var(--foreground)] hover:bg-[var(--muted)]">
-                <Link href="/register">
-                  Começar agora <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="border-white/40 bg-white/10 !text-white hover:bg-white/20">
-                <Link href="/login">Acessar minha conta</Link>
-              </Button>
-            </div>
+      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:px-6 lg:grid-cols-[1.03fr_0.97fr] lg:items-center lg:py-20">
+        <div>
+          <Badge variant="secondary" className="mb-5 gap-2">
+            <Sparkles className="h-3.5 w-3.5" />
+            SaaS AI-first para concursos públicos
+          </Badge>
+          <h1 className="max-w-4xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            Gere questões, simulados e revisões com IA em poucos segundos.
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-[var(--muted-foreground)]">
+            Uma plataforma para transformar prompts em blocos salvos de estudo, acompanhar desempenho e criar um banco de questões revisável com o tempo.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button asChild size="lg">
+              <Link href="/register">
+                Criar conta <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/pricing">Ver planos</Link>
+            </Button>
           </div>
+          <div className="mt-9 grid max-w-2xl gap-3 sm:grid-cols-3">
+            {["Chat com contexto", "C/E e alternativas", "Histórico salvo"].map((item) => (
+              <div key={item} className="flex items-center gap-2 text-sm font-semibold text-[var(--muted-foreground)]">
+                <CheckCircle2 className="h-4 w-4 text-[var(--primary)]" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative">
+          <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-xl">
+            <img src={heroImage} alt="Pessoa estudando para concurso com livros e notebook" className="h-[420px] w-full object-cover" />
+          </div>
+          <Card className="absolute -bottom-6 left-4 right-4 shadow-xl md:left-auto md:w-[360px]">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[var(--primary-soft)]">
+                  <BrainCircuit className="h-5 w-5 text-[var(--primary)]" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Revisão inteligente</p>
+                  <p className="text-xs text-[var(--muted-foreground)]">Erros recentes viram novos treinos com IA.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </section>
 
-      <section className="border-b border-[var(--border)] bg-[var(--surface)]">
-        <div className="grid gap-4 px-4 py-5 md:grid-cols-4 md:px-8">
-          {steps.map((step, index) => (
-            <div key={step} className="flex items-center gap-3 text-sm font-semibold text-[var(--foreground)]">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
-                {index + 1}
-              </span>
-              {step}
-            </div>
+      <section className="mx-auto max-w-7xl px-4 py-14 md:px-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {features.map((feature) => (
+            <Card key={feature.title} className="rounded-md">
+              <CardContent className="p-5">
+                <feature.icon className="h-6 w-6 text-[var(--primary)]" />
+                <h3 className="mt-5 text-lg font-semibold">{feature.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[var(--muted-foreground)]">{feature.text}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
 
-      <section className="px-4 py-16 md:px-8">
-        <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-wide text-[var(--primary)]">Experiência principal</p>
-            <h2 className="mt-3 max-w-2xl text-3xl font-extrabold md:text-5xl">
-              A primeira tela do aluno é o chat, não um formulário.
-            </h2>
-            <p className="mt-5 max-w-xl text-base leading-7 text-[var(--muted-foreground)]">
-              A IA interpreta pedidos curtos, pede direção quando faltar contexto e transforma a conversa em blocos salvos para estudo, simulado ou revisão.
-            </p>
+      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+        <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-sm">
+          <img src={studyImage} alt="Estudos para concurso com anotações e computador" className="h-[390px] w-full object-cover" />
+        </div>
+        <div>
+          <Badge variant="outline">Como funciona</Badge>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-5xl">O aluno conversa. O sistema salva o treino.</h2>
+          <div className="mt-7 space-y-5">
+            {[
+              ["1", "Peça do seu jeito", "Ex.: “gere 10 questões difíceis de geografia com 5 alternativas”."],
+              ["2", "A IA monta o bloco", "O gerador cria questões estruturadas, alternativas, gabarito e justificativas."],
+              ["3", "Responda ou salve", "Tudo fica disponível no histórico para estudar, simular e revisar depois."]
+            ].map(([step, title, text]) => (
+              <div key={step} className="flex gap-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-sm font-bold text-white">
+                  {step}
+                </span>
+                <div>
+                  <h3 className="font-semibold">{title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-[var(--muted-foreground)]">{text}</p>
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-3 shadow-sm">
-            <div className="rounded-md bg-[var(--surface)] p-4 shadow-sm">
+      <section className="mx-auto max-w-7xl px-4 py-14 md:px-6">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-subtle)] p-4 md:p-6">
+          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-md bg-[var(--surface)] p-5 shadow-sm">
               <div className="mb-5 flex items-center gap-2 text-sm font-semibold text-[var(--primary)]">
                 <MessageSquareText className="h-4 w-4" />
                 Chat IA
               </div>
               <div className="space-y-4">
-                <div className="ml-auto max-w-[80%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm shadow-sm">
-                  Gere um simulado difícil de informática básica com 5 alternativas.
+                <div className="ml-auto max-w-[82%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm shadow-sm">
+                  Gere uma revisão dos meus erros em informática básica.
                 </div>
-                <div className="max-w-[86%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
-                  Boa. Preparei um simulado com 10 questões inéditas, alternativas A-E e justificativas didáticas. O bloco ficou salvo no histórico.
+                <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
+                  Boa. Gerei um bloco de revisão com foco nos temas em que você mais errou. O treino já ficou salvo no seu histórico.
                   <div className="mt-3 inline-flex rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-white">
                     Responder agora
                   </div>
                 </div>
-                <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Blocos recentes</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {["Informática básica", "Português: crase", "Geografia política", "Revisão dos erros"].map((item) => (
-                      <div key={item} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-sm font-semibold">
-                        {item}
-                        <p className="mt-1 text-xs font-normal text-[var(--muted-foreground)]">10 questões / IA / salvo</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {productHighlights.map(({ icon: Icon, title, text }) => (
+                <Card key={title} className="rounded-md">
+                  <CardContent className="p-5">
+                    <Icon className="h-5 w-5 text-[var(--accent)]" />
+                    <h3 className="mt-4 font-semibold">{title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">{text}</p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="bg-[var(--surface-subtle)] px-4 py-16 md:px-8">
-        <div className="mb-10 max-w-2xl">
-          <p className="text-sm font-bold uppercase tracking-wide text-[var(--primary)]">Por que funciona</p>
-          <h2 className="mt-3 text-3xl font-extrabold md:text-5xl">Um banco de questões que cresce enquanto os alunos estudam.</h2>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {features.map((feature) => (
-            <article key={feature.title} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-              <feature.icon className="h-6 w-6 text-[var(--primary)]" />
-              <h3 className="mt-5 text-lg font-bold">{feature.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-[var(--muted-foreground)]">{feature.text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <div className="mx-auto max-w-7xl px-4 md:px-6">
+        <PricingCards plans={plans} compact />
+      </div>
 
-      <section className="grid gap-6 px-4 py-16 md:px-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm">
-          <Layers3 className="h-7 w-7 text-[var(--accent)]" />
-          <h2 className="mt-5 text-3xl font-extrabold">Formatos flexíveis para concursos.</h2>
-          <p className="mt-4 max-w-2xl leading-7 text-[var(--muted-foreground)]">
-            Gere Certo/Errado quando quiser treinar julgamento de item ou múltipla escolha com 2 a 5 alternativas quando o objetivo for simulado tradicional.
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {["Certo/Errado", "2 alternativas", "3 alternativas", "4 ou 5 alternativas"].map((format) => (
-              <div key={format} className="flex items-center gap-2 rounded-md bg-[var(--muted)] px-3 py-3 text-sm font-semibold">
-                <CheckCircle2 className="h-4 w-4 text-[var(--primary)]" />
-                {format}
-              </div>
-            ))}
+      <footer className="border-t border-[var(--border)]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-[var(--muted-foreground)] md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="flex items-center gap-3">
+            <Image src="/brand/logo.png" alt="Gerador de Questões" width={180} height={77} className="h-8 w-auto object-contain" />
+          </div>
+          <div className="flex gap-4">
+            <Link href="/pricing" className="hover:text-[var(--foreground)]">Planos</Link>
+            <Link href="/login" className="hover:text-[var(--foreground)]">Entrar</Link>
           </div>
         </div>
-        <div className="rounded-lg border border-[#21484a] bg-[var(--surface-strong)] p-6 text-white shadow-sm">
-          <LockKeyhole className="h-7 w-7 text-[#f5c85b]" />
-          <h2 className="mt-5 text-3xl font-extrabold">Assinatura e uso controlado.</h2>
-          <p className="mt-4 leading-7 text-white/75">
-            Sem plano grátis nesta fase: o admin ativa assinaturas, define limites de IA, acompanha o uso e protege o acesso às rotas internas.
-          </p>
-          <Button asChild className="mt-6 bg-[var(--surface)] !text-[var(--foreground)] hover:bg-[var(--muted)]">
-            <Link href="/register">Criar acesso</Link>
-          </Button>
-        </div>
-      </section>
+      </footer>
     </main>
   );
 }

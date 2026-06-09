@@ -1,4 +1,4 @@
-import { createCouponAction, createPlanAction } from "@/app/admin/admin-actions";
+import { createCouponAction, createPlanAction, updatePlanAction } from "@/app/admin/admin-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,12 +40,20 @@ export default async function AdminPlansPage() {
           <Card key={plan.id}>
             <CardHeader>
               <CardTitle>{plan.name}</CardTitle>
-              <CardDescription>{plan.description}</CardDescription>
+              <CardDescription>{plan.isActive ? "Ativo na página pública de planos" : "Oculto na página pública de planos"}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatMoney(plan.priceCents)}</p>
-              <p className="mt-2 text-sm text-[var(--muted-foreground)]">{plan.aiGenerationsPerDay} gerações por dia</p>
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">{plan.isActive ? "Ativo" : "Inativo"}</p>
+              <form action={updatePlanAction} className="space-y-3">
+                <input type="hidden" name="planId" value={plan.id} />
+                <Input name="name" defaultValue={plan.name} required />
+                <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
+                <Input name="aiGenerationsPerDay" type="number" min="1" defaultValue={plan.aiGenerationsPerDay} required />
+                <Textarea name="description" defaultValue={plan.description ?? ""} placeholder="Descrição" />
+                <label className="flex items-center gap-2 text-sm">
+                  <input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo
+                </label>
+                <SubmitButton className="w-full">Salvar plano</SubmitButton>
+              </form>
             </CardContent>
           </Card>
         ))}
@@ -84,11 +92,4 @@ export default async function AdminPlansPage() {
       </Card>
     </div>
   );
-}
-
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  }).format(cents / 100);
 }

@@ -2,6 +2,7 @@
 
 import { AiChatPresetUsageLevel, AiChatRole, AiUsageEventStatus, AiUsageEventType, Difficulty, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus, type Role } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/guards";
 import { generateChatReply } from "@/lib/ai/generateChatReply";
@@ -297,6 +298,33 @@ export async function renameChatSessionAction(formData: FormData) {
     data: { title }
   });
   revalidatePath("/dashboard");
+}
+
+export async function deleteChatSessionAction(formData: FormData) {
+  const user = await requireUser();
+  const sessionId = String(formData.get("sessionId") ?? "");
+  const isActive = formData.get("isActive") === "true";
+
+  const session = await prisma.aiChatSession.findFirst({
+    where: { id: sessionId, userId: user.id },
+    select: { id: true }
+  });
+  if (!session) return;
+
+  await prisma.$transaction([
+    prisma.questionSet.updateMany({
+      where: { chatSessionId: session.id, userId: user.id },
+      data: { chatSessionId: null }
+    }),
+    prisma.aiChatSession.delete({
+      where: { id: session.id }
+    })
+  ]);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/questoes/estudar");
+
+  if (isActive) redirect("/dashboard?new=1");
 }
 
 async function inferGenerationConfig(prompt: string, formData: FormData) {

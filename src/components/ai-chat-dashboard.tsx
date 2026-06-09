@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUp, Bot, Menu, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Pencil, Play } from "lucide-react";
+import { ArrowUp, Bot, Menu, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Pencil, Play, Trash2 } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { generateChatQuestionSetAction, renameChatSessionAction } from "@/app/(app)/study-actions";
+import { deleteChatSessionAction, generateChatQuestionSetAction, renameChatSessionAction } from "@/app/(app)/study-actions";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
 import { MessageLoading } from "@/components/ui/message-loading";
@@ -221,6 +221,20 @@ export function AiChatDashboard({
                       <Button size="sm" className="mt-2 w-full">Salvar</Button>
                     </form>
                   </details>
+                  <form
+                    action={deleteChatSessionAction}
+                    onSubmit={(event) => {
+                      if (!window.confirm("Excluir este chat? Os blocos e questões gerados serão mantidos no histórico.")) {
+                        event.preventDefault();
+                      }
+                    }}
+                  >
+                    <input type="hidden" name="sessionId" value={session.id} />
+                    <input type="hidden" name="isActive" value={activeSessionId === session.id ? "true" : "false"} />
+                    <Button type="submit" variant="ghost" size="icon" title="Excluir chat" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </form>
                 </div>
               ) : (
                 <Button asChild variant="ghost" size="icon" className="w-full">

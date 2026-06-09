@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { BookOpen, ClipboardList, Home, RotateCcw, User } from "lucide-react";
 import { logoutAction } from "@/app/actions";
@@ -16,8 +17,8 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
       <div className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
-        <Link className="text-lg font-extrabold tracking-tight text-[var(--primary)]" href="/dashboard">
-          Questões C/E
+        <Link className="flex items-center" href="/dashboard">
+          <Image src="/brand/logo.png" alt="Gerador de Questões" width={190} height={81} className="h-8 w-auto max-w-[160px] object-contain md:h-9 md:max-w-none" />
         </Link>
         <nav className="flex flex-wrap items-center gap-1">
           {links.map((link) => (

@@ -151,7 +151,7 @@ export async function createPlanAction(formData: FormData) {
   await prisma.subscriptionPlan.create({
     data: {
       name,
-      slug: slugify(name),
+      slug: await uniquePlanSlug(name),
       description: String(formData.get("description") ?? ""),
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
@@ -159,6 +159,31 @@ export async function createPlanAction(formData: FormData) {
     }
   });
   revalidatePath("/admin/planos");
+  revalidatePath("/pricing");
+  revalidatePath("/");
+}
+
+export async function updatePlanAction(formData: FormData) {
+  await requireAdmin();
+  const planId = String(formData.get("planId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const current = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+  if (!current) throw new Error("Plano não encontrado.");
+
+  await prisma.subscriptionPlan.update({
+    where: { id: planId },
+    data: {
+      name,
+      slug: name !== current.name ? await uniquePlanSlug(name, planId) : current.slug,
+      description: String(formData.get("description") ?? ""),
+      priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
+      aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
+      isActive: formData.get("isActive") === "on"
+    }
+  });
+  revalidatePath("/admin/planos");
+  revalidatePath("/pricing");
+  revalidatePath("/");
 }
 
 export async function createCouponAction(formData: FormData) {
@@ -209,6 +234,19 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   });
 
   revalidatePath("/admin/ia");
+}
+
+async function uniquePlanSlug(name: string, excludePlanId?: string) {
+  const base = slugify(name) || "plano";
+  let candidate = base;
+  let suffix = 2;
+
+  while (true) {
+    const existing = await prisma.subscriptionPlan.findUnique({ where: { slug: candidate } });
+    if (!existing || existing.id === excludePlanId) return candidate;
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
 }
 
 export async function generateQuestionsAction(_: { ok?: boolean; logId?: string; error?: string } | null, formData: FormData) {
