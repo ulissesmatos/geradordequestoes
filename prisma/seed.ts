@@ -50,8 +50,12 @@ async function main() {
     });
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@example.com";
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "admin123456";
+  const adminEmail = (process.env.ADMIN_EMAIL ?? "umatos99@gmail.com").toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword && process.env.NODE_ENV === "production") {
+    throw new Error("Defina ADMIN_PASSWORD nas variáveis de ambiente para criar o admin inicial em produção.");
+  }
+  const initialAdminPassword = adminPassword ?? "admin123456";
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
@@ -59,7 +63,7 @@ async function main() {
     create: {
       name: "Administrador",
       email: adminEmail,
-      passwordHash: await bcrypt.hash(adminPassword, 12),
+      passwordHash: await bcrypt.hash(initialAdminPassword, 12),
       role: Role.ADMIN
     }
   });

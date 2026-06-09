@@ -78,12 +78,36 @@ export async function reviewQuestionAction(formData: FormData) {
 }
 
 export async function updateUserAction(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId"));
+  const nextRole = formData.get("role") as Role;
+  const nextIsBlocked = formData.get("isBlocked") === "on";
+
+  const targetUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, isBlocked: true }
+  });
+  if (!targetUser) throw new Error("Usuário não encontrado.");
+
+  const isRemovingActiveAdmin = targetUser.role === Role.ADMIN && !targetUser.isBlocked && (nextRole !== Role.ADMIN || nextIsBlocked);
+  if (isRemovingActiveAdmin) {
+    const activeAdminCount = await prisma.user.count({
+      where: { role: Role.ADMIN, isBlocked: false }
+    });
+    if (activeAdminCount <= 1) {
+      throw new Error("Não é possível rebaixar ou bloquear o último administrador ativo.");
+    }
+  }
+
+  if (admin.id === targetUser.id && (nextRole !== Role.ADMIN || nextIsBlocked)) {
+    throw new Error("Você não pode rebaixar ou bloquear a própria conta administrativa.");
+  }
+
   await prisma.user.update({
-    where: { id: String(formData.get("userId")) },
+    where: { id: userId },
     data: {
-      role: formData.get("role") as Role,
-      isBlocked: formData.get("isBlocked") === "on"
+      role: nextRole,
+      isBlocked: nextIsBlocked
     }
   });
   revalidatePath("/admin/usuarios");
