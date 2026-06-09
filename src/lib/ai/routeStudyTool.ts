@@ -17,6 +17,7 @@ export async function routeStudyToolWithAi(input: {
     "Ferramentas permitidas:",
     "- MOST_MISSED_QUESTIONS: perguntas sobre questões/temas que o usuário mais errou.",
     "- WORST_SUBJECT: perguntas sobre pior matéria, desempenho fraco ou onde o usuário está pior.",
+    "- SUBJECT_PERFORMANCE: perguntas sobre desempenho, aproveitamento ou se o usuário foi bem em uma matéria específica ou no geral.",
     "- GENERATE_REVIEW_FROM_MISTAKES: pedidos para gerar revisão com base nos erros do usuário.",
     "- RECENT_CORRECT_ANSWERS: perguntas sobre últimos acertos ou questões acertadas.",
     "- FAVORITE_QUESTIONS: perguntas sobre questões favoritas.",

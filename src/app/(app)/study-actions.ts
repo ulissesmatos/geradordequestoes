@@ -155,6 +155,7 @@ export async function generateChatQuestionSetAction(
       data: { sessionId: session.id, role: AiChatRole.USER, content: prompt }
     });
     const resolvedPrompt = resolvePromptWithConversation(prompt, previousMessages);
+    const studyToolPrompt = resolveStudyToolPromptWithConversation(prompt, previousMessages);
     if (resolvedPrompt !== prompt && previousMessages.length <= 2) {
       await prisma.aiChatSession.update({
         where: { id: session.id },
@@ -178,12 +179,12 @@ export async function generateChatQuestionSetAction(
       return { ok: true, sessionId: session.id, messageId: assistant.id, message: directReply };
     }
 
-    const deterministicTool = matchDeterministicStudyTool(resolvedPrompt);
+    const deterministicTool = matchDeterministicStudyTool(studyToolPrompt);
     if (deterministicTool) {
       const toolResponse = await handleStudyTool({
         user,
         sessionId: session.id,
-        prompt: resolvedPrompt,
+        prompt: studyToolPrompt,
         toolName: deterministicTool,
         formData
       });
@@ -192,17 +193,17 @@ export async function generateChatQuestionSetAction(
       return toolResponse;
     }
 
-    if (!looksLikeQuestionGeneration(resolvedPrompt) && looksLikeStudyToolRequest(resolvedPrompt)) {
+    if (!looksLikeQuestionGeneration(studyToolPrompt) && looksLikeStudyToolRequest(studyToolPrompt)) {
       const routedTool = await routeStudyToolForUser({
         user,
-        prompt: resolvedPrompt,
+        prompt: studyToolPrompt,
         context: await getChatContextForUser(session.id, user.id)
       });
       if (routedTool) {
         const toolResponse = await handleStudyTool({
           user,
           sessionId: session.id,
-          prompt: resolvedPrompt,
+          prompt: studyToolPrompt,
           toolName: routedTool,
           formData
         });
@@ -557,6 +558,7 @@ function resolvePromptWithConversation(
   const clean = prompt.trim();
   if (!clean) return clean;
   if (isMetaConversation(clean)) return clean;
+  if (looksLikeStudyToolRequest(clean)) return clean;
 
   if (looksLikeQuestionGeneration(clean) && looksLikeContextReference(clean)) {
     const contextArea = extractStudyAreaFromMessages(previousMessages);
@@ -577,6 +579,19 @@ function resolvePromptWithConversation(
   if (!lastAssistantClarified && !looksLikeContextualFollowUp(clean)) return clean;
 
   return `${lastUserGeneration.content}\nComplemento do usuário: ${clean}`;
+}
+
+function resolveStudyToolPromptWithConversation(
+  prompt: string,
+  previousMessages: Array<{ role: AiChatRole; content: string }>
+) {
+  const clean = prompt.trim();
+  if (!clean) return clean;
+  if (!looksLikeStudyToolRequest(clean)) return clean;
+  if (hasKnownSubject(normalizeText(clean))) return clean;
+
+  const contextArea = extractStudyAreaFromMessages(previousMessages);
+  return contextArea ? `${clean}\nÁrea de referência do contexto: ${contextArea}` : clean;
 }
 
 function looksLikeContextReference(prompt: string) {

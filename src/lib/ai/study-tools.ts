@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 export const studyToolNames = [
   "MOST_MISSED_QUESTIONS",
   "WORST_SUBJECT",
+  "SUBJECT_PERFORMANCE",
   "GENERATE_REVIEW_FROM_MISTAKES",
   "RECENT_CORRECT_ANSWERS",
   "FAVORITE_QUESTIONS"
@@ -64,6 +65,20 @@ export function matchDeterministicStudyTool(prompt: string): StudyToolName | nul
   }
 
   if (
+    normalized.includes("fui bem") ||
+    normalized.includes("meu desempenho") ||
+    normalized.includes("minha performance") ||
+    normalized.includes("meu aproveitamento") ||
+    normalized.includes("como estou") ||
+    normalized.includes("como eu estou") ||
+    normalized.includes("resultado em") ||
+    normalized.includes("desempenho em") ||
+    normalized.includes("aproveitamento em")
+  ) {
+    return "SUBJECT_PERFORMANCE";
+  }
+
+  if (
     normalized.includes("ultimos acertos") ||
     normalized.includes("últimos acertos") ||
     normalized.includes("ultimas questoes que acertei") ||
@@ -87,9 +102,14 @@ export function matchDeterministicStudyTool(prompt: string): StudyToolName | nul
 
 export function looksLikeStudyToolRequest(prompt: string) {
   const normalized = normalizeText(prompt);
-  const personal = /\b(meu|minha|meus|minhas|eu|estou|acertei|errei)\b/.test(normalized);
+  const personal = /\b(meu|minha|meus|minhas|eu|estou|fui|acertei|errei)\b/.test(normalized);
   const studyData = [
     "desempenho",
+    "performance",
+    "aproveitamento",
+    "resultado",
+    "fui bem",
+    "como estou",
     "estatistica",
     "estatística",
     "errei",
@@ -123,6 +143,10 @@ export async function runStudyTool(input: {
 
   if (input.toolName === "WORST_SUBJECT") {
     return { kind: "message", message: await getWorstSubject(input.userId) };
+  }
+
+  if (input.toolName === "SUBJECT_PERFORMANCE") {
+    return { kind: "message", message: await getSubjectPerformance(input.userId, subjectFilter) };
   }
 
   if (input.toolName === "RECENT_CORRECT_ANSWERS") {
@@ -277,6 +301,66 @@ async function getWorstSubject(userId: string) {
     "",
     "Se quiser, posso gerar uma revisão focada nessa matéria usando seus erros recentes."
   ].join("\n");
+}
+
+async function getSubjectPerformance(userId: string, subjectFilter: SubjectFilter) {
+  const attempts = await prisma.questionAttempt.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 600,
+    include: { question: { include: { subject: true, topic: true } } }
+  });
+  const filtered = filterAttemptsBySubject(attempts, subjectFilter);
+
+  if (filtered.length === 0) {
+    return subjectFilter
+      ? `Ainda não encontrei tentativas respondidas em **${subjectFilter.name}**. Você já pode gerar um bloco dessa matéria e, depois de responder, eu acompanho seu desempenho aqui.`
+      : "Ainda não encontrei tentativas suficientes no seu histórico para medir desempenho. Responda algumas questões e eu passo a acompanhar seus acertos, erros e matérias mais frágeis.";
+  }
+
+  const total = filtered.length;
+  const correct = filtered.filter((attempt) => attempt.isCorrect).length;
+  const accuracy = Math.round((correct / total) * 100);
+  const byTopic = new Map<string, { name: string; total: number; correct: number }>();
+
+  for (const attempt of filtered) {
+    const current = byTopic.get(attempt.question.topicId) ?? {
+      name: attempt.question.topic.name,
+      total: 0,
+      correct: 0
+    };
+    current.total += 1;
+    if (attempt.isCorrect) current.correct += 1;
+    byTopic.set(attempt.question.topicId, current);
+  }
+
+  const rankedTopics = [...byTopic.values()]
+    .sort((a, b) => a.correct / a.total - b.correct / b.total || b.total - a.total)
+    .slice(0, 4);
+  const label = subjectFilter ? `em **${subjectFilter.name}**` : "no seu histórico geral";
+
+  return [
+    `Seu desempenho ${label} está em **${accuracy}% de acerto** (${correct}/${total}).`,
+    "",
+    accuracy >= 70
+      ? "Você está indo bem. Vale manter a prática e subir gradualmente a dificuldade."
+      : accuracy >= 50
+        ? "Você está no meio do caminho: já tem base, mas ainda há espaço para revisar pontos específicos."
+        : "Seu desempenho ainda está baixo nessa área. Eu recomendaria uma revisão guiada antes de subir a dificuldade.",
+    "",
+    rankedTopics.length ? "Pontos que merecem atenção:" : "",
+    "",
+    ...rankedTopics.map((item) => {
+      const topicAccuracy = Math.round((item.correct / item.total) * 100);
+      return `- **${item.name}** — ${topicAccuracy}% de acerto (${item.correct}/${item.total})`;
+    }),
+    "",
+    subjectFilter
+      ? `Posso gerar uma revisão de ${subjectFilter.name} baseada nesses dados quando você pedir.`
+      : "Se quiser, pergunte por uma matéria específica, como “em Informática, fui bem?”."
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function getRecentCorrectAnswers(userId: string, subjectFilter: SubjectFilter) {
