@@ -72,6 +72,9 @@ export function AiChatDashboard({
 
   useEffect(() => {
     if (!state?.ok || !state.message) return;
+    if (state.sessionId && !currentSessionId) {
+      window.history.replaceState(null, "", `/dashboard?sessionId=${state.sessionId}`);
+    }
     const responseMessage = state.message;
     setIsSubmitting(false);
     setIsGenerationPending(false);
@@ -157,6 +160,9 @@ export function AiChatDashboard({
   function handleSubmit() {
     const submitted = message.trim();
     if (!submitted) return;
+    setTypedResponse("");
+    setTypedSetId(null);
+    setTypedMessageId(null);
     setOptimisticMessage({
       id: `optimistic-${Date.now()}`,
       role: "USER",
