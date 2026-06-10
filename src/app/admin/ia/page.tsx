@@ -95,10 +95,14 @@ export default async function AiSettingsPage() {
                   defaultValue={settings.baseUrl ?? ""}
                   placeholder="https://api.openai.com/v1 (padrão)"
                 />
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Deixe vazio para usar o endpoint padrão do provedor. <strong>Não coloque o URL do seu site aqui.</strong>
+                </p>
               </label>
               <label className="space-y-1 text-sm font-medium">
                 HTTP-Referer (OpenRouter)
                 <Input name="siteUrl" defaultValue={settings.siteUrl ?? ""} placeholder="https://seu-site.com" />
+                <p className="text-xs text-[var(--muted-foreground)]">URL do seu site (para identificação no OpenRouter).</p>
               </label>
               <label className="space-y-1 text-sm font-medium">
                 X-Title (OpenRouter)

@@ -320,9 +320,16 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   const provider = formData.get("provider") as AiProvider;
   const apiKey = String(formData.get("apiKey") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
-  const baseUrl = String(formData.get("baseUrl") ?? "").trim();
+  const rawBaseUrl = String(formData.get("baseUrl") ?? "").trim();
   const siteUrl = String(formData.get("siteUrl") ?? "").trim();
   const appName = String(formData.get("appName") ?? "").trim();
+
+  // Rejeita baseUrl apontando para o próprio domínio da aplicação
+  const appHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).hostname : null;
+  const isSelfReferencing = rawBaseUrl && appHost && (() => {
+    try { return new URL(rawBaseUrl).hostname === appHost; } catch { return false; }
+  })();
+  const baseUrl = isSelfReferencing ? "" : rawBaseUrl;
   const chatPresetUsageLevel = (formData.get("chatPresetUsageLevel") as AiChatPresetUsageLevel) || AiChatPresetUsageLevel.MEDIO;
 
   await prisma.aiProviderSetting.upsert({
