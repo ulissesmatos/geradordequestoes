@@ -8,15 +8,20 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const settings = await getPaymentSettings();
   if (!settings.stripeSecretKey) return new Response("Stripe não configurado.", { status: 400 });
+  // Assinatura é obrigatória: nunca confiar em JSON arbitrário sem verificação.
+  if (!settings.stripeWebhookSecret) {
+    return new Response("Webhook secret do Stripe não configurado.", { status: 500 });
+  }
   const stripe = new Stripe(settings.stripeSecretKey);
   const rawBody = await request.text();
   const signature = request.headers.get("stripe-signature");
+  if (!signature) {
+    return new Response("Assinatura ausente.", { status: 400 });
+  }
   let event: Stripe.Event;
 
   try {
-    event = settings.stripeWebhookSecret && signature
-      ? stripe.webhooks.constructEvent(rawBody, signature, settings.stripeWebhookSecret)
-      : JSON.parse(rawBody);
+    event = stripe.webhooks.constructEvent(rawBody, signature, settings.stripeWebhookSecret);
   } catch (error) {
     return new Response(error instanceof Error ? error.message : "Assinatura inválida.", { status: 400 });
   }

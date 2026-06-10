@@ -1,16 +1,24 @@
 import crypto from "crypto";
 import { PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
 
 export function appUrl() {
   return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
 }
 
 export async function getPaymentSettings() {
-  return (
+  const settings =
     (await prisma.paymentGatewaySetting.findUnique({ where: { id: "default" } })) ??
-    (await prisma.paymentGatewaySetting.create({ data: { id: "default" } }))
-  );
+    (await prisma.paymentGatewaySetting.create({ data: { id: "default" } }));
+  // Decifra os segredos para uso em runtime (texto puro legado passa direto).
+  return {
+    ...settings,
+    stripeSecretKey: settings.stripeSecretKey ? decryptSecret(settings.stripeSecretKey) : settings.stripeSecretKey,
+    stripeWebhookSecret: settings.stripeWebhookSecret ? decryptSecret(settings.stripeWebhookSecret) : settings.stripeWebhookSecret,
+    mercadoPagoAccessToken: settings.mercadoPagoAccessToken ? decryptSecret(settings.mercadoPagoAccessToken) : settings.mercadoPagoAccessToken,
+    mercadoPagoWebhookSecret: settings.mercadoPagoWebhookSecret ? decryptSecret(settings.mercadoPagoWebhookSecret) : settings.mercadoPagoWebhookSecret
+  };
 }
 
 export async function activatePaidSubscription(input: {

@@ -1,11 +1,12 @@
 import { AiChatPresetUsageLevel, AiProvider } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto";
 
 export async function getAiSettings() {
   const stored = await prisma.aiProviderSetting.findUnique({ where: { id: "default" } });
   return {
     provider: stored?.provider ?? AiProvider.OPENAI,
-    apiKey: stored?.apiKey || process.env.OPENAI_API_KEY || "",
+    apiKey: decryptSecret(stored?.apiKey) || process.env.OPENAI_API_KEY || "",
     model: stored?.model || process.env.OPENAI_MODEL || "gpt-4.1-mini",
     baseUrl: stored?.baseUrl || "",
     siteUrl: stored?.siteUrl || "",
