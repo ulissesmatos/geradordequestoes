@@ -523,21 +523,25 @@ export function AiChatDashboard({
               {typedResponse && (
                 <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
                   <MarkdownContent content={typedResponse} compact />
-                  {typedSetId && typedMessageId && (
-                    <Button asChild size="sm" className="mt-3">
-                      <Link href={`/biblioteca?setId=${typedSetId}`}>
-                        <Play className="h-4 w-4" />
-                        Responder agora
-                      </Link>
-                    </Button>
-                  )}
-                  {typedMaterialId && typedMessageId && (
-                    <Button asChild size="sm" className="mt-3">
-                      <Link href={`/materiais/${typedMaterialId}`}>
-                        <FileText className="h-4 w-4" />
-                        Abrir material
-                      </Link>
-                    </Button>
+                  {(typedSetId || typedMaterialId) && typedMessageId && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {typedSetId && (
+                        <Button asChild size="sm">
+                          <Link href={`/biblioteca?setId=${typedSetId}`}>
+                            <Play className="h-4 w-4" />
+                            Responder agora
+                          </Link>
+                        </Button>
+                      )}
+                      {typedMaterialId && (
+                        <Button asChild size="sm">
+                          <Link href={`/materiais/${typedMaterialId}`}>
+                            <FileText className="h-4 w-4" />
+                            Abrir material
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -774,21 +778,25 @@ function ChatBubble({ message }: { message: ChatMessage }) {
           </div>
         )}
         <MarkdownContent content={message.content} compact />
-        {message.questionSetId && (
-          <Button asChild size="sm" className="mt-3">
-            <Link href={`/biblioteca?setId=${message.questionSetId}`}>
-              <Play className="h-4 w-4" />
-              Responder agora
-            </Link>
-          </Button>
-        )}
-        {message.studyMaterialId && (
-          <Button asChild size="sm" className="mt-3">
-            <Link href={`/materiais/${message.studyMaterialId}`}>
-              <FileText className="h-4 w-4" />
-              Abrir material
-            </Link>
-          </Button>
+        {(message.questionSetId || message.studyMaterialId) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {message.questionSetId && (
+              <Button asChild size="sm">
+                <Link href={`/biblioteca?setId=${message.questionSetId}`}>
+                  <Play className="h-4 w-4" />
+                  Responder agora
+                </Link>
+              </Button>
+            )}
+            {message.studyMaterialId && (
+              <Button asChild size="sm">
+                <Link href={`/materiais/${message.studyMaterialId}`}>
+                  <FileText className="h-4 w-4" />
+                  Abrir material
+                </Link>
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </div>

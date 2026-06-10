@@ -5,6 +5,8 @@ export function MarkdownContent({ content, compact = false }: { content: string;
   const blocks: ReactNode[] = [];
   let bulletItems: string[] = [];
   let numberedItems: Array<{ number: number; text: string }> = [];
+  let tableRows: string[][] = [];
+  let tableHasHeader = false;
   let nextOrderedNumber = 1;
 
   function flushBullets() {
@@ -34,13 +36,66 @@ export function MarkdownContent({ content, compact = false }: { content: string;
     numberedItems = [];
   }
 
+  function flushTable() {
+    if (!tableRows.length) return;
+    const [headerRow, ...bodyRows] = tableRows;
+    blocks.push(
+      <div key={`table-${blocks.length}`} className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          {tableHasHeader && headerRow && (
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--surface-subtle)]">
+                {headerRow.map((cell, i) => (
+                  <th key={i} className="px-3 py-2 text-left font-semibold">{renderInline(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {(tableHasHeader ? bodyRows : tableRows).map((row, ri) => (
+              <tr key={ri} className="border-b border-[var(--border)] last:border-0 even:bg-[var(--surface-subtle)]">
+                {row.map((cell, ci) => (
+                  <td key={ci} className="px-3 py-2">{renderInline(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+    tableRows = [];
+    tableHasHeader = false;
+  }
+
   function flushLists() {
     flushBullets();
     flushNumbers();
   }
 
+  function flushAll() {
+    flushLists();
+    flushTable();
+  }
+
   for (const rawLine of lines) {
     const line = rawLine.trim();
+
+    // Table row
+    if (line.startsWith("|") && line.endsWith("|")) {
+      flushLists();
+      const cells = line.slice(1, -1).split("|").map((c) => c.trim());
+      // Separator row: |---|---|
+      if (cells.every((c) => /^[-:]+$/.test(c))) {
+        if (tableRows.length === 1) tableHasHeader = true;
+        continue;
+      }
+      tableRows.push(cells);
+      continue;
+    }
+
+    // Non-table line → flush any pending table first
+    if (tableRows.length) flushTable();
+
     if (!line) {
       flushLists();
       continue;
@@ -83,7 +138,7 @@ export function MarkdownContent({ content, compact = false }: { content: string;
     flushLists();
     blocks.push(<p key={`p-${blocks.length}`} className={compact ? undefined : "leading-7"}>{renderInline(line)}</p>);
   }
-  flushLists();
+  flushAll();
 
   return <div className={compact ? "space-y-3" : "space-y-4"}>{blocks.length ? blocks : <p>{content}</p>}</div>;
 }

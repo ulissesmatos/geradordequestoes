@@ -169,7 +169,8 @@ async function* streamChatOpenAiStyle(
   tools: NeutralToolSpec[],
   maxOutputTokens: number
 ): AsyncGenerator<ChatStreamEvent> {
-  const openai = new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseUrl || undefined });
+  const defaultBaseUrl = settings.provider === AiProvider.OPENROUTER ? "https://openrouter.ai/api/v1" : undefined;
+  const openai = new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseUrl || defaultBaseUrl });
   const stream = await openai.chat.completions.create({
     model: settings.model,
     messages: toOpenAiMessages(messages),
