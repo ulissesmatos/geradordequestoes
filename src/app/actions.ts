@@ -18,7 +18,7 @@ export async function loginAction(_: unknown, formData: FormData) {
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
       password: String(formData.get("password") ?? ""),
-      redirectTo: "/dashboard"
+      redirectTo: "/ai"
     });
   } catch (error) {
     if (error instanceof AuthError) {
@@ -53,7 +53,7 @@ export async function registerAction(_: unknown, formData: FormData) {
   await signIn("credentials", {
     email: parsed.data.email,
     password: parsed.data.password,
-    redirectTo: "/dashboard"
+    redirectTo: "/ai"
   });
 }
 

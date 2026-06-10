@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowUp, Bot, FileText, History, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Pencil, Play, Trash2, X } from "lucide-react";
-import { type KeyboardEvent, useActionState, useEffect, useRef, useState, useMemo } from "react";
+import { type ClipboardEvent, type KeyboardEvent, useActionState, useEffect, useRef, useState, useMemo } from "react";
 import { useFormStatus } from "react-dom";
 import { deleteChatSessionAction, renameChatSessionAction, sendChatMessageAction } from "@/app/(app)/actions/chat-actions";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -25,15 +25,37 @@ type ChatSessionSummary = {
   updatedAt: string;
 };
 
-const quickPrompts = [
-  "Gerar 10 questões de Português em Certo/Errado",
-  "Gerar um simulado de Informática nível difícil com 5 alternativas",
-  "Criar revisão dos meus erros recentes",
-  "Gerar material de estudo com base no que eu mais errei",
-  "Ver meu desempenho por matéria"
-];
+const FALLBACK_SUBJECTS = ["Português", "Informática", "Direito Constitucional", "Raciocínio Lógico", "Direito Administrativo"];
+const PASTE_AS_ATTACHMENT_THRESHOLD = 1500;
 
-const loadingLabels = ["Pensando...", "Consultando suas ferramentas de estudo...", "Preparando a resposta..."];
+function pickSubjects(subjectNames: string[] | undefined, count: number) {
+  const pool = subjectNames && subjectNames.length ? subjectNames : FALLBACK_SUBJECTS;
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return Array.from({ length: count }, (_, index) => shuffled[index % shuffled.length]);
+}
+
+function buildQuickPrompts(subjectNames: string[] | undefined) {
+  const [a, b, c] = pickSubjects(subjectNames, 3);
+  return [
+    `Gerar 10 questões de ${a} em Certo/Errado`,
+    `Simulado de ${b} nível difícil com 5 alternativas`,
+    "Criar revisão dos meus erros recentes",
+    `Gerar material de estudo de ${c}`
+  ];
+}
+
+function buildPlaceholders(subjectNames: string[] | undefined) {
+  const [a, b, c, d] = pickSubjects(subjectNames, 4);
+  return [
+    `Ex.: gere 10 questões de ${a} em Certo/Errado`,
+    `Ex.: simulado de ${b} com 5 alternativas`,
+    `Ex.: revisão dos meus erros de ${c}`,
+    `Ex.: material de estudo sobre ${d}`,
+    "Ex.: qual é a minha pior matéria?"
+  ];
+}
+
+const loadingLabels = ["Pensando...", "Consultando...", "Preparando a resposta...", "Quase lá...", "Organizando as ideias...", "Só um momento...", "Analisando os detalhes...", "Processando a informação...", "Ajustando os parâmetros...", "Refletindo sobre a melhor resposta..."];
 
 export function AiChatDashboard({
   userName,
@@ -41,7 +63,8 @@ export function AiChatDashboard({
   usage,
   sessions,
   messages,
-  initialPrompt
+  initialPrompt,
+  subjectNames
 }: {
   userName: string;
   currentSessionId: string | null;
@@ -49,9 +72,12 @@ export function AiChatDashboard({
   sessions: ChatSessionSummary[];
   messages: ChatMessage[];
   initialPrompt?: string;
+  subjectNames?: string[];
 }) {
   const [state, formAction] = useActionState(sendChatMessageAction, null);
   const [message, setMessage] = useState(initialPrompt ?? "");
+  const [pastedBlocks, setPastedBlocks] = useState<{ id: string; chars: number; text: string }[]>([]);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [typedResponse, setTypedResponse] = useState("");
@@ -64,6 +90,22 @@ export function AiChatDashboard({
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const quickPrompts = useMemo(() => buildQuickPrompts(subjectNames), [subjectNames]);
+  const placeholders = useMemo(() => buildPlaceholders(subjectNames), [subjectNames]);
+  const composedPrompt = useMemo(
+    () => [message.trim(), ...pastedBlocks.map((block) => block.text)].filter(Boolean).join("\n\n"),
+    [message, pastedBlocks]
+  );
+  const canSend = composedPrompt.length > 0;
+
+  useEffect(() => {
+    if (message) return; // pausa a rotação enquanto o usuário digita
+    const timer = window.setInterval(() => {
+      setPlaceholderIndex((index) => (index + 1) % placeholders.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [message, placeholders.length]);
 
   useEffect(() => {
     if (!textareaRef.current) return;
@@ -78,7 +120,7 @@ export function AiChatDashboard({
   useEffect(() => {
     if (!state?.ok || !state.message) return;
     if (state.sessionId && !currentSessionId) {
-      window.history.replaceState(null, "", `/dashboard?sessionId=${state.sessionId}`);
+      window.history.replaceState(null, "", `/ai?sessionId=${state.sessionId}`);
     }
     const responseMessage = state.message;
     setIsSubmitting(false);
@@ -87,6 +129,7 @@ export function AiChatDashboard({
     setTypedMaterialId(state.studyMaterialId ?? null);
     setTypedMessageId(state.messageId ?? null);
     setMessage("");
+    setPastedBlocks([]);
     let index = 0;
     const timer = window.setInterval(() => {
       index += 1;
@@ -123,6 +166,7 @@ export function AiChatDashboard({
     setTypedMaterialId(null);
     setTypedMessageId(null);
     setMessage(initialPrompt ?? "");
+    setPastedBlocks([]);
     setIsSubmitting(false);
     setOptimisticMessage(null);
     setMobileHistoryOpen(false);
@@ -150,16 +194,26 @@ export function AiChatDashboard({
   const hasConversation = displayMessages.length > 0 || Boolean(typedResponse) || isSubmitting || Boolean(state?.error);
 
   function submitFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape" && pastedBlocks.length) {
+      setPastedBlocks([]);
+      return;
+    }
     if (event.key !== "Enter" || event.shiftKey) return;
     const isDesktopKeyboard = window.matchMedia("(pointer: fine)").matches;
     if (!isDesktopKeyboard) return;
     event.preventDefault();
-    if (message.trim()) formRef.current?.requestSubmit();
+    if (canSend) formRef.current?.requestSubmit();
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const text = event.clipboardData.getData("text");
+    if (text.length <= PASTE_AS_ATTACHMENT_THRESHOLD) return;
+    event.preventDefault();
+    setPastedBlocks((blocks) => [...blocks, { id: `paste-${Date.now()}`, chars: text.length, text }]);
   }
 
   function handleSubmit() {
-    const submitted = message.trim();
-    if (!submitted) return;
+    if (!canSend) return;
     setTypedResponse("");
     setTypedSetId(null);
     setTypedMaterialId(null);
@@ -167,11 +221,12 @@ export function AiChatDashboard({
     setOptimisticMessage({
       id: `optimistic-${Date.now()}`,
       role: "USER",
-      content: submitted
+      content: composedPrompt
     });
     setIsSubmitting(true);
     window.setTimeout(() => {
       setMessage("");
+      setPastedBlocks([]);
     }, 0);
   }
 
@@ -200,26 +255,14 @@ export function AiChatDashboard({
 
         <div className="p-2">
           <Button asChild variant="outline" className={cn("w-full", !sidebarOpen && "px-0")}>
-            <Link href="/dashboard?new=1" title="Novo chat">
+            <Link href="/ai?new=1" title="Novo chat">
               <MessageSquarePlus className="h-4 w-4" />
               {sidebarOpen && "Novo chat"}
             </Link>
           </Button>
         </div>
 
-        {sidebarOpen ? (
-          sessionList
-        ) : (
-          <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
-            {sessions.map((session) => (
-              <Button key={session.id} asChild variant="ghost" size="icon" className="w-full">
-                <Link href={`/dashboard?sessionId=${session.id}`} title={session.title}>
-                  <History className="h-4 w-4" />
-                </Link>
-              </Button>
-            ))}
-          </div>
-        )}
+        {sidebarOpen ? sessionList : <div className="flex-1" />}
       </aside>
 
       {mobileHistoryOpen && (
@@ -239,7 +282,7 @@ export function AiChatDashboard({
             </div>
             <div className="p-2">
               <Button asChild variant="outline" className="w-full" onClick={() => setMobileHistoryOpen(false)}>
-                <Link href="/dashboard?new=1">
+                <Link href="/ai?new=1">
                   <MessageSquarePlus className="h-4 w-4" />
                   Novo chat
                 </Link>
@@ -250,31 +293,37 @@ export function AiChatDashboard({
         </div>
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)]/85 px-3 py-2 md:hidden">
-          <Button variant="outline" size="sm" onClick={() => setMobileHistoryOpen(true)}>
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        {/* Controles flutuantes no mobile — liberam a altura antes ocupada pelo subheader */}
+        <div className="pointer-events-none absolute left-3 top-3 z-20 flex gap-2 md:hidden">
+          <button
+            type="button"
+            aria-label="Abrir histórico de chats"
+            onClick={() => setMobileHistoryOpen(true)}
+            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]/90 text-[var(--foreground)] shadow-sm backdrop-blur"
+          >
             <History className="h-4 w-4" />
-            Chats
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard?new=1">
-              <MessageSquarePlus className="h-4 w-4" />
-              Novo chat
-            </Link>
-          </Button>
+          </button>
+          <Link
+            href="/ai?new=1"
+            aria-label="Novo chat"
+            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]/90 text-[var(--foreground)] shadow-sm backdrop-blur"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+          </Link>
         </div>
 
-        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "py-6" : "grid place-items-center py-8")}>
+        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "pb-6 pt-14 md:pt-6" : "grid place-items-center py-8")}>
           {!hasConversation ? (
             <div className="w-full max-w-3xl text-center">
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]">
                 <Bot className="h-6 w-6 text-[var(--primary)]" />
               </div>
-              <h1 className="text-3xl font-light text-[var(--foreground)] md:text-4xl">O que vamos gerar hoje, {firstName(userName)}?</h1>
+              <h1 className="text-2xl font-light text-[var(--foreground)] sm:text-3xl md:text-4xl">O que vamos gerar hoje, {firstName(userName)}?</h1>
               <p className="mt-3 text-sm text-[var(--muted-foreground)]">
                 Peça questões, simulados ou revisões. A IA organiza os detalhes automaticamente.
               </p>
-              <div className="mt-8 grid gap-2 text-left sm:grid-cols-2">
+              <div className="mt-6 grid gap-2 text-left sm:mt-8 sm:grid-cols-2">
                 {quickPrompts.map((prompt) => (
                   <button
                     key={prompt}
@@ -325,7 +374,7 @@ export function AiChatDashboard({
               )}
               {state?.error && !isSubmitting && (
                 <div className="flex justify-start">
-                  <div className="max-w-[88%] rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
+                  <div className="max-w-[88%] rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-sm leading-6 text-[var(--danger-soft-foreground)]">
                     {state.error}
                   </div>
                 </div>
@@ -341,25 +390,46 @@ export function AiChatDashboard({
           <form ref={formRef} action={formAction} className="mx-auto max-w-3xl" onSubmit={handleSubmit}>
             <PendingStateBridge onPendingChange={setIsSubmitting} />
             {activeSessionId && <input type="hidden" name="sessionId" value={activeSessionId} />}
-            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-lg">
+            <input type="hidden" name="prompt" value={composedPrompt} />
+            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-lg)]">
+              {pastedBlocks.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-3 pt-3">
+                  {pastedBlocks.map((block) => (
+                    <span
+                      key={block.id}
+                      className="animate-fade-in flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                      Texto colado · {block.chars.toLocaleString("pt-BR")} caracteres
+                      <button
+                        type="button"
+                        aria-label="Remover texto colado"
+                        onClick={() => setPastedBlocks((blocks) => blocks.filter((item) => item.id !== block.id))}
+                        className="rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <textarea
                 ref={textareaRef}
-                name="prompt"
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={submitFromKeyboard}
-                required
+                onPaste={handlePaste}
                 rows={1}
-                placeholder="Ex.: gere 10 questões de crase em Português no formato Certo/Errado..."
+                placeholder={placeholders[placeholderIndex % placeholders.length]}
                 className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
               />
               <div className="flex items-center justify-end px-3 pb-3">
-                <ChatSubmitButton canSend={Boolean(message.trim())} />
+                <ChatSubmitButton canSend={canSend} />
               </div>
             </div>
           </form>
           <p className="mx-auto mt-3 max-w-3xl px-1 text-xs text-[var(--muted-foreground)]">
-            Ex.: “simulado de geografia com 5 alternativas” ou “revisão dos meus erros de informática”.
+            Dica: cole um texto longo para anexá-lo como contexto, ou peça algo como “revisão dos meus erros de informática”.
           </p>
         </div>
       </main>
@@ -391,7 +461,7 @@ function SessionList({
         >
           <div className="flex items-center gap-1">
             <Link
-              href={`/dashboard?sessionId=${session.id}`}
+              href={`/ai?sessionId=${session.id}`}
               onClick={onNavigate}
               className="min-w-0 flex-1 rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
             >
@@ -444,10 +514,8 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
   if (!usage.limit || usage.percent < 80) return null;
   const tone =
     usage.percent >= 100
-      ? "border-red-200 bg-red-50 text-red-700"
-      : usage.percent >= 90
-        ? "border-amber-200 bg-amber-50 text-amber-800"
-        : "border-yellow-200 bg-yellow-50 text-yellow-800";
+      ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
+      : "border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] text-[var(--warning-soft-foreground)]";
   const message =
     usage.percent >= 100
       ? "Você atingiu 100% do seu limite diário de uso da IA."
@@ -458,8 +526,8 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "USER";
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div className={cn("max-w-[88%] rounded-lg p-4 text-sm leading-6", isUser ? "bg-[var(--surface)] text-[var(--foreground)] shadow-sm" : "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]")}>
+    <div className={cn("flex animate-fade-in", isUser ? "justify-end" : "justify-start")}>
+      <div className={cn("max-w-[88%] rounded-lg p-4 text-sm leading-6", isUser ? "bg-[var(--surface)] text-[var(--foreground)] shadow-[var(--shadow-sm)]" : "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]")}>
         <MarkdownContent content={message.content} compact />
         {message.questionSetId && (
           <Button asChild size="sm" className="mt-3">

@@ -61,7 +61,7 @@ export async function sendChatMessageAction(
     });
     await summarizeSessionIfNeeded(session.id).catch(() => undefined);
 
-    revalidatePath("/dashboard");
+    revalidatePath("/ai");
     if (turn.questionSetId) revalidatePath("/biblioteca");
     if (turn.studyMaterialId) revalidatePath("/materiais");
 
@@ -95,7 +95,7 @@ export async function renameChatSessionAction(formData: FormData) {
     where: { id: sessionId, userId: user.id },
     data: { title }
   });
-  revalidatePath("/dashboard");
+  revalidatePath("/ai");
 }
 
 export async function deleteChatSessionAction(formData: FormData) {
@@ -119,8 +119,8 @@ export async function deleteChatSessionAction(formData: FormData) {
     })
   ]);
 
-  revalidatePath("/dashboard");
+  revalidatePath("/ai");
   revalidatePath("/biblioteca");
 
-  if (isActive) redirect("/dashboard?new=1");
+  if (isActive) redirect("/ai?new=1");
 }

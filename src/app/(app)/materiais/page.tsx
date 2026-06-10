@@ -23,7 +23,7 @@ export default async function MaterialsPage() {
           <p className="text-[var(--muted-foreground)]">Apostilas, resumos e guias gerados pela IA para sua rotina de estudo.</p>
         </div>
         <Button asChild>
-          <Link href="/dashboard">
+          <Link href="/ai">
             <Sparkles className="h-4 w-4" />
             Gerar material no Chat IA
           </Link>

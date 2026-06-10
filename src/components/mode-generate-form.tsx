@@ -75,9 +75,9 @@ export function ModeGenerateForm({
               {[3, 5, 10, 15].map((value) => <option key={value} value={value}>{value} questões</option>)}
             </Select>
           </div>
-          {state?.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
+          {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
           {state?.ok && state.questionSetId && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--success-soft)] p-3 text-sm text-[var(--success-soft-foreground)]">
               <span>Bloco gerado e salvo.</span>
               <Button asChild size="sm">
                 <Link href={`/biblioteca?setId=${state.questionSetId}`}>

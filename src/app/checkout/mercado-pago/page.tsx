@@ -46,7 +46,7 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
       external_reference: localCheckout.id,
       notification_url: `${appUrl()}/api/webhooks/mercado-pago`,
       back_urls: {
-        success: `${appUrl()}/dashboard?checkout=success`,
+        success: `${appUrl()}/ai?checkout=success`,
         failure: `${appUrl()}/pricing?checkout=failure`,
         pending: `${appUrl()}/assinatura?checkout=pending`
       },

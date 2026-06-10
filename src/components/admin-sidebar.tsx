@@ -69,7 +69,7 @@ export function AdminSidebar() {
           </div>
         ))}
         <Button asChild variant="secondary" size="sm" className="mt-2">
-          <Link href="/dashboard">Área do aluno</Link>
+          <Link href="/ai">Área do aluno</Link>
         </Button>
         <form action={logoutAction}>
           <Button variant="ghost" size="sm" className="mt-2 !text-white hover:bg-white/10" type="submit">

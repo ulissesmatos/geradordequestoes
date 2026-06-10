@@ -56,7 +56,7 @@ export async function answerQuestionAction(formData: FormData) {
     }
   });
 
-  revalidatePath("/dashboard");
+  revalidatePath("/ai");
   revalidatePath("/biblioteca");
 }
 
@@ -93,7 +93,7 @@ export async function generateUserQuestionsAction(
     });
     revalidatePath("/questoes/gerar");
     revalidatePath("/biblioteca");
-    revalidatePath("/dashboard");
+    revalidatePath("/ai");
     return { ok: true, questionSetId: questionSet.id };
   } catch (error) {
     await prisma.aiGenerationLog

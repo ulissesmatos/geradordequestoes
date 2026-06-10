@@ -34,7 +34,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
             </Link>
           </Button>
           <Button asChild>
-            <Link href={`/dashboard?new=1`}>
+            <Link href={`/ai?new=1`}>
               <Sparkles className="h-4 w-4" />
               Gerar questões
             </Link>

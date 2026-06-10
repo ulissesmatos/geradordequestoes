@@ -8,6 +8,17 @@ import { requireUser } from "@/lib/guards";
 import { questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
+import { cn } from "@/lib/utils";
+
+function modeMeta(mode: QuestionSetMode) {
+  if (mode === QuestionSetMode.SIMULADO) {
+    return { label: questionSetModeLabel(mode), icon: Clock, className: "bg-[var(--accent-soft)] text-[var(--accent-foreground)]" };
+  }
+  if (mode === QuestionSetMode.REVISAO) {
+    return { label: questionSetModeLabel(mode), icon: RotateCcw, className: "bg-[var(--info-soft)] text-[var(--info-soft-foreground)]" };
+  }
+  return { label: questionSetModeLabel(mode), icon: BookOpen, className: "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]" };
+}
 
 const tabs = [
   { value: "todos", label: "Todos" },
@@ -95,7 +106,7 @@ export default async function LibraryPage({
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/dashboard">
+            <Link href="/ai">
               <Play className="h-4 w-4" />
               Gerar no Chat IA
             </Link>
@@ -129,7 +140,7 @@ export default async function LibraryPage({
               </CardTitle>
               {favorites.length > 0 && (
                 <Button asChild size="sm" variant="outline">
-                  <Link href={`/dashboard?new=1&prompt=${encodeURIComponent("Crie uma revisão com minhas questões favoritas")}`}>
+                  <Link href={`/ai?new=1&prompt=${encodeURIComponent("Crie uma revisão com minhas questões favoritas")}`}>
                     <RotateCcw className="h-4 w-4" />
                     Criar revisão com favoritas
                   </Link>
@@ -138,10 +149,10 @@ export default async function LibraryPage({
             </div>
             <CardDescription>Questões marcadas para revisão rápida.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {favorites.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Nenhuma favorita ainda.</p>}
             {favorites.map((favorite) => (
-              <div key={favorite.id} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div key={favorite.id} className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-sm)]">
                 <p className="line-clamp-3 text-sm">{favorite.question.statement}</p>
                 <p className="mt-2 text-xs text-[var(--muted-foreground)]">{favorite.question.subject.name} / {favorite.question.topic.name}</p>
               </div>
@@ -157,12 +168,12 @@ export default async function LibraryPage({
             </CardTitle>
             <CardDescription>Abra um bloco para responder agora ou continuar depois.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
+          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredSets.length === 0 && (
-              <div className="md:col-span-2 flex flex-col items-start gap-3 rounded-md border border-dashed border-[var(--border)] p-6">
+              <div className="flex flex-col items-start gap-3 rounded-[var(--radius)] border border-dashed border-[var(--border)] p-6 sm:col-span-2 lg:col-span-3">
                 <p className="text-sm text-[var(--muted-foreground)]">Nada por aqui ainda. Peça questões, um simulado ou uma revisão no chat e o bloco aparece aqui.</p>
                 <Button asChild size="sm">
-                  <Link href="/dashboard">
+                  <Link href="/ai">
                     <Play className="h-4 w-4" />
                     Gerar primeiro bloco no Chat IA
                   </Link>
@@ -171,13 +182,33 @@ export default async function LibraryPage({
             )}
             {filteredSets.map((set) => {
               const answered = new Set(set.questions.flatMap((question) => question.attempts.map((attempt) => attempt.questionId))).size;
-              const icon = set.mode === "SIMULADO" ? <Clock className="h-4 w-4" /> : set.mode === "REVISAO" ? <RotateCcw className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />;
+              const total = set.quantity || set.questions.length || 1;
+              const percent = Math.min(100, Math.round((answered / total) * 100));
+              const meta = modeMeta(set.mode);
               return (
-                <Link key={set.id} href={`/biblioteca?setId=${set.id}`} className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4 hover:border-[var(--primary)]">
-                  <p className="flex items-center gap-2 font-semibold">{icon}{set.title}</p>
+                <Link
+                  key={set.id}
+                  href={`/biblioteca?setId=${set.id}`}
+                  className="group flex flex-col rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-sm)] transition hover:border-[var(--primary)] hover:shadow-[var(--shadow-md)]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", meta.className)}>
+                      <meta.icon className="h-3.5 w-3.5" />
+                      {meta.label}
+                    </span>
+                    <span className="text-xs text-[var(--muted-foreground)]">{questionFormatLabel(set.format)}</span>
+                  </div>
+                  <p className="mt-3 line-clamp-2 font-semibold">{set.title}</p>
                   <p className="mt-1 text-xs text-[var(--muted-foreground)]">{set.subject.name} / {set.topic.name}</p>
-                  <p className="mt-3 text-sm">{answered} de {set.quantity} respondidas</p>
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">{questionSetModeLabel(set.mode)} · {questionFormatLabel(set.format)}</p>
+                  <div className="mt-auto pt-4">
+                    <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+                      <span>{answered} de {total} respondidas</span>
+                      <span>{percent}%</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+                      <div className="h-full rounded-full bg-[var(--primary)] transition-all" style={{ width: `${percent}%` }} />
+                    </div>
+                  </div>
                 </Link>
               );
             })}

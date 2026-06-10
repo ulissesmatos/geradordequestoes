@@ -35,7 +35,7 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
     mode: "subscription",
     ...customerInput,
     line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-    success_url: `${appUrl()}/dashboard?checkout=success`,
+    success_url: `${appUrl()}/ai?checkout=success`,
     cancel_url: `${appUrl()}/pricing?checkout=cancel`,
     metadata: {
       userId: user.id,
