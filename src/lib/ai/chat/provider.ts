@@ -130,6 +130,70 @@ async function completeWithOpenAI(
   return fromOpenAiStyleMessage(response.choices[0]?.message);
 }
 
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "completed"; result: CompletionResult };
+
+/**
+ * Versão em streaming. Para OpenAI, emite deltas de texto em tempo real e ao final
+ * um evento "completed" com o resultado (texto ou tool_calls). Demais provedores
+ * caem no caminho não-streaming (texto final emitido como um único delta).
+ */
+export async function* streamChat(input: {
+  settings: AiSettings;
+  messages: NeutralMessage[];
+  tools?: NeutralToolSpec[];
+  maxOutputTokens?: number;
+}): AsyncGenerator<ChatStreamEvent> {
+  const maxOutputTokens = input.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
+  const tools = input.tools ?? [];
+
+  if (input.settings.provider !== AiProvider.OPENAI) {
+    const result = await completeChat({ settings: input.settings, messages: input.messages, tools, maxOutputTokens });
+    if (result.kind === "text") yield { type: "delta", text: result.text };
+    yield { type: "completed", result };
+    return;
+  }
+
+  const openai = new OpenAI({ apiKey: input.settings.apiKey, baseURL: input.settings.baseUrl || undefined });
+  const stream = await openai.chat.completions.create({
+    model: input.settings.model,
+    messages: toOpenAiMessages(input.messages),
+    ...(tools.length ? { tools: toOpenAiTools(tools), tool_choice: "auto" as const } : {}),
+    max_completion_tokens: maxOutputTokens,
+    stream: true
+  });
+
+  let text = "";
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>();
+
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta;
+    if (delta?.content) {
+      text += delta.content;
+      yield { type: "delta", text: delta.content };
+    }
+    for (const call of delta?.tool_calls ?? []) {
+      const slot = toolAcc.get(call.index) ?? { id: "", name: "", args: "" };
+      if (call.id) slot.id = call.id;
+      if (call.function?.name) slot.name = call.function.name;
+      if (call.function?.arguments) slot.args += call.function.arguments;
+      toolAcc.set(call.index, slot);
+    }
+  }
+
+  const calls = [...toolAcc.values()]
+    .filter((slot) => slot.name)
+    .map((slot, index) => ({ id: slot.id || `call_${index}`, name: slot.name, argumentsJson: slot.args || "{}" }));
+
+  if (calls.length > 0) {
+    yield { type: "completed", result: { kind: "tool_calls", calls, assistantText: text.trim() || null } };
+    return;
+  }
+  if (!text.trim()) throw new AiProviderError("A IA não retornou uma resposta.");
+  yield { type: "completed", result: { kind: "text", text } };
+}
+
 async function completeWithOpenRouter(
   settings: AiSettings,
   messages: NeutralMessage[],

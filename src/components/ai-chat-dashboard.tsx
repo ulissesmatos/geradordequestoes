@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Trash2, X } from "lucide-react";
-import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useActionState, useEffect, useRef, useState, useMemo } from "react";
-import { useFormStatus } from "react-dom";
-import { deleteChatSessionAction, renameChatSessionAction, sendChatMessageAction } from "@/app/(app)/actions/chat-actions";
+import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo } from "react";
+import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
@@ -79,6 +79,14 @@ function buildPlaceholders(subjectNames: string[] | undefined) {
 
 const loadingLabels = ["Pensando...", "Consultando...", "Preparando a resposta...", "Quase lá...", "Organizando as ideias...", "Só um momento...", "Analisando os detalhes...", "Processando a informação...", "Ajustando os parâmetros...", "Refletindo sobre a melhor resposta..."];
 
+const TOOL_LABELS: Record<string, string> = {
+  generate_questions: "Gerando suas questões…",
+  generate_review_from_mistakes: "Montando sua revisão…",
+  generate_study_material: "Escrevendo o material…",
+  get_performance: "Consultando seu desempenho…",
+  get_study_history: "Consultando seu histórico…"
+};
+
 export function AiChatDashboard({
   userName,
   currentSessionId,
@@ -96,7 +104,7 @@ export function AiChatDashboard({
   initialPrompt?: string;
   subjectNames?: string[];
 }) {
-  const [state, formAction] = useActionState(sendChatMessageAction, null);
+  const router = useRouter();
   const [message, setMessage] = useState(initialPrompt ?? "");
   const [pastedBlocks, setPastedBlocks] = useState<{ id: string; chars: number; text: string }[]>([]);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
@@ -109,9 +117,11 @@ export function AiChatDashboard({
   const [typedMaterialId, setTypedMaterialId] = useState<string | null>(null);
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamSessionId, setStreamSessionId] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(loadingLabels[0]);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMessage | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,16 +136,6 @@ export function AiChatDashboard({
   const uploadingCount = fileAttachments.filter((attachment) => attachment.status === "uploading").length;
   const canSend = (composedPrompt.length > 0 || readyAttachments.length > 0) && uploadingCount === 0;
   const submittedPrompt = composedPrompt || (readyAttachments.length ? "Analise o anexo que enviei." : "");
-  const attachmentsPayload = JSON.stringify(
-    readyAttachments.map((attachment) => ({
-      kind: attachment.kind,
-      url: attachment.url,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-      extractedText: attachment.extractedText
-    }))
-  );
 
   useEffect(() => {
     if (message) return; // pausa a rotação enquanto o usuário digita
@@ -153,38 +153,7 @@ export function AiChatDashboard({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, state?.error]);
-
-  useEffect(() => {
-    if (!state?.ok || !state.message) return;
-    if (state.sessionId && !currentSessionId) {
-      window.history.replaceState(null, "", `/ai?sessionId=${state.sessionId}`);
-    }
-    const responseMessage = state.message;
-    setIsSubmitting(false);
-    setTypedResponse("");
-    setTypedSetId(state.questionSetId ?? null);
-    setTypedMaterialId(state.studyMaterialId ?? null);
-    setTypedMessageId(state.messageId ?? null);
-    setMessage("");
-    setPastedBlocks([]);
-    setFileAttachments([]);
-    let index = 0;
-    const timer = window.setInterval(() => {
-      index += 1;
-      setTypedResponse(responseMessage.slice(0, index));
-      if (index >= responseMessage.length) {
-        window.clearInterval(timer);
-      }
-    }, 16);
-    return () => window.clearInterval(timer);
-  }, [state]);
-
-  useEffect(() => {
-    if (state?.error) {
-      setIsSubmitting(false);
-    }
-  }, [state]);
+  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, toolStatus, streamError]);
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -208,6 +177,9 @@ export function AiChatDashboard({
     setPastedBlocks([]);
     setFileAttachments([]);
     setIsSubmitting(false);
+    setToolStatus(null);
+    setStreamError(null);
+    setStreamSessionId(null);
     setOptimisticMessage(null);
     setMobileHistoryOpen(false);
   }, [currentSessionId, initialPrompt]);
@@ -220,7 +192,7 @@ export function AiChatDashboard({
     if (alreadyArrived) setOptimisticMessage(null);
   }, [messages, optimisticMessage]);
 
-  const activeSessionId = state?.sessionId ?? currentSessionId;
+  const activeSessionId = streamSessionId ?? currentSessionId;
   const visibleMessages = typedMessageId
     ? messages.filter((chatMessage) => chatMessage.id !== typedMessageId)
     : messages;
@@ -231,7 +203,7 @@ export function AiChatDashboard({
     );
     return alreadyVisible ? visibleMessages : [...visibleMessages, optimisticMessage];
   }, [optimisticMessage, visibleMessages]);
-  const hasConversation = displayMessages.length > 0 || Boolean(typedResponse) || isSubmitting || Boolean(state?.error);
+  const hasConversation = displayMessages.length > 0 || Boolean(typedResponse) || isSubmitting || Boolean(streamError);
 
   function submitFromKeyboard(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Escape" && pastedBlocks.length) {
@@ -242,7 +214,7 @@ export function AiChatDashboard({
     const isDesktopKeyboard = window.matchMedia("(pointer: fine)").matches;
     if (!isDesktopKeyboard) return;
     event.preventDefault();
-    if (canSend) formRef.current?.requestSubmit();
+    if (canSend) void handleSubmit();
   }
 
   async function uploadOneFile(file: File) {
@@ -333,23 +305,94 @@ export function AiChatDashboard({
     setDragActive(false);
   }
 
-  function handleSubmit() {
-    if (!canSend) return;
+  async function handleSubmit() {
+    if (!canSend || isSubmitting) return;
+    const promptToSend = submittedPrompt;
+    const sessionToSend = activeSessionId;
+    const attachmentsToSend = readyAttachments.map((attachment) => ({
+      kind: attachment.kind,
+      url: attachment.url,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      extractedText: attachment.extractedText
+    }));
+
     setTypedResponse("");
     setTypedSetId(null);
     setTypedMaterialId(null);
     setTypedMessageId(null);
-    setOptimisticMessage({
-      id: `optimistic-${Date.now()}`,
-      role: "USER",
-      content: submittedPrompt
-    });
+    setStreamError(null);
+    setToolStatus(null);
+    setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
     setIsSubmitting(true);
-    window.setTimeout(() => {
-      setMessage("");
-      setPastedBlocks([]);
-      setFileAttachments([]);
-    }, 0);
+    setMessage("");
+    setPastedBlocks([]);
+    setFileAttachments([]);
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: sessionToSend ?? undefined, prompt: promptToSend, attachments: attachmentsToSend })
+      });
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error ?? "Falha ao enviar a mensagem.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          const event = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
+          const dataLine = lines.find((line) => line.startsWith("data:"))?.slice(5).trim();
+          if (!event || !dataLine) continue;
+          let data: Record<string, unknown> = {};
+          try {
+            data = JSON.parse(dataLine);
+          } catch {
+            continue;
+          }
+
+          if (event === "session") {
+            setStreamSessionId(String(data.sessionId));
+            if (data.sessionId && !currentSessionId) {
+              window.history.replaceState(null, "", `/ai?sessionId=${data.sessionId}`);
+            }
+          } else if (event === "tool") {
+            setToolStatus(TOOL_LABELS[String(data.name)] ?? "Trabalhando nisso…");
+          } else if (event === "delta") {
+            setIsSubmitting(false);
+            setToolStatus(null);
+            setTypedResponse((previous) => previous + String(data.text ?? ""));
+          } else if (event === "done") {
+            setTypedSetId((data.questionSetId as string | null) ?? null);
+            setTypedMaterialId((data.studyMaterialId as string | null) ?? null);
+            setTypedMessageId((data.messageId as string | null) ?? null);
+            setIsSubmitting(false);
+            setToolStatus(null);
+            router.refresh();
+          } else if (event === "error") {
+            setStreamError(String(data.error ?? "Erro ao enviar a mensagem."));
+            setIsSubmitting(false);
+            setToolStatus(null);
+          }
+        }
+      }
+    } catch (error) {
+      setStreamError(error instanceof Error ? error.message : "Erro ao enviar a mensagem.");
+      setIsSubmitting(false);
+      setToolStatus(null);
+    }
   }
 
   const sessionList = (
@@ -480,7 +523,7 @@ export function AiChatDashboard({
               {typedResponse && (
                 <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
                   <MarkdownContent content={typedResponse} compact />
-                  {typedSetId && typedResponse === state?.message && (
+                  {typedSetId && typedMessageId && (
                     <Button asChild size="sm" className="mt-3">
                       <Link href={`/biblioteca?setId=${typedSetId}`}>
                         <Play className="h-4 w-4" />
@@ -488,7 +531,7 @@ export function AiChatDashboard({
                       </Link>
                     </Button>
                   )}
-                  {typedMaterialId && typedResponse === state?.message && (
+                  {typedMaterialId && typedMessageId && (
                     <Button asChild size="sm" className="mt-3">
                       <Link href={`/materiais/${typedMaterialId}`}>
                         <FileText className="h-4 w-4" />
@@ -501,14 +544,14 @@ export function AiChatDashboard({
               {isSubmitting && (
                 <div className="flex justify-start">
                   <div className="flex max-w-[88%] items-center gap-3 rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
-                    <Loader variant="text-shimmer" text={loadingText} />
+                    <Loader variant="text-shimmer" text={toolStatus ?? loadingText} />
                   </div>
                 </div>
               )}
-              {state?.error && !isSubmitting && (
+              {streamError && !isSubmitting && (
                 <div className="flex justify-start">
                   <div className="max-w-[88%] rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-sm leading-6 text-[var(--danger-soft-foreground)]">
-                    {state.error}
+                    {streamError}
                   </div>
                 </div>
               )}
@@ -520,11 +563,13 @@ export function AiChatDashboard({
         <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
           <UsageNotice usage={usage} />
 
-          <form ref={formRef} action={formAction} className="mx-auto max-w-3xl" onSubmit={handleSubmit}>
-            <PendingStateBridge onPendingChange={setIsSubmitting} />
-            {activeSessionId && <input type="hidden" name="sessionId" value={activeSessionId} />}
-            <input type="hidden" name="prompt" value={submittedPrompt} />
-            <input type="hidden" name="attachments" value={attachmentsPayload} />
+          <form
+            className="mx-auto max-w-3xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubmit();
+            }}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -609,7 +654,7 @@ export function AiChatDashboard({
                 >
                   <Paperclip className="h-5 w-5" />
                 </button>
-                <ChatSubmitButton canSend={canSend} />
+                <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
               </div>
             </div>
           </form>
@@ -687,14 +732,6 @@ function SessionList({
   );
 }
 
-function PendingStateBridge({ onPendingChange }: { onPendingChange: (pending: boolean) => void }) {
-  const { pending } = useFormStatus();
-  useEffect(() => {
-    onPendingChange(pending);
-  }, [onPendingChange, pending]);
-  return null;
-}
-
 function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number } }) {
   if (!usage.limit || usage.percent < 80) return null;
   const tone =
@@ -762,8 +799,7 @@ function firstName(name: string) {
   return name.split(" ")[0] || name;
 }
 
-function ChatSubmitButton({ canSend }: { canSend: boolean }) {
-  const { pending } = useFormStatus();
+function ChatSubmitButton({ canSend, pending }: { canSend: boolean; pending: boolean }) {
   return (
     <Button
       type="submit"
