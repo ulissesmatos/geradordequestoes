@@ -1,12 +1,32 @@
 import { activateUserSubscriptionAction, cancelUserSubscriptionAction, updateUserAction } from "@/app/admin/admin-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
 
-export default async function UsersPage() {
-  const [users, plans, coupons] = await Promise.all([
+const PAGE_SIZE = 25;
+
+export default async function UsersPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
+  const filters = await searchParams;
+  const query = (filters.q ?? "").trim();
+  const page = Math.max(1, Number(filters.page ?? 1) || 1);
+  const where = query
+    ? {
+        OR: [
+          { name: { contains: query, mode: "insensitive" as const } },
+          { email: { contains: query, mode: "insensitive" as const } }
+        ]
+      }
+    : {};
+
+  const [users, total, plans, coupons] = await Promise.all([
     prisma.user.findMany({
+      where,
       include: {
         subscriptions: {
           include: { plan: true, coupon: true },
@@ -14,15 +34,24 @@ export default async function UsersPage() {
           take: 1
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE
     }),
+    prisma.user.count({ where }),
     prisma.subscriptionPlan.findMany({ where: { isActive: true }, orderBy: { priceCents: "asc" } }),
     prisma.coupon.findMany({ where: { isActive: true }, orderBy: { code: "asc" } })
   ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Usuários</h1>
+      <form method="get" className="flex flex-wrap items-center gap-2">
+        <Input name="q" defaultValue={query} placeholder="Buscar por nome ou e-mail..." className="max-w-sm" />
+        <SubmitButton variant="outline">Buscar</SubmitButton>
+        <span className="text-sm text-[var(--muted-foreground)]">{total} usuários · página {page} de {totalPages}</span>
+      </form>
       {users.map((user) => {
         const subscription = user.subscriptions[0];
         return (
@@ -63,6 +92,23 @@ export default async function UsersPage() {
           </Card>
         );
       })}
+
+      <div className="flex items-center justify-between">
+        <a
+          aria-disabled={page <= 1}
+          href={`/admin/usuarios?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page - 1) }).toString()}`}
+          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
+        >
+          Anterior
+        </a>
+        <a
+          aria-disabled={page >= totalPages}
+          href={`/admin/usuarios?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page + 1) }).toString()}`}
+          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
+        >
+          Próxima
+        </a>
+      </div>
     </div>
   );
 }

@@ -30,7 +30,7 @@ export default async function ReviewQuestionsPage() {
               {question.options.length > 0 && (
                 <div className="rounded-md border border-[var(--border)] p-3">
                   {question.options.map((option) => (
-                    <p key={option.id} className={option.isCorrect ? "text-sm font-semibold text-green-700" : "text-sm"}>
+                    <p key={option.id} className={option.isCorrect ? "text-sm font-semibold text-[var(--success)]" : "text-sm"}>
                       {option.label}) {option.text}
                     </p>
                   ))}

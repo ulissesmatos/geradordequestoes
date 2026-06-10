@@ -369,6 +369,19 @@ model AiChatMessageAttachment {
   @@index([messageId])
 }
 
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  adminEmail String
+  action     String
+  entity     String
+  entityId   String?
+  summary    String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model StudyMaterial {
   id          String              @id @default(cuid())
   userId      String

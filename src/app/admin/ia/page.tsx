@@ -92,22 +92,6 @@ export default async function AiSettingsPage() {
               </label>
             </div>
 
-            <label className="space-y-1 text-sm font-medium">
-              Uso de respostas prontas no chat
-              <Select name="chatPresetUsageLevel" defaultValue={settings.chatPresetUsageLevel}>
-                <option value="NENHUM">Nenhum uso: toda conversa passa pela API, exceto segurança</option>
-                <option value="POUCO">Pouco uso: IA para a maioria das conversas</option>
-                <option value="MEDIO">Médio uso: equilíbrio entre custo e respostas naturais</option>
-                <option value="ALTO">Alto uso: economia máxima com mais respostas prontas</option>
-              </Select>
-            </label>
-
-            <div className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--muted-foreground)]">
-              <strong className="text-[var(--foreground)]">Como funciona:</strong> em “Nenhum”, perguntas comuns como “quem é você?”
-              e dúvidas de conteúdo chamam a LLM e contam no limite diário. Em “Alto”, o sistema usa mais textos prontos e reserva a API
-              principalmente para gerar questões, simulados e revisões.
-            </div>
-
             <datalist id="ai-model-presets">
               <option value={defaultModels.OPENAI} />
               <option value="gpt-4.1" />

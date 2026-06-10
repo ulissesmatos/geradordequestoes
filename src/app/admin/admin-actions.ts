@@ -4,6 +4,7 @@ import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, QuestionAns
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
+import { logAdminAction } from "@/lib/audit";
 import { encryptSecret } from "@/lib/crypto";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -111,11 +112,12 @@ export async function updateUserAction(formData: FormData) {
       isBlocked: nextIsBlocked
     }
   });
+  await logAdminAction(admin, { action: "update", entity: "User", entityId: userId, summary: `role=${nextRole} bloqueado=${nextIsBlocked}` });
   revalidatePath("/admin/usuarios");
 }
 
 export async function activateUserSubscriptionAction(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
   const planId = String(formData.get("planId") ?? "");
   const couponId = String(formData.get("couponId") || "") || undefined;
@@ -134,15 +136,18 @@ export async function activateUserSubscriptionAction(formData: FormData) {
     }
   });
 
+  await logAdminAction(admin, { action: "activate_subscription", entity: "User", entityId: userId, summary: `plano=${planId}` });
   revalidatePath("/admin/usuarios");
 }
 
 export async function cancelUserSubscriptionAction(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
   await prisma.userSubscription.updateMany({
-    where: { userId: String(formData.get("userId") ?? ""), status: SubscriptionStatus.ACTIVE },
+    where: { userId, status: SubscriptionStatus.ACTIVE },
     data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
   });
+  await logAdminAction(admin, { action: "cancel_subscription", entity: "User", entityId: userId });
   revalidatePath("/admin/usuarios");
 }
 
@@ -263,7 +268,7 @@ export async function updateAppSettingsAction(formData: FormData) {
 }
 
 export async function updatePaymentGatewaySettingsAction(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const stripeSecretKey = String(formData.get("stripeSecretKey") ?? "").trim();
   const stripeWebhookSecret = String(formData.get("stripeWebhookSecret") ?? "").trim();
   const mercadoPagoAccessToken = String(formData.get("mercadoPagoAccessToken") ?? "").trim();
@@ -292,6 +297,7 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
       testMode: formData.get("testMode") === "on"
     }
   });
+  await logAdminAction(admin, { action: "update", entity: "PaymentGatewaySetting", summary: "chaves de pagamento atualizadas" });
   revalidatePath("/admin/pagamentos");
 }
 
@@ -310,7 +316,7 @@ export async function createCouponAction(formData: FormData) {
 }
 
 export async function updateAiProviderSettingsAction(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const provider = formData.get("provider") as AiProvider;
   const apiKey = String(formData.get("apiKey") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
@@ -342,6 +348,7 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
     }
   });
 
+  await logAdminAction(admin, { action: "update", entity: "AiProviderSetting", summary: `provider=${provider} model=${model}` });
   revalidatePath("/admin/ia");
 }
 
@@ -449,4 +456,72 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
   revalidatePath("/admin/questoes/gerar");
   revalidatePath("/admin/questoes/revisar");
   return { ok: true, logId };
+}
+
+// ── Edição/exclusão (CRUD) com auditoria ────────────────────────────────────
+
+export async function updateSubjectAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!id || name.length < 2) return;
+  await prisma.subject.update({ where: { id }, data: { name, description: String(formData.get("description") ?? "") } });
+  await logAdminAction(admin, { action: "update", entity: "Subject", entityId: id, summary: name });
+  revalidatePath("/admin/materias");
+}
+
+export async function deleteSubjectAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const questionCount = await prisma.question.count({ where: { subjectId: id } });
+  if (questionCount > 0) {
+    throw new Error(`Não é possível excluir: existem ${questionCount} questões nesta matéria.`);
+  }
+  const subject = await prisma.subject.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Subject", entityId: id, summary: subject.name });
+  revalidatePath("/admin/materias");
+  revalidatePath("/admin/assuntos");
+}
+
+export async function updateTopicAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (!id || name.length < 2) return;
+  await prisma.topic.update({ where: { id }, data: { name, description: String(formData.get("description") ?? "") } });
+  await logAdminAction(admin, { action: "update", entity: "Topic", entityId: id, summary: name });
+  revalidatePath("/admin/assuntos");
+}
+
+export async function deleteTopicAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const questionCount = await prisma.question.count({ where: { topicId: id } });
+  if (questionCount > 0) {
+    throw new Error(`Não é possível excluir: existem ${questionCount} questões neste assunto.`);
+  }
+  const topic = await prisma.topic.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Topic", entityId: id, summary: topic.name });
+  revalidatePath("/admin/assuntos");
+}
+
+export async function deleteCouponAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const coupon = await prisma.coupon.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Coupon", entityId: id, summary: coupon.code });
+  revalidatePath("/admin/planos");
+}
+
+export async function deleteQuestionAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.question.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Question", entityId: id });
+  revalidatePath("/admin/questoes");
+  revalidatePath("/admin/questoes/revisar");
 }

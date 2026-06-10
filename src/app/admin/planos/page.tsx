@@ -1,4 +1,5 @@
-import { createCouponAction, createPlanAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
+import { createCouponAction, createPlanAction, deleteCouponAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
+import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -130,9 +131,12 @@ export default async function AdminPlansPage() {
         <CardContent className="space-y-2">
           {coupons.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Nenhum cupom criado.</p>}
           {coupons.map((coupon) => (
-            <div key={coupon.id} className="rounded-md border border-[var(--border)] p-3 text-sm">
-              <strong>{coupon.code}</strong> / {coupon.type} / {coupon.value} / {coupon.usedCount}
-              {coupon.maxUses ? ` de ${coupon.maxUses} usos` : " usos ilimitados"} / {coupon.isActive ? "ativo" : "inativo"}
+            <div key={coupon.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border)] p-3 text-sm">
+              <span>
+                <strong>{coupon.code}</strong> / {coupon.type} / {coupon.value} / {coupon.usedCount}
+                {coupon.maxUses ? ` de ${coupon.maxUses} usos` : " usos ilimitados"} / {coupon.isActive ? "ativo" : "inativo"}
+              </span>
+              <ConfirmDeleteButton action={deleteCouponAction} id={coupon.id} confirmMessage={`Excluir o cupom "${coupon.code}"?`} />
             </div>
           ))}
         </CardContent>

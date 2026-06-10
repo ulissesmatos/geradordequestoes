@@ -17,7 +17,7 @@ export default async function AiLogsPage() {
           <CardContent className="space-y-2 text-sm">
             <p>{log.subject.name} / {log.topic.name} / {log.difficulty} / {log.quantity} questões</p>
             <p className="text-[var(--muted-foreground)]">Admin: {log.admin.email}</p>
-            {log.errorMessage && <p className="text-red-700">{log.errorMessage}</p>}
+            {log.errorMessage && <p className="text-[var(--destructive)]">{log.errorMessage}</p>}
           </CardContent>
         </Card>
       ))}
