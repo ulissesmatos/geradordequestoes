@@ -135,9 +135,8 @@ export type ChatStreamEvent =
   | { type: "completed"; result: CompletionResult };
 
 /**
- * Versão em streaming. Para OpenAI, emite deltas de texto em tempo real e ao final
- * um evento "completed" com o resultado (texto ou tool_calls). Demais provedores
- * caem no caminho não-streaming (texto final emitido como um único delta).
+ * Versão em streaming. Emite deltas de texto em tempo real para OpenAI, OpenRouter e Claude.
+ * Fallback não-streaming para outros provedores.
  */
 export async function* streamChat(input: {
   settings: AiSettings;
@@ -148,17 +147,32 @@ export async function* streamChat(input: {
   const maxOutputTokens = input.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
   const tools = input.tools ?? [];
 
-  if (input.settings.provider !== AiProvider.OPENAI) {
-    const result = await completeChat({ settings: input.settings, messages: input.messages, tools, maxOutputTokens });
-    if (result.kind === "text") yield { type: "delta", text: result.text };
-    yield { type: "completed", result };
+  if (input.settings.provider === AiProvider.OPENAI || input.settings.provider === AiProvider.OPENROUTER) {
+    yield* streamChatOpenAiStyle(input.settings, input.messages, tools, maxOutputTokens);
     return;
   }
 
-  const openai = new OpenAI({ apiKey: input.settings.apiKey, baseURL: input.settings.baseUrl || undefined });
+  if (input.settings.provider === AiProvider.CLAUDE) {
+    yield* streamChatClaude(input.settings, input.messages, tools, maxOutputTokens);
+    return;
+  }
+
+  // Fallback: não-streaming
+  const result = await completeChat({ settings: input.settings, messages: input.messages, tools, maxOutputTokens });
+  if (result.kind === "text") yield { type: "delta", text: result.text };
+  yield { type: "completed", result };
+}
+
+async function* streamChatOpenAiStyle(
+  settings: AiSettings,
+  messages: NeutralMessage[],
+  tools: NeutralToolSpec[],
+  maxOutputTokens: number
+): AsyncGenerator<ChatStreamEvent> {
+  const openai = new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseUrl || undefined });
   const stream = await openai.chat.completions.create({
-    model: input.settings.model,
-    messages: toOpenAiMessages(input.messages),
+    model: settings.model,
+    messages: toOpenAiMessages(messages),
     ...(tools.length ? { tools: toOpenAiTools(tools), tool_choice: "auto" as const } : {}),
     max_completion_tokens: maxOutputTokens,
     stream: true
@@ -188,6 +202,116 @@ export async function* streamChat(input: {
 
   if (calls.length > 0) {
     yield { type: "completed", result: { kind: "tool_calls", calls, assistantText: text.trim() || null } };
+    return;
+  }
+  if (!text.trim()) throw new AiProviderError("A IA não retornou uma resposta.");
+  yield { type: "completed", result: { kind: "text", text } };
+}
+
+async function* streamChatClaude(
+  settings: AiSettings,
+  messages: NeutralMessage[],
+  tools: NeutralToolSpec[],
+  maxOutputTokens: number
+): AsyncGenerator<ChatStreamEvent> {
+  const payload = toClaudePayload(messages);
+  const response = await fetch(settings.baseUrl || "https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": settings.apiKey,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      max_tokens: maxOutputTokens,
+      system: payload.system,
+      messages: payload.messages,
+      stream: true,
+      ...(tools.length
+        ? {
+            tools: tools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              input_schema: tool.parameters
+            }))
+          }
+        : {})
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new AiProviderError(errorText || `Claude API ${response.status}`, response.status);
+  }
+  if (!response.body) throw new AiProviderError("Claude API returned empty response");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  const toolCalls: Array<{ id: string; name: string; argumentsJson: string; input: Record<string, unknown> }> = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      let json: any;
+      try {
+        json = JSON.parse(line.slice(6));
+      } catch {
+        continue;
+      }
+
+      // Text delta
+      if (json.type === "content_block_delta" && json.delta?.type === "text_delta") {
+        text += json.delta.text;
+        yield { type: "delta", text: json.delta.text };
+      }
+
+      // Tool use start
+      if (json.type === "content_block_start" && json.content_block?.type === "tool_use") {
+        toolCalls.push({
+          id: json.content_block.id,
+          name: json.content_block.name,
+          argumentsJson: "{}",
+          input: {}
+        });
+      }
+
+      // Tool input delta
+      if (json.type === "content_block_delta" && json.delta?.type === "input_json_delta" && toolCalls.length) {
+        toolCalls[toolCalls.length - 1].argumentsJson += json.delta.partial_json;
+        try {
+          toolCalls[toolCalls.length - 1].input = JSON.parse(toolCalls[toolCalls.length - 1].argumentsJson);
+        } catch {
+          // incomplete JSON, wait for next delta
+        }
+      }
+    }
+  }
+
+  // Final delta if any buffered data
+  if (buffer.startsWith("data: ")) {
+    try {
+      const json = JSON.parse(buffer.slice(6));
+      if (json.type === "content_block_delta" && json.delta?.type === "text_delta") {
+        text += json.delta.text;
+        yield { type: "delta", text: json.delta.text };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (toolCalls.length > 0) {
+    yield { type: "completed", result: { kind: "tool_calls", calls: toolCalls, assistantText: text.trim() || null } };
     return;
   }
   if (!text.trim()) throw new AiProviderError("A IA não retornou uma resposta.");
