@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Check, Sparkles } from "lucide-react";
+import { BadgeCheck, Check, Sparkles } from "lucide-react";
 import { PaymentMethodModal } from "@/components/payment-method-modal";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,8 @@ export function PricingCards({
   headline = "Planos para estudar com IA todos os dias.",
   subheadline = "Escolha um plano ativo e libere a geração de questões, simulados e revisões pelo painel.",
   hasStripe = true,
-  hasPix = true
+  hasPix = true,
+  currentPlan = null
 }: {
   plans: PricingPlan[];
   compact?: boolean;
@@ -33,6 +35,8 @@ export function PricingCards({
   subheadline?: string;
   hasStripe?: boolean;
   hasPix?: boolean;
+  /** Plano da assinatura ativa do usuário logado: trava re-assinatura e downgrade. */
+  currentPlan?: { id: string; priceCents: number } | null;
 }) {
   return (
     <section className={cn("w-full", compact ? "py-12" : "py-16 lg:py-24")}>
@@ -58,6 +62,13 @@ export function PricingCards({
             {plans.map((plan) => {
               const highlighted = Boolean(plan.isHighlighted);
               const priceFormatted = formatMoney(plan.priceCents);
+              const relation: "current" | "upgrade" | "downgrade" | null = currentPlan
+                ? plan.id === currentPlan.id
+                  ? "current"
+                  : plan.priceCents > currentPlan.priceCents
+                    ? "upgrade"
+                    : "downgrade"
+                : null;
               return (
                 <Card
                   key={plan.id}
@@ -91,15 +102,32 @@ export function PricingCards({
                           <Feature key={feature}>{feature}</Feature>
                         ))}
                       </div>
-                      <PaymentMethodModal
-                        planSlug={plan.slug}
-                        planName={plan.name}
-                        planPrice={priceFormatted}
-                        highlighted={highlighted}
-                        ctaText={plan.ctaText}
-                        hasStripe={hasStripe && !!plan.stripePriceId}
-                        hasPix={hasPix}
-                      />
+                      {relation === "current" ? (
+                        <Button variant="outline" className="w-full" disabled>
+                          <BadgeCheck className="h-4 w-4" />
+                          Plano atual
+                        </Button>
+                      ) : relation === "downgrade" ? (
+                        <div className="space-y-1.5">
+                          <Button variant="outline" className="w-full" disabled>
+                            Inferior ao plano atual
+                          </Button>
+                          <p className="text-center text-xs text-[var(--muted-foreground)]">
+                            Para reduzir o plano, cancele a assinatura atual no perfil.
+                          </p>
+                        </div>
+                      ) : (
+                        <PaymentMethodModal
+                          planSlug={plan.slug}
+                          planName={plan.name}
+                          planPrice={priceFormatted}
+                          highlighted={highlighted}
+                          ctaText={relation === "upgrade" ? "Fazer upgrade" : plan.ctaText}
+                          isUpgrade={relation === "upgrade"}
+                          hasStripe={hasStripe && !!plan.stripePriceId}
+                          hasPix={hasPix}
+                        />
+                      )}
                     </div>
                   </CardContent>
                 </Card>

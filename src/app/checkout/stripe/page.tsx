@@ -6,7 +6,8 @@ import { PaymentCheckoutStatus, PaymentProvider } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
-import { appUrl, getPaymentSettings } from "@/lib/payments";
+import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents, activatePaidSubscription } from "@/lib/payments";
+import { getActiveSubscription } from "@/lib/subscriptions";
 import { prisma } from "@/lib/prisma";
 
 export default async function StripeCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
@@ -28,7 +29,57 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
     return <CheckoutError title="Plano sem Price ID" message={`O plano "${plan.name}" não tem um Stripe Price ID configurado. Acesse Admin → Planos, edite o plano e adicione o Price ID (price_xxx) gerado no Stripe Dashboard.`} />;
   }
 
+  // Trava de assinatura dupla: com plano ativo, só permitimos upgrade.
+  const activeSubscription = await getActiveSubscription(user.id);
+  if (activeSubscription) {
+    if (activeSubscription.planId === plan.id) {
+      return (
+        <CheckoutError
+          title="Você já assina este plano"
+          message={`Sua assinatura do plano ${plan.name} está ativa. Não é possível assinar o mesmo plano duas vezes.`}
+        />
+      );
+    }
+    if (plan.priceCents <= activeSubscription.plan.priceCents) {
+      return (
+        <CheckoutError
+          title="Downgrade indisponível"
+          message={`Você assina o plano ${activeSubscription.plan.name}. Só é possível fazer upgrade para um plano superior. Para reduzir o plano, cancele a assinatura atual em Perfil → Gerenciar pagamento e assine o novo plano depois.`}
+        />
+      );
+    }
+  }
+
   try {
+    const stripe = new Stripe(settings.stripeSecretKey);
+
+    // Upgrade de assinatura recorrente existente: troca o preço na própria
+    // assinatura do Stripe com proração (crédito do período não usado é
+    // abatido na fatura imediata do novo plano).
+    if (activeSubscription) {
+      const stripeSubscriptionId = await findStripeSubscriptionId(activeSubscription.id);
+      if (stripeSubscriptionId) {
+        const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+        if (["active", "trialing", "past_due"].includes(stripeSubscription.status)) {
+          await stripe.subscriptions.update(stripeSubscriptionId, {
+            items: [{ id: stripeSubscription.items.data[0].id, price: plan.stripePriceId }],
+            proration_behavior: "always_invoice",
+            // Se a cobrança da diferença falhar, nada muda e mostramos o erro.
+            payment_behavior: "error_if_incomplete",
+            metadata: { userId: user.id, planId: plan.id }
+          });
+          await activatePaidSubscription({
+            userId: user.id,
+            planId: plan.id,
+            provider: PaymentProvider.STRIPE,
+            externalId: stripeSubscriptionId,
+            payload: { upgradeFrom: activeSubscription.planId, upgradeTo: plan.id }
+          });
+          redirect("/perfil?upgrade=success");
+        }
+      }
+    }
+
     const localCheckout = await prisma.paymentCheckoutSession.create({
       data: {
         userId: user.id,
@@ -38,15 +89,31 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
       }
     });
 
-    const stripe = new Stripe(settings.stripeSecretKey);
     const customerInput = user.stripeCustomerId
       ? { customer: user.stripeCustomerId }
       : { customer_email: user.email ?? undefined };
+
+    // Upgrade vindo de assinatura Pix (prazo fixo): abate o valor proporcional
+    // restante como cupom de uso único na primeira fatura.
+    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+    if (activeSubscription) {
+      const credit = Math.min(remainingCreditCents(activeSubscription), plan.priceCents - 100);
+      if (credit > 0) {
+        const coupon = await stripe.coupons.create({
+          amount_off: credit,
+          currency: "brl",
+          duration: "once",
+          name: `Crédito do plano ${activeSubscription.plan.name}`
+        });
+        discounts = [{ coupon: coupon.id }];
+      }
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       ...customerInput,
       line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+      ...(discounts ? { discounts } : {}),
       success_url: `${appUrl()}/ai?checkout=success`,
       cancel_url: `${appUrl()}/pricing?checkout=cancel`,
       metadata: {

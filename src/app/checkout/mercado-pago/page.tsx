@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { PaymentProvider } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
-import { appUrl, getPaymentSettings } from "@/lib/payments";
+import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents } from "@/lib/payments";
+import { getActiveSubscription } from "@/lib/subscriptions";
 import { prisma } from "@/lib/prisma";
 
 export default async function MercadoPagoCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
@@ -18,12 +19,48 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     return <CheckoutError title="Mercado Pago não configurado" message="Configure o Access Token do Mercado Pago no painel admin." />;
   }
 
+  // Trava de assinatura dupla: com plano ativo, só permitimos upgrade.
+  const activeSubscription = await getActiveSubscription(user.id);
+  let amountCents = plan.priceCents;
+  if (activeSubscription) {
+    if (activeSubscription.planId === plan.id) {
+      return (
+        <CheckoutError
+          title="Você já assina este plano"
+          message={`Sua assinatura do plano ${plan.name} está ativa. Não é possível assinar o mesmo plano duas vezes.`}
+        />
+      );
+    }
+    if (plan.priceCents <= activeSubscription.plan.priceCents) {
+      return (
+        <CheckoutError
+          title="Downgrade indisponível"
+          message={`Você assina o plano ${activeSubscription.plan.name}. Só é possível fazer upgrade para um plano superior. Para reduzir o plano, cancele a assinatura atual primeiro.`}
+        />
+      );
+    }
+    // Assinatura recorrente no cartão: pagar via Pix não interrompe a cobrança
+    // do Stripe — o upgrade precisa acontecer na própria assinatura do cartão.
+    const stripeSubscriptionId = await findStripeSubscriptionId(activeSubscription.id);
+    if (stripeSubscriptionId) {
+      return (
+        <CheckoutError
+          title="Use o cartão para fazer upgrade"
+          message="Sua assinatura atual é recorrente no cartão. Para trocar de plano, escolha pagar com cartão: o upgrade é aplicado na própria assinatura, com o valor já pago abatido automaticamente."
+        />
+      );
+    }
+    // Upgrade Pix → Pix: abate o valor proporcional restante da assinatura atual.
+    const credit = remainingCreditCents(activeSubscription);
+    amountCents = Math.max(plan.priceCents - credit, 100);
+  }
+
   const localCheckout = await prisma.paymentCheckoutSession.create({
     data: {
       userId: user.id,
       planId: plan.id,
       provider: PaymentProvider.MERCADO_PAGO,
-      amountCents: plan.priceCents,
+      amountCents,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
     }
   });
@@ -36,9 +73,9 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     body: JSON.stringify({
       items: [
         {
-          title: plan.name,
+          title: amountCents < plan.priceCents ? `${plan.name} (upgrade com crédito do plano atual)` : plan.name,
           quantity: 1,
-          unit_price: plan.priceCents / 100,
+          unit_price: amountCents / 100,
           currency_id: "BRL"
         }
       ],

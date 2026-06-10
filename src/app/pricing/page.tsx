@@ -1,27 +1,36 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Menu } from "lucide-react";
+import { auth } from "@/auth";
 import { PricingCards } from "@/components/pricing-cards";
 import { Button } from "@/components/ui/button";
 import { getAppSettings } from "@/lib/app-settings";
 import { getPricingContent, planFeatures } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
+import { getActiveSubscription } from "@/lib/subscriptions";
 
 export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
-  const [plans, pricingContent, appSettings, paymentSettings] = await Promise.all([
+  const [plans, pricingContent, appSettings, paymentSettings, session] = await Promise.all([
     prisma.subscriptionPlan.findMany({
       where: { isActive: true },
       orderBy: [{ displayOrder: "asc" }, { priceCents: "asc" }]
     }),
     getPricingContent(),
     getAppSettings(),
-    prisma.paymentGatewaySetting.findUnique({ where: { id: "default" } })
+    prisma.paymentGatewaySetting.findUnique({ where: { id: "default" } }),
+    auth()
   ]);
   const pricedPlans = plans.map((plan) => ({ ...plan, features: planFeatures(plan) }));
   const hasStripe = !!paymentSettings?.stripeSecretKey;
   const hasPix = !!paymentSettings?.mercadoPagoAccessToken;
+
+  // Assinante logado: travamos nova assinatura e oferecemos apenas upgrade.
+  const activeSubscription = session?.user?.id ? await getActiveSubscription(session.user.id) : null;
+  const currentPlan = activeSubscription
+    ? { id: activeSubscription.planId, priceCents: activeSubscription.plan.priceCents }
+    : null;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -51,7 +60,7 @@ export default async function PricingPage() {
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 md:px-6">
-        <PricingCards plans={pricedPlans} headline={pricingContent.headline} subheadline={pricingContent.subheadline} hasStripe={hasStripe} hasPix={hasPix} />
+        <PricingCards plans={pricedPlans} headline={pricingContent.headline} subheadline={pricingContent.subheadline} hasStripe={hasStripe} hasPix={hasPix} currentPlan={currentPlan} />
       </div>
     </main>
   );

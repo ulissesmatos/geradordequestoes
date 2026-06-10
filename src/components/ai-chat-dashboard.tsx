@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Trash2, X } from "lucide-react";
+import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Sparkles, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -98,7 +98,7 @@ export function AiChatDashboard({
 }: {
   userName: string;
   currentSessionId: string | null;
-  usage: { used: number; limit: number | null; percent: number };
+  usage: { used: number; limit: number | null; percent: number; resetsAt?: string };
   sessions: ChatSessionSummary[];
   messages: ChatMessage[];
   initialPrompt?: string;
@@ -736,17 +736,74 @@ function SessionList({
   );
 }
 
-function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number } }) {
+function hoursUntil(iso: string | undefined) {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return Math.max(1, Math.ceil(ms / 3_600_000));
+}
+
+function usageDismissKey() {
+  // Chave por dia (UTC, mesmo corte do reset) para a dispensa não vazar para o dia seguinte.
+  return `ai-usage-notice-dismissed:${new Date().toISOString().slice(0, 10)}`;
+}
+
+function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string } }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(sessionStorage.getItem(usageDismissKey()) === "1");
+    } catch {
+      // sessionStorage indisponível (SSR/modo restrito): mantém visível
+    }
+  }, []);
+
   if (!usage.limit || usage.percent < 80) return null;
-  const tone =
-    usage.percent >= 100
-      ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
-      : "border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] text-[var(--warning-soft-foreground)]";
-  const message =
-    usage.percent >= 100
-      ? "Você atingiu 100% do seu limite diário de uso da IA."
-      : `Você já usou ${usage.percent}% do limite diário de IA (${usage.used}/${usage.limit}).`;
-  return <div className={cn("mx-auto mb-3 max-w-3xl rounded-lg border p-3 text-sm", tone)}>{message}</div>;
+  const exhausted = usage.percent >= 100;
+  // Aviso parcial pode ser dispensado; aos 100% volta a aparecer sempre.
+  if (!exhausted && dismissed) return null;
+
+  const resetHours = hoursUntil(usage.resetsAt);
+
+  if (exhausted) {
+    return (
+      <div className="mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">
+        <span>
+          Você atingiu 100% do seu limite diário de uso da IA.
+          {resetHours !== null && <> O limite renova em cerca de <strong>{resetHours}h</strong>.</>}
+        </span>
+        <Link
+          href="/pricing"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Fazer upgrade
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto mb-3 flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-soft-foreground)]">
+      <span>Você já usou {usage.percent}% do limite diário de IA ({usage.used}/{usage.limit}).</span>
+      <button
+        type="button"
+        aria-label="Dispensar aviso"
+        className="shrink-0 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100"
+        onClick={() => {
+          setDismissed(true);
+          try {
+            sessionStorage.setItem(usageDismissKey(), "1");
+          } catch {
+            // sem persistência, dispensa só nesta renderização
+          }
+        }}
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }
 
 function ChatBubble({ message }: { message: ChatMessage }) {

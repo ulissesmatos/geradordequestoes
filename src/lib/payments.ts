@@ -108,6 +108,35 @@ export function pixAccessEndsAt(from = new Date()) {
   return endsAt;
 }
 
+/**
+ * Crédito proporcional ao tempo restante de uma assinatura com prazo (Pix, ciclo de 30 dias).
+ * Usado para abater o valor já pago ao fazer upgrade de plano.
+ */
+export function remainingCreditCents(
+  subscription: { endsAt: Date | null; plan: { priceCents: number } },
+  cycleDays = 30
+) {
+  if (!subscription.endsAt) return 0;
+  const msLeft = subscription.endsAt.getTime() - Date.now();
+  if (msLeft <= 0) return 0;
+  const daysLeft = Math.min(cycleDays, msLeft / 86_400_000);
+  return Math.round(subscription.plan.priceCents * (daysLeft / cycleDays));
+}
+
+/** ID da assinatura no Stripe (sub_xxx) vinculada a uma assinatura local, se houver. */
+export async function findStripeSubscriptionId(localSubscriptionId: string) {
+  const event = await prisma.subscriptionEvent.findFirst({
+    where: {
+      subscriptionId: localSubscriptionId,
+      provider: PaymentProvider.STRIPE,
+      externalId: { startsWith: "sub_" }
+    },
+    orderBy: { createdAt: "desc" },
+    select: { externalId: true }
+  });
+  return event?.externalId ?? null;
+}
+
 export function validateMercadoPagoSignature(input: {
   secret: string;
   signature: string | null;

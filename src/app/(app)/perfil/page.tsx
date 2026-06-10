@@ -110,6 +110,14 @@ export default async function ProfilePage() {
                       style={{ width: `${Math.min(100, usage.percent)}%` }}
                     />
                   </div>
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">
+                    <span>O limite diário renova em cerca de <strong>{hoursUntilReset(usage.resetsAt)}h</strong>.</span>
+                    {usage.percent >= 100 && (
+                      <Link href="/pricing" className="font-semibold text-[var(--primary)] hover:underline">
+                        Fazer upgrade para gerar mais →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
             </>
@@ -192,4 +200,10 @@ function formatMoney(cents: number) {
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+}
+
+function hoursUntilReset(resetsAt: string | undefined) {
+  if (!resetsAt) return 24;
+  const ms = new Date(resetsAt).getTime() - Date.now();
+  return Math.max(1, Math.ceil(ms / 3_600_000));
 }

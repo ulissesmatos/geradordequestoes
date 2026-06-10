@@ -15,6 +15,8 @@ type Props = {
   ctaText?: string;
   hasStripe?: boolean;
   hasPix?: boolean;
+  /** Usuário já assina um plano inferior: o checkout aplica upgrade com crédito do valor já pago. */
+  isUpgrade?: boolean;
 };
 
 export function PaymentMethodModal({
@@ -24,7 +26,8 @@ export function PaymentMethodModal({
   highlighted = false,
   ctaText,
   hasStripe = true,
-  hasPix = true
+  hasPix = true,
+  isUpgrade = false
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -76,17 +79,22 @@ export function PaymentMethodModal({
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogPanel>
           <DialogHeader
-            title={`Assinar ${planName}`}
+            title={isUpgrade ? `Upgrade para ${planName}` : `Assinar ${planName}`}
             description={`${planPrice} / mês · Escolha como prefere pagar`}
             onClose={() => setOpen(false)}
           />
           <div className="grid gap-3 p-5">
+            {isUpgrade && (
+              <p className="rounded-md bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--muted-foreground)]">
+                O valor já pago na sua assinatura atual é abatido automaticamente.
+              </p>
+            )}
             {hasStripe && (
               <PaymentOption
                 href={stripeHref}
                 icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
                 title="Cartão de crédito ou débito"
-                description="Cobrança recorrente mensal · Cancele quando quiser"
+                description={isUpgrade ? "Upgrade imediato com proração automática" : "Cobrança recorrente mensal · Cancele quando quiser"}
                 badge="Stripe"
                 onClick={() => setOpen(false)}
               />
@@ -96,7 +104,7 @@ export function PaymentMethodModal({
                 href={pixHref}
                 icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
                 title="Pix"
-                description="Pagamento via QR Code · Acesso imediato"
+                description={isUpgrade ? "Paga só a diferença proporcional · Acesso imediato" : "Pagamento via QR Code · Acesso imediato"}
                 badge="Mercado Pago"
                 onClick={() => setOpen(false)}
               />

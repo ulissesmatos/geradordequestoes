@@ -49,7 +49,8 @@ export async function POST(request: Request) {
         provider: PaymentProvider.STRIPE,
         externalId: session.payment_intent?.toString() || session.subscription?.toString() || session.id,
         status: PaymentTransactionStatus.APPROVED,
-        amountCents: checkout.amountCents,
+        // amount_total reflete descontos (ex.: cupom de crédito de upgrade)
+        amountCents: session.amount_total ?? checkout.amountCents,
         paidAt: new Date(),
         payload: session
       });
@@ -65,15 +66,26 @@ export async function POST(request: Request) {
 
   if (event.type === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
-    const userId = subscription.metadata?.userId ?? (await findUserIdByExternalSubscription(subscription.id));
+    const linked = await findLocalSubscriptionByExternalId(subscription.id);
+    const userId = subscription.metadata?.userId ?? linked?.userId ?? null;
     if (userId) {
-      await prisma.userSubscription.updateMany({
-        where: { userId, status: SubscriptionStatus.ACTIVE },
-        data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
-      });
+      // Escopo na assinatura local vinculada a ESTA assinatura Stripe: cancelar
+      // todas as ativas do usuário derrubaria um plano novo (ex.: Pix) após upgrade.
+      if (linked?.subscriptionId) {
+        await prisma.userSubscription.updateMany({
+          where: { id: linked.subscriptionId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } },
+          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+        });
+      } else {
+        await prisma.userSubscription.updateMany({
+          where: { userId, status: SubscriptionStatus.ACTIVE },
+          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+        });
+      }
       await prisma.subscriptionEvent.create({
         data: {
           userId,
+          subscriptionId: linked?.subscriptionId,
           provider: PaymentProvider.STRIPE,
           type: SubscriptionEventType.CANCELED,
           externalId: subscription.id,
@@ -85,18 +97,22 @@ export async function POST(request: Request) {
 
   if (event.type === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
-    const userId = subscription.metadata?.userId ?? (await findUserIdByExternalSubscription(subscription.id));
+    const linked = await findLocalSubscriptionByExternalId(subscription.id);
+    const userId = subscription.metadata?.userId ?? linked?.userId ?? null;
     if (userId) {
       const status = mapStripeSubscriptionStatus(subscription.status);
       if (status) {
         await prisma.userSubscription.updateMany({
-          where: { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } },
+          where: linked?.subscriptionId
+            ? { id: linked.subscriptionId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } }
+            : { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } },
           data: { status, endsAt: status === SubscriptionStatus.CANCELED ? new Date() : undefined }
         });
       }
       await prisma.subscriptionEvent.create({
         data: {
           userId,
+          subscriptionId: linked?.subscriptionId,
           provider: PaymentProvider.STRIPE,
           type: status === SubscriptionStatus.PAST_DUE ? SubscriptionEventType.PAST_DUE : SubscriptionEventType.UPDATED,
           externalId: subscription.id,
@@ -152,7 +168,10 @@ export async function POST(request: Request) {
       : null;
     if (active?.userId) {
       await prisma.userSubscription.updateMany({
-        where: { userId: active.userId, status: SubscriptionStatus.ACTIVE },
+        // Escopo na assinatura vinculada: não derrubar outros planos ativos do usuário.
+        where: active.subscription
+          ? { id: active.subscription.id, status: SubscriptionStatus.ACTIVE }
+          : { userId: active.userId, status: SubscriptionStatus.ACTIVE },
         data: { status: SubscriptionStatus.PAST_DUE }
       });
       await prisma.subscriptionEvent.create({
@@ -171,13 +190,13 @@ export async function POST(request: Request) {
   return Response.json({ received: true });
 }
 
-async function findUserIdByExternalSubscription(externalId: string) {
+async function findLocalSubscriptionByExternalId(externalId: string) {
   const event = await prisma.subscriptionEvent.findFirst({
     where: { provider: PaymentProvider.STRIPE, externalId },
-    select: { userId: true },
+    select: { userId: true, subscriptionId: true },
     orderBy: { createdAt: "desc" }
   });
-  return event?.userId ?? null;
+  return event ?? null;
 }
 
 function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status) {

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { BookOpen, FolderOpen, Menu, Settings, Sparkles, User } from "lucide-react";
-import { logoutAction } from "@/app/actions";
+import { LogoutButton } from "@/components/logout-button";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 
@@ -52,11 +52,7 @@ export function AppNav({
                 Admin
               </Link>
             )}
-            <form action={logoutAction} className="mt-1">
-              <button type="submit" className="flex w-full items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]">
-                Sair
-              </button>
-            </form>
+            <LogoutButton className="mt-1 flex w-full items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]" />
           </DropdownMenu>
         </div>
 
@@ -78,11 +74,7 @@ export function AppNav({
           >
             <Link href="/perfil" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Perfil e assinatura</Link>
             {isAdmin && <Link href="/admin" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Admin</Link>}
-            <form action={logoutAction}>
-              <button type="submit" className="mt-1 block w-full rounded-md border border-[var(--border)] px-3 py-2 text-left text-sm font-semibold hover:bg-[var(--surface-subtle)]">
-                Sair
-              </button>
-            </form>
+            <LogoutButton className="mt-1 flex w-full rounded-md border border-[var(--border)] px-3 py-2 text-left text-sm font-semibold hover:bg-[var(--surface-subtle)]" />
           </DropdownMenu>
         </nav>
       </div>

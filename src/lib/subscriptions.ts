@@ -47,14 +47,22 @@ export async function assertCanGenerateWithAi(user: { id: string; role?: Role })
   }
 }
 
+/** Próxima meia-noite no fuso do servidor — mesmo corte usado na contagem diária. */
+function nextUsageReset() {
+  const reset = new Date();
+  reset.setHours(0, 0, 0, 0);
+  reset.setDate(reset.getDate() + 1);
+  return reset.toISOString();
+}
+
 export async function getAiUsageStatus(user: { id: string; role?: Role }) {
   if (user.role === Role.ADMIN) {
-    return { used: 0, limit: null, percent: 0 };
+    return { used: 0, limit: null, percent: 0, resetsAt: nextUsageReset() };
   }
 
   const subscription = await getActiveSubscription(user.id);
   if (!subscription) {
-    return { used: 0, limit: 0, percent: 100 };
+    return { used: 0, limit: 0, percent: 100, resetsAt: nextUsageReset() };
   }
 
   const today = new Date();
@@ -71,6 +79,7 @@ export async function getAiUsageStatus(user: { id: string; role?: Role }) {
   return {
     used,
     limit,
-    percent: limit ? Math.round((used / limit) * 100) : 100
+    percent: limit ? Math.round((used / limit) * 100) : 100,
+    resetsAt: nextUsageReset()
   };
 }
