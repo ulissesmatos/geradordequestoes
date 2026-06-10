@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       headers: { authorization: `Bearer ${settings.mercadoPagoAccessToken}` }
     });
     const payment = await paymentResponse.json();
-    if (!paymentResponse.ok) return new Response(payment.message ?? "Erro ao consultar pagamento.", { status: 400 });
+    if (!paymentResponse.ok) return Response.json({ received: true, ignored: "payment_not_found" });
 
     const checkoutId = payment.external_reference;
     const checkout = checkoutId
