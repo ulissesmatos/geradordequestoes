@@ -14,7 +14,7 @@ import { difficultyLabel, questionFormatLabel, questionSetModeLabel } from "@/li
 import { inferMaterialTaxonomy, materialTitleFromPrompt } from "@/lib/materials";
 import { generateAndSaveQuestionSet } from "@/lib/question-sets";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
-import { getPerformanceContext, getRecentConversationText } from "@/lib/ai/chat/context";
+import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 
 export type ToolExecutionResult = {
@@ -102,11 +102,19 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
 
   await assertCanGenerateWithAi(user);
 
-  const [recentContext, performanceContext] = await Promise.all([
+  const [recentContext, attachmentText, performanceContext] = await Promise.all([
     getRecentConversationText(sessionId),
+    getRecentAttachmentText(sessionId),
     getPerformanceContext(user.id)
   ]);
-  const context = [recentContext, performanceContext].filter(Boolean).join("\n\n").slice(0, 5200);
+  const context = [
+    attachmentText ? `Material enviado pelo usuário (use como base das questões quando fizer sentido):\n${attachmentText}` : "",
+    recentContext,
+    performanceContext
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 8000);
 
   const format = args.format as QuestionFormat;
   const mode = args.mode as QuestionSetMode;

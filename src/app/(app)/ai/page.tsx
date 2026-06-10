@@ -31,7 +31,10 @@ export default async function AiChatPage({
       include: {
         messages: {
           orderBy: { createdAt: "asc" },
-          take: 80
+          take: 80,
+          include: {
+            attachments: { select: { id: true, kind: true, url: true, name: true } }
+          }
         }
       }
     })
@@ -56,7 +59,13 @@ export default async function AiChatPage({
           role: message.role,
           content: message.content,
           questionSetId: message.questionSetId,
-          studyMaterialId: message.studyMaterialId
+          studyMaterialId: message.studyMaterialId,
+          attachments: message.attachments.map((attachment) => ({
+            id: attachment.id,
+            kind: attachment.kind,
+            url: attachment.url,
+            name: attachment.name
+          }))
         }))}
       />
     </div>

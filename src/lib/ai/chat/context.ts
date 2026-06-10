@@ -1,4 +1,4 @@
-import { AiChatRole } from "@prisma/client";
+import { AiChatRole, AttachmentKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserStudySnapshot } from "@/lib/ai/study-tools";
 import { buildSystemPrompt } from "@/lib/ai/chat/system-prompt";
@@ -11,6 +11,8 @@ const MAX_CONTEXT_MESSAGES = 30;
 const KEEP_RECENT_MESSAGES = 12;
 // Só sumariza quando o histórico não resumido passa deste tamanho.
 const SUMMARIZE_THRESHOLD = 24;
+// Limite de imagens reenviadas ao modelo por turno (controle de custo).
+const MAX_IMAGES_IN_CONTEXT = 4;
 
 export function estimateTokens(text: string) {
   return Math.ceil(text.length / 3.5);
@@ -43,26 +45,59 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
     where: { sessionId: input.sessionId },
     orderBy: { createdAt: "asc" },
     skip: session?.summarizedCount ?? 0,
-    select: { role: true, content: true }
+    select: {
+      role: true,
+      content: true,
+      attachments: { select: { kind: true, url: true, name: true, extractedText: true } }
+    }
   });
 
   let remainingBudget = HISTORY_BUDGET_TOKENS;
+  let imagesUsed = 0;
   const history: NeutralMessage[] = [];
   for (let index = stored.length - 1; index >= 0; index -= 1) {
     const message = stored[index];
     if (message.role === AiChatRole.SYSTEM) continue;
-    const cost = estimateTokens(message.content);
+
+    const pdfTexts = message.attachments
+      .filter((attachment) => attachment.kind === AttachmentKind.PDF && attachment.extractedText)
+      .map((attachment) => `[Conteúdo do PDF "${attachment.name}"]\n${attachment.extractedText}`);
+    const augmentedContent = [message.content, ...pdfTexts].filter(Boolean).join("\n\n");
+
+    const cost = estimateTokens(augmentedContent);
     // A mensagem mais recente (o pedido atual) entra sempre, mesmo que estoure o orçamento.
     if (history.length > 0 && (cost > remainingBudget || history.length >= MAX_CONTEXT_MESSAGES)) break;
     remainingBudget -= cost;
-    history.unshift(
-      message.role === AiChatRole.USER
-        ? { role: "user", content: message.content }
-        : { role: "assistant", content: message.content }
-    );
+
+    if (message.role === AiChatRole.USER) {
+      const images: string[] = [];
+      for (const attachment of message.attachments) {
+        if (attachment.kind !== AttachmentKind.IMAGE || imagesUsed >= MAX_IMAGES_IN_CONTEXT) continue;
+        images.push(attachment.url);
+        imagesUsed += 1;
+      }
+      history.unshift(images.length ? { role: "user", content: augmentedContent, images } : { role: "user", content: augmentedContent });
+    } else {
+      history.unshift({ role: "assistant", content: augmentedContent });
+    }
   }
 
   return [{ role: "system", content: system }, ...history];
+}
+
+/** Texto extraído de PDFs recentes da sessão, para ancorar a geração de questões no conteúdo enviado. */
+export async function getRecentAttachmentText(sessionId: string, maxChars = 6000) {
+  const attachments = await prisma.aiChatMessageAttachment.findMany({
+    where: { message: { sessionId }, kind: AttachmentKind.PDF, NOT: { extractedText: null } },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+    select: { name: true, extractedText: true }
+  });
+  if (attachments.length === 0) return "";
+  return attachments
+    .map((attachment) => `Conteúdo do arquivo "${attachment.name}":\n${attachment.extractedText}`)
+    .join("\n\n")
+    .slice(0, maxChars);
 }
 
 export async function maybeSummarizeSession(input: { sessionId: string; settings: AiSettings }) {

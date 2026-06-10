@@ -1,8 +1,9 @@
 "use server";
 
-import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma } from "@prisma/client";
+import { AiChatRole, AttachmentKind, AiUsageEventStatus, AiUsageEventType, type Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
@@ -10,6 +11,26 @@ import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
+import { ATTACHMENT_LIMITS } from "@/lib/uploads";
+
+const attachmentSchema = z.object({
+  kind: z.nativeEnum(AttachmentKind),
+  url: z.string().url(),
+  name: z.string().min(1).max(200),
+  mimeType: z.string().min(1).max(120),
+  size: z.number().int().nonnegative(),
+  extractedText: z.string().max(20000).optional()
+});
+
+function parseAttachments(raw: FormDataEntryValue | null) {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = z.array(attachmentSchema).max(ATTACHMENT_LIMITS.maxPerMessage).safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
+}
 
 export type ChatActionState = {
   ok?: boolean;
@@ -28,14 +49,28 @@ export async function sendChatMessageAction(
   const user = await requireUser();
   const prompt = String(formData.get("prompt") ?? "").trim();
   const sessionId = String(formData.get("sessionId") ?? "");
-  if (!prompt) return { error: "Digite uma mensagem." };
+  const attachments = parseAttachments(formData.get("attachments"));
+  if (!prompt && attachments.length === 0) return { error: "Digite uma mensagem." };
 
   let session: { id: string } | null = null;
   try {
-    session = await getOrCreateChatSession(user.id, prompt, sessionId || undefined);
-    await prisma.aiChatMessage.create({
+    session = await getOrCreateChatSession(user.id, prompt || "Anexo enviado", sessionId || undefined);
+    const userMessage = await prisma.aiChatMessage.create({
       data: { sessionId: session.id, role: AiChatRole.USER, content: prompt }
     });
+    if (attachments.length) {
+      await prisma.aiChatMessageAttachment.createMany({
+        data: attachments.map((attachment) => ({
+          messageId: userMessage.id,
+          kind: attachment.kind,
+          url: attachment.url,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          extractedText: attachment.extractedText
+        }))
+      });
+    }
 
     await assertCanGenerateWithAi(user);
     const turn = await runChatTurn({ user, sessionId: session.id, prompt });

@@ -335,17 +335,38 @@ model AiChatSession {
 }
 
 model AiChatMessage {
-  id              String         @id @default(cuid())
+  id              String                    @id @default(cuid())
   sessionId       String
   questionSetId   String?
   studyMaterialId String?
   role            AiChatRole
   content         String
   metadata        Json?
-  createdAt       DateTime       @default(now())
-  session         AiChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  questionSet     QuestionSet?   @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
-  studyMaterial   StudyMaterial? @relation(fields: [studyMaterialId], references: [id], onDelete: SetNull)
+  createdAt       DateTime                  @default(now())
+  session         AiChatSession             @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionSet     QuestionSet?              @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+  studyMaterial   StudyMaterial?            @relation(fields: [studyMaterialId], references: [id], onDelete: SetNull)
+  attachments     AiChatMessageAttachment[]
+}
+
+enum AttachmentKind {
+  IMAGE
+  PDF
+}
+
+model AiChatMessageAttachment {
+  id            String         @id @default(cuid())
+  messageId     String
+  kind          AttachmentKind
+  url           String
+  name          String
+  mimeType      String
+  size          Int
+  extractedText String?
+  createdAt     DateTime       @default(now())
+  message       AiChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
 }
 
 model StudyMaterial {

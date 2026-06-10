@@ -15,7 +15,7 @@ export type NeutralToolCall = {
 
 export type NeutralMessage =
   | { role: "system"; content: string }
-  | { role: "user"; content: string }
+  | { role: "user"; content: string; images?: string[] }
   | { role: "assistant"; content: string | null; toolCalls?: NeutralToolCall[] }
   | { role: "tool"; toolCallId: string; name: string; content: string };
 
@@ -61,6 +61,15 @@ function toOpenAiMessages(messages: NeutralMessage[]): ChatCompletionMessagePara
     }
     if (message.role === "tool") {
       return { role: "tool" as const, tool_call_id: message.toolCallId, content: message.content };
+    }
+    if (message.role === "user" && message.images?.length) {
+      return {
+        role: "user" as const,
+        content: [
+          ...(message.content ? [{ type: "text" as const, text: message.content }] : []),
+          ...message.images.map((url) => ({ type: "image_url" as const, image_url: { url } }))
+        ]
+      };
     }
     return { role: message.role, content: message.content };
   });
@@ -149,6 +158,7 @@ async function completeWithOpenRouter(
 
 type ClaudeContentBlock =
   | { type: "text"; text: string }
+  | { type: "image"; source: { type: "url"; url: string } }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
@@ -167,7 +177,14 @@ function toClaudePayload(messages: NeutralMessage[]) {
     }
 
     if (message.role === "user") {
-      converted.push({ role: "user", content: message.content });
+      if (message.images?.length) {
+        const blocks: ClaudeContentBlock[] = [];
+        if (message.content) blocks.push({ type: "text", text: message.content });
+        for (const url of message.images) blocks.push({ type: "image", source: { type: "url", url } });
+        converted.push({ role: "user", content: blocks });
+      } else {
+        converted.push({ role: "user", content: message.content });
+      }
       continue;
     }
 
