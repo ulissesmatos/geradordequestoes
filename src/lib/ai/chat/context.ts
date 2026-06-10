@@ -18,6 +18,20 @@ export function estimateTokens(text: string) {
   return Math.ceil(text.length / 3.5);
 }
 
+async function blobToDataUrl(url: string): Promise<string | null> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return null;
+    const buffer = await res.arrayBuffer();
+    const mime = res.headers.get("Content-Type") ?? "image/jpeg";
+    return `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildTurnMessages(input: { sessionId: string; userId: string }): Promise<NeutralMessage[]> {
   const [session, subjects, snapshot] = await Promise.all([
     prisma.aiChatSession.findUnique({
@@ -73,8 +87,11 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
       const images: string[] = [];
       for (const attachment of message.attachments) {
         if (attachment.kind !== AttachmentKind.IMAGE || imagesUsed >= MAX_IMAGES_IN_CONTEXT) continue;
-        images.push(attachment.url);
-        imagesUsed += 1;
+        const dataUrl = await blobToDataUrl(attachment.url);
+        if (dataUrl) {
+          images.push(dataUrl);
+          imagesUsed += 1;
+        }
       }
       history.unshift(images.length ? { role: "user", content: augmentedContent, images } : { role: "user", content: augmentedContent });
     } else {

@@ -16,6 +16,11 @@ export function attachmentKindFromMime(mime: string): AttachmentKindValue | null
 
 export const ATTACHMENT_ACCEPT = [...IMAGE_MIMES, "application/pdf"].join(",");
 
+/** Converts a private Vercel Blob URL to a proxied URL that the browser can access after auth. */
+export function blobProxyUrl(url: string) {
+  return `/api/uploads/proxy?url=${encodeURIComponent(url)}`;
+}
+
 export type UploadedAttachment = {
   url: string;
   kind: AttachmentKindValue;

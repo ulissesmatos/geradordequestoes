@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     const extractedText = kind === "PDF" ? await extractPdfText(file) : undefined;
 
     const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 80) || "arquivo";
-    const blob = await put(`chat/${safeName}`, file, { access: "public", addRandomSuffix: true });
+    const blob = await put(`chat/${safeName}`, file, { access: "private", addRandomSuffix: true });
 
     return Response.json({
       url: blob.url,

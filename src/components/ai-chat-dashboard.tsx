@@ -9,7 +9,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { Loader } from "@/components/ui/loader";
 import { MessageLoading } from "@/components/ui/message-loading";
-import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, type AttachmentKindValue } from "@/lib/uploads";
+import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
 type ChatAttachment = {
@@ -756,16 +756,17 @@ function ChatBubble({ message }: { message: ChatMessage }) {
       <div className={cn("max-w-[88%] rounded-lg p-4 text-sm leading-6", isUser ? "bg-[var(--surface)] text-[var(--foreground)] shadow-[var(--shadow-sm)]" : "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]")}>
         {message.attachments && message.attachments.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
-            {message.attachments.map((attachment) =>
-              attachment.kind === "IMAGE" ? (
-                <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">
+            {message.attachments.map((attachment) => {
+              const proxied = blobProxyUrl(attachment.url);
+              return attachment.kind === "IMAGE" ? (
+                <a key={attachment.id} href={proxied} target="_blank" rel="noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={attachment.url} alt={attachment.name} className="h-28 w-28 rounded-md border border-[var(--border)] object-cover" />
+                  <img src={proxied} alt={attachment.name} className="h-28 w-28 rounded-md border border-[var(--border)] object-cover" />
                 </a>
               ) : (
                 <a
                   key={attachment.id}
-                  href={attachment.url}
+                  href={proxied}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--primary)]"
@@ -773,8 +774,8 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                   <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
                   <span className="max-w-[160px] truncate">{attachment.name}</span>
                 </a>
-              )
-            )}
+              );
+            })}
           </div>
         )}
         <MarkdownContent content={message.content} compact />
