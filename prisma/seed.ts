@@ -1,4 +1,4 @@
-import { AiProvider, PrismaClient, Role, SubscriptionStatus } from "@prisma/client";
+import { AiProvider, PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
@@ -104,31 +104,17 @@ async function main() {
     }
   ];
 
-  let adminPlanId: string | undefined;
   for (const plan of plans) {
-    const saved = await prisma.subscriptionPlan.upsert({
+    await prisma.subscriptionPlan.upsert({
       where: { slug: plan.slug },
       update: plan,
       create: plan
     });
-    if (plan.slug === "premium") adminPlanId = saved.id;
   }
 
-  if (adminPlanId) {
-    const existingAdminSubscription = await prisma.userSubscription.findFirst({
-      where: { userId: admin.id, status: SubscriptionStatus.ACTIVE }
-    });
-
-    if (!existingAdminSubscription) {
-      await prisma.userSubscription.create({
-        data: {
-          userId: admin.id,
-          planId: adminPlanId,
-          status: SubscriptionStatus.ACTIVE
-        }
-      });
-    }
-  }
+  // Admins não precisam de assinatura: requireActiveSubscription/assertCanGenerateWithAi
+  // dão bypass total para Role.ADMIN. Criar uma assinatura "fantasma" aqui só confunde
+  // o painel de perfil e os relatórios de pagamento.
 
   const questionsWithoutOptions = await prisma.question.findMany({
     where: { options: { none: {} }, format: "CERTO_ERRADO" }

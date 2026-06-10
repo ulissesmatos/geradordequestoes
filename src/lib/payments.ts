@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 
 export function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+  // AUTH_URL serve de fallback porque já é obrigatório para o NextAuth em produção
+  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.AUTH_URL || "http://localhost:3000";
 }
 
 export async function getPaymentSettings() {
