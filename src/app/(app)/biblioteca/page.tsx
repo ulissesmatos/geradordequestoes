@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles } from "lucide-react";
-import { QuestionSetMode } from "@prisma/client";
+import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { QuestionSetMode, QuestionSetStatus } from "@prisma/client";
+import { FavoriteDetailGrid } from "@/components/favorite-detail-grid";
 import { QuestionRunner } from "@/components/question-runner";
+import { QuestionSetModePicker } from "@/components/question-set-mode-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
@@ -9,6 +11,7 @@ import { questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 import { cn } from "@/lib/utils";
+import { archiveQuestionSetAction } from "@/app/(app)/actions/question-actions";
 
 function modeMeta(mode: QuestionSetMode) {
   if (mode === QuestionSetMode.SIMULADO) {
@@ -33,16 +36,17 @@ const tabs = [
 export default async function LibraryPage({
   searchParams
 }: {
-  searchParams: Promise<{ setId?: string; tab?: string }>;
+  searchParams: Promise<{ setId?: string; tab?: string; mode?: string }>;
 }) {
   const user = await requireUser();
   await requireActiveSubscription(user);
   const filters = await searchParams;
   const activeTab = filters.tab ?? "todos";
+  const openMode = filters.mode; // "review" | "retry" | undefined
 
   const [questionSets, favorites] = await Promise.all([
     prisma.questionSet.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, status: { not: QuestionSetStatus.ARCHIVED } },
       include: {
         subject: true,
         topic: true,
@@ -56,35 +60,115 @@ export default async function LibraryPage({
     }),
     prisma.favoriteQuestion.findMany({
       where: { userId: user.id },
-      include: { question: { include: { subject: true, topic: true } } },
+      include: {
+        question: {
+          include: {
+            subject: true,
+            topic: true,
+            options: { orderBy: { order: "asc" } }
+          }
+        }
+      },
       orderBy: { createdAt: "desc" },
       take: 24
     })
   ]);
 
-  const selectedSet = filters.setId
-    ? await prisma.questionSet.findFirst({
-        where: { id: filters.setId, userId: user.id },
-        include: {
-          questions: {
-            include: {
-              subject: true,
-              topic: true,
-              options: { orderBy: { order: "asc" } }
-            },
-            orderBy: { orderInSet: "asc" }
-          }
+  if (filters.setId) {
+    const selectedSet = await prisma.questionSet.findFirst({
+      where: { id: filters.setId, userId: user.id },
+      include: {
+        questions: {
+          include: {
+            subject: true,
+            topic: true,
+            options: { orderBy: { order: "asc" } }
+          },
+          orderBy: { orderInSet: "asc" }
         }
-      })
-    : null;
+      }
+    });
 
-  if (selectedSet) {
+    if (!selectedSet) {
+      return (
+        <div className="space-y-4">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/biblioteca">Voltar para biblioteca</Link>
+          </Button>
+          <p className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4">Bloco não encontrado.</p>
+        </div>
+      );
+    }
+
+    // Load attempts for this set's questions
+    const questionIds = selectedSet.questions.map((q) => q.id);
+    const [favoriteIds, attempts] = await Promise.all([
+      prisma.favoriteQuestion.findMany({
+        where: { userId: user.id, questionId: { in: questionIds } },
+        select: { questionId: true }
+      }),
+      prisma.questionAttempt.findMany({
+        where: { userId: user.id, questionId: { in: questionIds } },
+        orderBy: { createdAt: "desc" }
+      })
+    ]);
+
+    const favSet = new Set(favoriteIds.map((f) => f.questionId));
+
+    // Build initialAnswers from most recent attempt per question
+    const latestAttemptPerQuestion = new Map<string, (typeof attempts)[number]>();
+    for (const attempt of attempts) {
+      if (!latestAttemptPerQuestion.has(attempt.questionId)) {
+        latestAttemptPerQuestion.set(attempt.questionId, attempt);
+      }
+    }
+
+    const answered = latestAttemptPerQuestion.size;
+    const total = selectedSet.questions.length;
+    const isDone = total > 0 && answered >= total;
+
+    // 100% done and no mode selected → ask user what they want
+    if (isDone && !openMode) {
+      return (
+        <div className="space-y-4">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/biblioteca">Voltar para biblioteca</Link>
+          </Button>
+          <QuestionSetModePicker setId={selectedSet.id} />
+        </div>
+      );
+    }
+
+    const questionsWithMeta = selectedSet.questions.map((q) => ({
+      ...q,
+      isFavorited: favSet.has(q.id)
+    }));
+
+    // review mode: pass previous answers as initialAnswers
+    const initialAnswers =
+      openMode === "review"
+        ? Object.fromEntries(
+            [...latestAttemptPerQuestion.entries()].map(([qId, attempt]) => [
+              qId,
+              {
+                label: attempt.userAnswerText ?? attempt.userAnswer ?? "—",
+                value: attempt.userAnswerText ?? attempt.userAnswer ?? "—",
+                isCorrect: attempt.isCorrect
+              }
+            ])
+          )
+        : undefined;
+
     return (
       <div className="space-y-4">
         <Button asChild variant="outline" size="sm">
           <Link href="/biblioteca">Voltar para biblioteca</Link>
         </Button>
-        <QuestionRunner questions={selectedSet.questions} mode={selectedSet.mode === QuestionSetMode.SIMULADO ? "simulado" : "study"} />
+        <QuestionRunner
+          questions={questionsWithMeta}
+          mode={selectedSet.mode === QuestionSetMode.SIMULADO ? "simulado" : "study"}
+          initialAnswers={initialAnswers}
+        />
       </div>
     );
   }
@@ -147,16 +231,10 @@ export default async function LibraryPage({
                 </Button>
               )}
             </div>
-            <CardDescription>Questões marcadas para revisão rápida.</CardDescription>
+            <CardDescription>Questões marcadas para revisão rápida. Clique para ver a resposta e a explicação.</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {favorites.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Nenhuma favorita ainda.</p>}
-            {favorites.map((favorite) => (
-              <div key={favorite.id} className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-sm)]">
-                <p className="line-clamp-3 text-sm">{favorite.question.statement}</p>
-                <p className="mt-2 text-xs text-[var(--muted-foreground)]">{favorite.question.subject.name} / {favorite.question.topic.name}</p>
-              </div>
-            ))}
+          <CardContent>
+            <FavoriteDetailGrid favorites={favorites} />
           </CardContent>
         </Card>
       ) : (
@@ -186,30 +264,44 @@ export default async function LibraryPage({
               const percent = Math.min(100, Math.round((answered / total) * 100));
               const meta = modeMeta(set.mode);
               return (
-                <Link
-                  key={set.id}
-                  href={`/biblioteca?setId=${set.id}`}
-                  className="group flex flex-col rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[var(--shadow-sm)] transition hover:border-[var(--primary)] hover:shadow-[var(--shadow-md)]"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", meta.className)}>
-                      <meta.icon className="h-3.5 w-3.5" />
-                      {meta.label}
-                    </span>
-                    <span className="text-xs text-[var(--muted-foreground)]">{questionFormatLabel(set.format)}</span>
-                  </div>
-                  <p className="mt-3 line-clamp-2 font-semibold">{set.title}</p>
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">{set.subject.name} / {set.topic.name}</p>
-                  <div className="mt-auto pt-4">
-                    <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
-                      <span>{answered} de {total} respondidas</span>
-                      <span>{percent}%</span>
+                <div key={set.id} className="flex flex-col rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)] transition hover:border-[var(--primary)] hover:shadow-[var(--shadow-md)]">
+                  <Link
+                    href={`/biblioteca?setId=${set.id}`}
+                    className="group flex flex-1 flex-col p-4"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold", meta.className)}>
+                        <meta.icon className="h-3.5 w-3.5" />
+                        {meta.label}
+                      </span>
+                      <span className="text-xs text-[var(--muted-foreground)]">{questionFormatLabel(set.format)}</span>
                     </div>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-                      <div className="h-full rounded-full bg-[var(--primary)] transition-all" style={{ width: `${percent}%` }} />
+                    <p className="mt-3 line-clamp-2 font-semibold">{set.title}</p>
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">{set.subject.name} / {set.topic.name}</p>
+                    <div className="mt-auto pt-4">
+                      <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+                        <span>{answered} de {total} respondidas</span>
+                        <span>{percent}%</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+                        <div className="h-full rounded-full bg-[var(--primary)] transition-all" style={{ width: `${percent}%` }} />
+                      </div>
                     </div>
+                  </Link>
+                  <div className="flex justify-end border-t border-[var(--border)] px-3 py-2">
+                    <form action={archiveQuestionSetAction}>
+                      <input type="hidden" name="setId" value={set.id} />
+                      <button
+                        type="submit"
+                        title="Excluir bloco"
+                        className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--muted-foreground)] hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Excluir
+                      </button>
+                    </form>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </CardContent>

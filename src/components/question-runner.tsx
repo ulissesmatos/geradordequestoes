@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, Heart, X } from "lucide-react";
-import { answerQuestionAction, toggleFavoriteAction } from "@/app/(app)/actions/question-actions";
+import { Check, X } from "lucide-react";
+import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
+import { FavoriteButton } from "@/components/favorite-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -23,6 +24,7 @@ type RunnerQuestion = {
   subject: { name: string };
   topic: { name: string };
   options?: RunnerOption[];
+  isFavorited?: boolean;
 };
 
 type SelectedAnswer = {
@@ -31,12 +33,20 @@ type SelectedAnswer = {
   isCorrect: boolean;
 };
 
-export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[]; mode: "study" | "simulado" }) {
+export function QuestionRunner({
+  questions,
+  mode,
+  initialAnswers
+}: {
+  questions: RunnerQuestion[];
+  mode: "study" | "simulado";
+  initialAnswers?: Record<string, SelectedAnswer>;
+}) {
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>({});
+  const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>(initialAnswers ?? {});
   const [startedAt, setStartedAt] = useState(Date.now());
   const [isPending, startTransition] = useTransition();
-  const [finished, setFinished] = useState(false);
+  const [finished, setFinished] = useState(initialAnswers != null && Object.keys(initialAnswers).length > 0);
   const current = questions[index];
 
   const score = useMemo(
@@ -52,7 +62,7 @@ export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Resultado: {score} de {questions.length}</CardTitle>
+          <CardTitle>Resultado: {score} de {questions.length} ({Math.round((score / questions.length) * 100)}%)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {questions.map((question, questionIndex) => {
@@ -60,10 +70,13 @@ export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[
             const correct = getCorrectLabel(question);
             return (
               <div key={question.id} className="rounded-md border border-[var(--border)] p-4">
-                <p className="text-sm font-semibold">Questão {questionIndex + 1}</p>
-                <p className="mt-2">{question.statement}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
+                  <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
+                </div>
+                <p className="mt-1">{question.statement}</p>
                 <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
-                  Sua resposta: {selected?.label ?? "sem resposta"} / Gabarito: {correct}
+                  {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
                 </p>
                 <p className="mt-2 text-sm text-[var(--muted-foreground)]">{question.explanation}</p>
               </div>
@@ -109,12 +122,7 @@ export function QuestionRunner({ questions, mode }: { questions: RunnerQuestion[
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Questão {index + 1} de {questions.length}</CardTitle>
-          <form action={toggleFavoriteAction}>
-            <input type="hidden" name="questionId" value={current.id} />
-            <Button variant="ghost" size="icon" title="Favoritar">
-              <Heart className="h-5 w-5" />
-            </Button>
-          </form>
+          <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
         </div>
         <p className="text-sm text-[var(--muted-foreground)]">
           {current.subject.name} / {current.topic.name} / {current.format === "MULTIPLA_ESCOLHA" ? "Múltipla escolha" : "Certo/Errado"}

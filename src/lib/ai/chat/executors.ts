@@ -12,7 +12,7 @@ import { reviewDefaults, runStudyTool } from "@/lib/ai/study-tools";
 import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { difficultyLabel, questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { inferMaterialTaxonomy, materialTitleFromPrompt } from "@/lib/materials";
-import { generateAndSaveQuestionSet } from "@/lib/question-sets";
+import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/question-sets";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
@@ -99,6 +99,8 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
     return errorResult(`A matéria ${subject.name} ainda não tem assuntos cadastrados. Sugira outra matéria ao usuário.`);
   }
   const topic = (args.topicName ? matchByName(subject.topics, args.topicName) : null) ?? subject.topics[0];
+  // If the AI requested a topic that doesn't match a DB topic, preserve its label in the title
+  const displayTopicName = args.topicName || topic.name;
 
   await assertCanGenerateWithAi(user);
 
@@ -130,6 +132,7 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
     format,
     alternativesCount,
     mode,
+    title: buildQuestionSetTitle(mode, subject.name, displayTopicName),
     prompt: userPrompt,
     chatSessionId: sessionId,
     context

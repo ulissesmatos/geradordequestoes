@@ -119,14 +119,28 @@ export async function generateUserQuestionsAction(
 export async function toggleFavoriteAction(formData: FormData) {
   const user = await requireUser();
   const questionId = String(formData.get("questionId") ?? "");
+  await toggleFavoriteByIdAction(questionId);
+}
+
+export async function toggleFavoriteByIdAction(questionId: string) {
+  const user = await requireUser();
   const existing = await prisma.favoriteQuestion.findUnique({
     where: { userId_questionId: { userId: user.id, questionId } }
   });
-
   if (existing) {
     await prisma.favoriteQuestion.delete({ where: { id: existing.id } });
   } else {
     await prisma.favoriteQuestion.create({ data: { userId: user.id, questionId } });
   }
+  revalidatePath("/biblioteca");
+}
+
+export async function archiveQuestionSetAction(formData: FormData) {
+  const user = await requireUser();
+  const setId = String(formData.get("setId") ?? "");
+  await prisma.questionSet.updateMany({
+    where: { id: setId, userId: user.id },
+    data: { status: "ARCHIVED" }
+  });
   revalidatePath("/biblioteca");
 }

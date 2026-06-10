@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Download, Sparkles } from "lucide-react";
 import { MarkdownContent } from "@/components/markdown-content";
+import { MaterialEditor } from "@/components/material-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
@@ -41,6 +42,8 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
           </Button>
         </div>
       </div>
+
+      <MaterialEditor materialId={material.id} initialContent={material.content} />
 
       <Card>
         <CardContent className="p-6">
