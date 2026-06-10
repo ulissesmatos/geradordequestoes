@@ -2,8 +2,8 @@
 
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, MailWarning, X } from "lucide-react";
-import { requestEmailCodeAction, verifyEmailCodeAction } from "@/app/actions";
+import { CheckCircle2, Loader2, MailWarning, Pencil, X } from "lucide-react";
+import { requestEmailCodeAction, updateUnverifiedEmailAction, verifyEmailCodeAction } from "@/app/actions";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -11,9 +11,11 @@ export function EmailVerificationBanner({ email }: { email: string | null }) {
   const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [resendPending, startResend] = useTransition();
   const [notice, setNotice] = useState<string | null>(null);
   const [state, formAction, verifyPending] = useActionState(verifyEmailCodeAction, null);
+  const [emailState, emailFormAction, emailPending] = useActionState(updateUnverifiedEmailAction, null);
 
   useEffect(() => {
     if (state?.ok) {
@@ -22,6 +24,15 @@ export function EmailVerificationBanner({ email }: { email: string | null }) {
       return () => clearTimeout(t);
     }
   }, [state, router]);
+
+  useEffect(() => {
+    if (emailState?.ok) {
+      setEditing(false);
+      setOpen(true);
+      setNotice(emailState.message ?? "E-mail atualizado. Enviamos um novo código.");
+      router.refresh();
+    }
+  }, [emailState, router]);
 
   function resend() {
     setNotice(null);
@@ -50,7 +61,18 @@ export function EmailVerificationBanner({ email }: { email: string | null }) {
         <div className="flex items-start gap-2 text-sm">
           <MailWarning className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <span>
-            Confirme seu e-mail{email ? <> <strong>{email}</strong></> : null} para proteger sua conta.
+            Confirme seu e-mail{email ? <> <strong>{email}</strong></> : null} para proteger sua conta.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setEditing((v) => !v);
+                setNotice(null);
+              }}
+              className="inline-flex items-center gap-1 font-semibold text-amber-700 underline-offset-2 hover:underline"
+            >
+              <Pencil className="h-3 w-3" />
+              {editing ? "Cancelar" : "Não é seu e-mail?"}
+            </button>
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -104,9 +126,37 @@ export function EmailVerificationBanner({ email }: { email: string | null }) {
           </button>
         </div>
       </div>
-      {(notice || state?.message) && (
-        <div className={cn("px-4 pb-2 text-center text-xs sm:text-left", state?.message ? "text-rose-700" : "text-amber-700")}>
-          {state?.message ?? notice}
+
+      {editing && (
+        <form action={emailFormAction} className="mx-auto flex max-w-6xl flex-col gap-2 px-4 pb-2.5 sm:flex-row sm:items-center">
+          <Input
+            name="email"
+            type="email"
+            required
+            defaultValue={email ?? ""}
+            placeholder="seu-email@correto.com"
+            className="h-8 max-w-xs"
+            aria-label="Novo e-mail"
+          />
+          <button
+            type="submit"
+            disabled={emailPending}
+            className="inline-flex items-center gap-1.5 self-start rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-70"
+          >
+            {emailPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Salvar e reenviar código
+          </button>
+        </form>
+      )}
+
+      {(notice || state?.message || emailState?.message) && (
+        <div
+          className={cn(
+            "px-4 pb-2 text-center text-xs sm:text-left",
+            state?.message || (emailState && !emailState.ok) ? "text-rose-700" : "text-amber-700"
+          )}
+        >
+          {state?.message ?? (emailState && !emailState.ok ? emailState.message : null) ?? notice}
         </div>
       )}
     </div>

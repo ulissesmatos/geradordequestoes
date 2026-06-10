@@ -100,6 +100,52 @@ export async function verifyEmailCodeAction(_: unknown, formData: FormData): Pro
   return { ok: false, message: messages[result.reason] ?? "Código inválido." };
 }
 
+const emailOnlySchema = z.object({ email: z.string().email("Informe um e-mail válido.") });
+
+/**
+ * Permite corrigir o e-mail enquanto a conta ainda não foi verificada
+ * (ex.: digitou errado no cadastro). Atualiza o endereço e reenvia o código.
+ */
+export async function updateUnverifiedEmailAction(_: unknown, formData: FormData): Promise<{ ok: boolean; message?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, message: "Sessão expirada." };
+
+  const parsed = emailOnlySchema.safeParse({ email: String(formData.get("email") ?? "").toLowerCase().trim() });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "E-mail inválido." };
+  const email = parsed.data.email;
+
+  const me = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, email: true, emailVerified: true, passwordHash: true }
+  });
+  if (!me) return { ok: false, message: "Sessão expirada." };
+  if (me.emailVerified) return { ok: false, message: "Seu e-mail já está verificado." };
+  // Só contas por senha podem trocar aqui; contas Google já entram verificadas.
+  if (!me.passwordHash) return { ok: false, message: "Não é possível alterar o e-mail desta conta." };
+
+  if (email === me.email) {
+    try {
+      await issueEmailVerificationCode(me.id, { bypassCooldown: true });
+    } catch {
+      // ignora — o banner permite reenviar
+    }
+    return { ok: true, message: "Reenviamos o código para o mesmo e-mail." };
+  }
+
+  const taken = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (taken && taken.id !== me.id) {
+    return { ok: false, message: "Este e-mail já está cadastrado em outra conta." };
+  }
+
+  await prisma.user.update({ where: { id: me.id }, data: { email } });
+  try {
+    await issueEmailVerificationCode(me.id, { bypassCooldown: true });
+  } catch {
+    // ignora — o banner permite reenviar
+  }
+  return { ok: true, message: "E-mail atualizado. Enviamos um novo código." };
+}
+
 export async function googleSignInAction() {
   await signIn("google", { redirectTo: "/ai" });
 }

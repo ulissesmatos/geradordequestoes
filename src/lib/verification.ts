@@ -26,7 +26,10 @@ export type IssueResult =
  * Best-effort no envio: mesmo se o e-mail falhar, o código fica válido para
  * reenvio/digitação manual (o banner permite reenviar).
  */
-export async function issueEmailVerificationCode(userId: string): Promise<IssueResult> {
+export async function issueEmailVerificationCode(
+  userId: string,
+  options?: { bypassCooldown?: boolean }
+): Promise<IssueResult> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, emailVerified: true }
@@ -34,16 +37,18 @@ export async function issueEmailVerificationCode(userId: string): Promise<IssueR
   if (!user) return { ok: false, reason: "already_verified" };
   if (user.emailVerified) return { ok: false, reason: "already_verified" };
 
-  // Cooldown: evita spam de reenvio.
-  const last = await prisma.emailVerificationCode.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    select: { createdAt: true }
-  });
-  if (last) {
-    const elapsed = Date.now() - last.createdAt.getTime();
-    if (elapsed < RESEND_COOLDOWN_MS) {
-      return { ok: false, reason: "cooldown", retryInMs: RESEND_COOLDOWN_MS - elapsed };
+  // Cooldown: evita spam de reenvio (ignorado em ações deliberadas, ex.: troca de e-mail).
+  if (!options?.bypassCooldown) {
+    const last = await prisma.emailVerificationCode.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true }
+    });
+    if (last) {
+      const elapsed = Date.now() - last.createdAt.getTime();
+      if (elapsed < RESEND_COOLDOWN_MS) {
+        return { ok: false, reason: "cooldown", retryInMs: RESEND_COOLDOWN_MS - elapsed };
+      }
     }
   }
 
