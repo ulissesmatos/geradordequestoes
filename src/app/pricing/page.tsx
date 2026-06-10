@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { PricingCards } from "@/components/pricing-cards";
 import { Button } from "@/components/ui/button";
 import { getAppSettings } from "@/lib/app-settings";
+import { findStripeSubscriptionId } from "@/lib/payments";
 import { getPricingContent, planFeatures } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 import { getActiveSubscription } from "@/lib/subscriptions";
@@ -28,9 +29,17 @@ export default async function PricingPage() {
 
   // Assinante logado: travamos nova assinatura e oferecemos apenas upgrade.
   const activeSubscription = session?.user?.id ? await getActiveSubscription(session.user.id) : null;
-  const currentPlan = activeSubscription
-    ? { id: activeSubscription.planId, priceCents: activeSubscription.plan.priceCents }
-    : null;
+  let currentPlan = null;
+  if (activeSubscription) {
+    const stripeSubId = await findStripeSubscriptionId(activeSubscription.id);
+    currentPlan = {
+      id: activeSubscription.planId,
+      name: activeSubscription.plan.name,
+      priceCents: activeSubscription.plan.priceCents,
+      endsAt: activeSubscription.endsAt?.toISOString() ?? null,
+      isRecurring: !!stripeSubId
+    };
+  }
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">

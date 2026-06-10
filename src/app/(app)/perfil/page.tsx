@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CreditCard, ShieldCheck, Sparkles, User } from "lucide-react";
+import { BadgeCheck, CreditCard, ShieldCheck, Sparkles, User } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +14,15 @@ const statusMeta: Record<string, { label: string; className: string }> = {
   [SubscriptionStatus.CANCELED]: { label: "Cancelada", className: "bg-rose-100 text-rose-800" }
 };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams
+}: {
+  searchParams: Promise<{ upgrade?: string }>;
+}) {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
+  const { upgrade } = await searchParams;
+  const showUpgradeSuccess = upgrade === "success";
 
   const [subscription, usage, transactions] = await Promise.all([
     getActiveSubscription(user.id),
@@ -42,6 +48,18 @@ export default async function ProfilePage() {
         <h1 className="text-3xl font-bold">Perfil</h1>
         <p className="text-[var(--muted-foreground)]">Sua conta, assinatura e histórico de pagamentos.</p>
       </div>
+
+      {showUpgradeSuccess && (
+        <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+          <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+          <div>
+            <p className="font-semibold">Upgrade realizado com sucesso!</p>
+            <p className="mt-0.5 text-sm text-emerald-700">
+              Seu plano foi atualizado e o crédito proporcional do período anterior já foi abatido.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Conta ── */}
       <Card>

@@ -2,11 +2,11 @@ import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { PaymentCheckoutStatus, PaymentProvider } from "@prisma/client";
+import { PaymentCheckoutStatus, PaymentProvider, PaymentTransactionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
-import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents, activatePaidSubscription } from "@/lib/payments";
+import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents, activatePaidSubscription, recordPaymentTransaction } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
 import { prisma } from "@/lib/prisma";
 
@@ -61,13 +61,15 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
       if (stripeSubscriptionId) {
         const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
         if (["active", "trialing", "past_due"].includes(stripeSubscription.status)) {
-          await stripe.subscriptions.update(stripeSubscriptionId, {
+          const updatedSub = await stripe.subscriptions.update(stripeSubscriptionId, {
             items: [{ id: stripeSubscription.items.data[0].id, price: plan.stripePriceId }],
             proration_behavior: "always_invoice",
             // Se a cobrança da diferença falhar, nada muda e mostramos o erro.
             payment_behavior: "error_if_incomplete",
+            expand: ["latest_invoice"],
             metadata: { userId: user.id, planId: plan.id }
           });
+
           await activatePaidSubscription({
             userId: user.id,
             planId: plan.id,
@@ -75,6 +77,27 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
             externalId: stripeSubscriptionId,
             payload: { upgradeFrom: activeSubscription.planId, upgradeTo: plan.id }
           });
+
+          // Registra a transação inline para não depender exclusivamente do webhook
+          // invoice.paid (que pode chegar com race condition antes de activatePaidSubscription).
+          const invoice = typeof updatedSub.latest_invoice === "object" && updatedSub.latest_invoice
+            ? updatedSub.latest_invoice as Stripe.Invoice
+            : null;
+          if (invoice?.id && (invoice.amount_paid ?? 0) >= 0) {
+            await recordPaymentTransaction({
+              userId: user.id,
+              planId: plan.id,
+              provider: PaymentProvider.STRIPE,
+              externalId: invoice.id,
+              status: PaymentTransactionStatus.APPROVED,
+              amountCents: invoice.amount_paid ?? 0,
+              paidAt: invoice.status_transitions?.paid_at
+                ? new Date(invoice.status_transitions.paid_at * 1000)
+                : new Date(),
+              payload: invoice
+            });
+          }
+
           redirect("/perfil?upgrade=success");
         }
       }

@@ -20,6 +20,19 @@ type PricingPlan = {
   stripePriceId?: string | null;
 };
 
+export type UpgradePreview = {
+  currentPlanName: string;
+  currentPriceCents: number;
+  newPriceCents: number;
+  /** Crédito proporcional do plano atual. null = Stripe calcula automaticamente. */
+  creditCents: number | null;
+  /** Valor a pagar agora. null = Stripe calcula automaticamente. */
+  dueCents: number | null;
+  /** Data de fim do ciclo atual (ISO) para Pix. null = ciclo recorrente. */
+  cycleEndDate: string | null;
+  isRecurring: boolean;
+};
+
 export function PricingCards({
   plans,
   compact = false,
@@ -36,7 +49,13 @@ export function PricingCards({
   hasStripe?: boolean;
   hasPix?: boolean;
   /** Plano da assinatura ativa do usuário logado: trava re-assinatura e downgrade. */
-  currentPlan?: { id: string; priceCents: number } | null;
+  currentPlan?: {
+    id: string;
+    name: string;
+    priceCents: number;
+    endsAt: string | null;
+    isRecurring: boolean;
+  } | null;
 }) {
   return (
     <section className={cn("w-full", compact ? "py-12" : "py-16 lg:py-24")}>
@@ -69,6 +88,10 @@ export function PricingCards({
                     ? "upgrade"
                     : "downgrade"
                 : null;
+              const upgradePreview: UpgradePreview | null =
+                relation === "upgrade" && currentPlan
+                  ? buildUpgradePreview(currentPlan, plan.priceCents)
+                  : null;
               return (
                 <Card
                   key={plan.id}
@@ -124,6 +147,7 @@ export function PricingCards({
                           highlighted={highlighted}
                           ctaText={relation === "upgrade" ? "Fazer upgrade" : plan.ctaText}
                           isUpgrade={relation === "upgrade"}
+                          upgradePreview={upgradePreview}
                           hasStripe={hasStripe && !!plan.stripePriceId}
                           hasPix={hasPix}
                         />
@@ -155,3 +179,36 @@ function formatMoney(cents: number) {
     currency: "BRL"
   }).format(cents / 100);
 }
+
+function buildUpgradePreview(
+  current: { name: string; priceCents: number; endsAt: string | null; isRecurring: boolean },
+  newPriceCents: number
+): UpgradePreview {
+  if (current.isRecurring) {
+    return {
+      currentPlanName: current.name,
+      currentPriceCents: current.priceCents,
+      newPriceCents,
+      creditCents: null,
+      dueCents: null,
+      cycleEndDate: null,
+      isRecurring: true
+    };
+  }
+  // Pix: calcula crédito proporcional dos dias restantes do ciclo de 30 dias.
+  const endsAt = current.endsAt ? new Date(current.endsAt) : null;
+  const msLeft = endsAt ? endsAt.getTime() - Date.now() : 0;
+  const daysLeft = msLeft > 0 ? Math.min(30, msLeft / 86_400_000) : 0;
+  const creditCents = Math.round(current.priceCents * (daysLeft / 30));
+  const dueCents = Math.max(newPriceCents - creditCents, 100);
+  return {
+    currentPlanName: current.name,
+    currentPriceCents: current.priceCents,
+    newPriceCents,
+    creditCents,
+    dueCents,
+    cycleEndDate: current.endsAt,
+    isRecurring: false
+  };
+}
+
