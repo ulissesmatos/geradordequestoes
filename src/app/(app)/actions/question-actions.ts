@@ -57,7 +57,6 @@ export async function answerQuestionAction(formData: FormData) {
   });
 
   revalidatePath("/ai");
-  revalidatePath("/biblioteca");
 }
 
 export async function generateUserQuestionsAction(
