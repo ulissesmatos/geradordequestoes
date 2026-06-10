@@ -33,6 +33,34 @@ export function PaymentMethodModal({
       ? "Assinar agora"
       : ctaText;
 
+  const stripeHref = `/checkout/stripe?plan=${planSlug}`;
+  const pixHref = `/checkout/mercado-pago?plan=${planSlug}`;
+  const optionCount = (hasStripe ? 1 : 0) + (hasPix ? 1 : 0);
+
+  // Single option → go directly, no modal needed
+  if (optionCount === 1) {
+    const href = hasStripe ? stripeHref : pixHref;
+    return (
+      <Link href={href} className="block w-full">
+        <Button variant={highlighted ? "default" : "outline"} className="w-full" asChild={false}>
+          {highlighted && <Sparkles className="h-4 w-4" />}
+          {label}
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </Link>
+    );
+  }
+
+  // No option configured
+  if (optionCount === 0) {
+    return (
+      <Button variant="outline" className="w-full" disabled>
+        Pagamento não configurado
+      </Button>
+    );
+  }
+
+  // Multiple options → show modal
   return (
     <>
       <Button
@@ -52,11 +80,10 @@ export function PaymentMethodModal({
             description={`${planPrice} / mês · Escolha como prefere pagar`}
             onClose={() => setOpen(false)}
           />
-
           <div className="grid gap-3 p-5">
             {hasStripe && (
               <PaymentOption
-                href={`/checkout/stripe?plan=${planSlug}`}
+                href={stripeHref}
                 icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
                 title="Cartão de crédito ou débito"
                 description="Cobrança recorrente mensal · Cancele quando quiser"
@@ -64,22 +91,15 @@ export function PaymentMethodModal({
                 onClick={() => setOpen(false)}
               />
             )}
-
             {hasPix && (
               <PaymentOption
-                href={`/checkout/mercado-pago?plan=${planSlug}`}
+                href={pixHref}
                 icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
                 title="Pix"
                 description="Pagamento via QR Code · Acesso imediato"
                 badge="Mercado Pago"
                 onClick={() => setOpen(false)}
               />
-            )}
-
-            {!hasStripe && !hasPix && (
-              <p className="py-4 text-center text-sm text-[var(--muted-foreground)]">
-                Nenhuma forma de pagamento configurada.
-              </p>
             )}
           </div>
         </DialogPanel>

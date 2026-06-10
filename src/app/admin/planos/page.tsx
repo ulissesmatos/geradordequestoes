@@ -58,7 +58,10 @@ export default async function AdminPlansPage() {
             <Textarea name="description" placeholder="Descrição interna/geral" />
             <Textarea name="features" defaultValue={defaultPlanFeatures.join("\n")} placeholder="Uma feature por linha" />
             <div className="grid gap-3 md:grid-cols-2">
-              <Input name="stripePriceId" placeholder="Stripe Price ID" />
+              <div className="space-y-1">
+                <Input name="stripePriceId" placeholder="price_xxx (não prod_xxx)" />
+                <p className="text-xs text-[var(--muted-foreground)]">Stripe Dashboard → Products → seu produto → Pricing → copie o ID que começa com <code>price_</code></p>
+              </div>
               <Input name="mercadoPagoReference" placeholder="Referência Mercado Pago" />
             </div>
             <div className="flex flex-wrap gap-4 text-sm">
@@ -93,7 +96,20 @@ export default async function AdminPlansPage() {
                 <Textarea name="description" defaultValue={plan.description ?? ""} placeholder="Descrição" />
                 <Textarea name="features" defaultValue={(plan.features.length ? plan.features : defaultPlanFeatures).join("\n")} placeholder="Uma feature por linha" />
                 <div className="grid gap-3 md:grid-cols-2">
-                  <Input name="stripePriceId" defaultValue={plan.stripePriceId ?? ""} placeholder="Stripe Price ID" />
+                  <div className="space-y-1">
+                    <Input
+                      name="stripePriceId"
+                      defaultValue={plan.stripePriceId ?? ""}
+                      placeholder="price_xxx (não prod_xxx)"
+                      className={plan.stripePriceId && !plan.stripePriceId.startsWith("price_") ? "border-amber-400 focus:ring-amber-400" : ""}
+                    />
+                    {plan.stripePriceId && !plan.stripePriceId.startsWith("price_") && (
+                      <p className="text-xs font-semibold text-amber-600">⚠ Parece ser um Product ID (prod_). Use o Price ID (price_) em vez disso.</p>
+                    )}
+                    {!plan.stripePriceId && (
+                      <p className="text-xs text-[var(--muted-foreground)]">Stripe Dashboard → Products → seu produto → Pricing → ID que começa com <code>price_</code></p>
+                    )}
+                  </div>
                   <Input name="mercadoPagoReference" defaultValue={plan.mercadoPagoReference ?? ""} placeholder="Referência Mercado Pago" />
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm">
