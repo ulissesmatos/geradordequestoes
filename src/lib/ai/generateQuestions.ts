@@ -308,12 +308,12 @@ async function readJsonResponse(response: Response) {
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    throw new Error("O provedor de IA retornou uma resposta inválida.");
+    throw new Error(`Provedor retornou resposta não-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`);
   }
 
   if (!response.ok) {
     const message = data.error?.message ?? data.message ?? `Erro ${response.status} no provedor de IA.`;
-    throw new Error(message);
+    throw new Error(`[HTTP ${response.status}] ${message}`);
   }
 
   return data;
