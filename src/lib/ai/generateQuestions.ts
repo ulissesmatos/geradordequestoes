@@ -218,24 +218,29 @@ async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiS
         {
           role: "system",
           content:
-            "Você cria questões originais para concursos públicos. Retorne somente JSON válido conforme o schema."
+            "Você cria questões originais para concursos públicos. Use a ferramenta emit_questions para retornar apenas dados estruturados."
         },
         { role: "user", content: prompt }
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "generated_questions",
-          strict: true,
-          schema: questionsJsonSchema
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "emit_questions",
+            description: "Retorna uma lista validada de questões de concurso público.",
+            parameters: questionsJsonSchema
+          }
         }
-      }
+      ],
+      tool_choice: { type: "function", function: { name: "emit_questions" } }
     })
   });
 
   const data = await readJsonResponse(response);
-  const content = data.choices?.[0]?.message?.content;
-  const parsed = generatedQuestionSchema.parse(typeof content === "string" ? JSON.parse(content) : content);
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  const rawArgs = toolCall?.function?.arguments;
+  if (!rawArgs) throw new Error("O provedor não retornou uma chamada de ferramenta válida.");
+  const parsed = generatedQuestionSchema.parse(JSON.parse(rawArgs));
 
   return normalizeGenerated({
     provider: AiProvider.OPENROUTER,
