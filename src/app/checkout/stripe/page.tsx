@@ -74,6 +74,9 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
 
     redirect(session.url ?? "/pricing");
   } catch (error) {
+    // redirect() throws a special Next.js internal error — must re-throw it
+    if (error instanceof Error && error.message === "NEXT_REDIRECT") throw error;
+    if (typeof error === "object" && error !== null && "digest" in error) throw error;
     const message = error instanceof Error ? error.message : "Erro desconhecido.";
     return <CheckoutError title="Erro ao criar sessão de pagamento" message={message} />;
   }
