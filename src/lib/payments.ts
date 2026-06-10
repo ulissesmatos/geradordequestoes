@@ -153,7 +153,11 @@ export function validateMercadoPagoSignature(input: {
   if (!parts.ts || !parts.v1) return false;
   const manifest = `id:${input.dataId.toLowerCase()};request-id:${input.requestId};ts:${parts.ts};`;
   const digest = crypto.createHmac("sha256", input.secret).update(manifest).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(parts.v1));
+  try {
+    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(parts.v1 ?? ""));
+  } catch {
+    return false;
+  }
 }
 
 function toJson(value: unknown) {
