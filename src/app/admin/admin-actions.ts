@@ -275,23 +275,25 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
   const mercadoPagoWebhookSecret = String(formData.get("mercadoPagoWebhookSecret") ?? "").trim();
   const mercadoPagoPublicKey = String(formData.get("mercadoPagoPublicKey") ?? "").trim();
 
+  // Campos de segredo: só atualiza quando o usuário preencheu (vazio = manter o que já está)
+  const secretUpdates = {
+    ...(stripeSecretKey ? { stripeSecretKey: encryptSecret(stripeSecretKey) } : {}),
+    ...(stripeWebhookSecret ? { stripeWebhookSecret: encryptSecret(stripeWebhookSecret) } : {}),
+    ...(mercadoPagoAccessToken ? { mercadoPagoAccessToken: encryptSecret(mercadoPagoAccessToken) } : {}),
+    ...(mercadoPagoWebhookSecret ? { mercadoPagoWebhookSecret: encryptSecret(mercadoPagoWebhookSecret) } : {})
+  };
+
   await prisma.paymentGatewaySetting.upsert({
     where: { id: "default" },
     update: {
-      stripeSecretKey: stripeSecretKey ? encryptSecret(stripeSecretKey) : null,
-      stripeWebhookSecret: stripeWebhookSecret ? encryptSecret(stripeWebhookSecret) : null,
-      mercadoPagoAccessToken: mercadoPagoAccessToken ? encryptSecret(mercadoPagoAccessToken) : null,
-      mercadoPagoWebhookSecret: mercadoPagoWebhookSecret ? encryptSecret(mercadoPagoWebhookSecret) : null,
+      ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
     },
     create: {
       id: "default",
-      stripeSecretKey: stripeSecretKey ? encryptSecret(stripeSecretKey) : null,
-      stripeWebhookSecret: stripeWebhookSecret ? encryptSecret(stripeWebhookSecret) : null,
-      mercadoPagoAccessToken: mercadoPagoAccessToken ? encryptSecret(mercadoPagoAccessToken) : null,
-      mercadoPagoWebhookSecret: mercadoPagoWebhookSecret ? encryptSecret(mercadoPagoWebhookSecret) : null,
+      ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
@@ -336,7 +338,8 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
     where: { id: "default" },
     update: {
       provider,
-      apiKey: apiKey ? encryptSecret(apiKey) : null,
+      // Só atualiza a chave quando o usuário preencheu — vazio = manter a existente
+      ...(apiKey ? { apiKey: encryptSecret(apiKey) } : {}),
       model,
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,
