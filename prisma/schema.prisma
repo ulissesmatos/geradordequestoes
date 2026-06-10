@@ -41,6 +41,11 @@ enum AiProvider {
   OPENROUTER
 }
 
+enum EmailProvider {
+  BREVO
+  RESEND
+}
+
 enum AiChatPresetUsageLevel {
   NENHUM
   POUCO
@@ -135,7 +140,12 @@ model User {
   id                String             @id @default(cuid())
   name              String
   email             String             @unique
-  passwordHash      String
+  passwordHash      String?
+  emailVerified     DateTime?
+  image             String?
+  cpf               String?
+  birthDate         DateTime?
+  phone             String?
   role              Role               @default(USER)
   isBlocked         Boolean            @default(false)
   stripeCustomerId  String?
@@ -154,6 +164,20 @@ model User {
   checkoutSessions   PaymentCheckoutSession[]
   paymentTransactions PaymentTransaction[]
   subscriptionEvents SubscriptionEvent[]
+  verificationCodes  EmailVerificationCode[]
+}
+
+model EmailVerificationCode {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model AiProviderSetting {
@@ -489,6 +513,18 @@ model PaymentGatewaySetting {
   testMode                    Boolean         @default(true)
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
+}
+
+model EmailSetting {
+  id        String        @id @default("default")
+  provider  EmailProvider @default(BREVO)
+  apiKey    String?
+  fromEmail String?
+  fromName  String?
+  replyTo   String?
+  enabled   Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 }
 
 model PaymentCheckoutSession {

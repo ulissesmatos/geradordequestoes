@@ -1,5 +1,6 @@
 import { AiChatDashboard } from "@/components/ai-chat-dashboard";
 import { Paywall } from "@/components/paywall";
+import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getAiUsageStatus, hasActiveSubscription } from "@/lib/subscriptions";
@@ -40,8 +41,13 @@ export default async function AiChatPage({
     })
     : null;
 
+  // Prompt suave para completar cadastro fiscal — só após e-mail verificado
+  // (evita empilhar com o banner de verificação) e quando falta CPF.
+  const showProfilePrompt = !user.cpf && !!user.emailVerified;
+
   return (
     <div>
+      {showProfilePrompt && <ProfileCompletionPrompt />}
       <AiChatDashboard
         key={params.new ? "new-chat" : session?.id ?? "empty-chat"}
         userName={user.name}

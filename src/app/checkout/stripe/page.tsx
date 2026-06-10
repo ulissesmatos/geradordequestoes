@@ -112,9 +112,20 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
       }
     });
 
-    const customerInput = user.stripeCustomerId
-      ? { customer: user.stripeCustomerId }
-      : { customer_email: user.email ?? undefined };
+    // Pré-cria o Customer com nome/telefone/CPF para autofill no checkout e
+    // dados fiscais; reutiliza o existente nas próximas vezes.
+    let customerId = user.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email ?? undefined,
+        ...(user.name ? { name: user.name } : {}),
+        ...(user.phone ? { phone: user.phone } : {}),
+        metadata: { userId: user.id, ...(user.cpf ? { cpf: user.cpf } : {}) }
+      });
+      customerId = customer.id;
+      await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customerId } });
+    }
+    const customerInput = { customer: customerId };
 
     // Upgrade vindo de assinatura Pix (prazo fixo): abate o valor proporcional
     // restante como cupom de uso único na primeira fatura.

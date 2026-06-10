@@ -1,11 +1,14 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
+import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { logAdminAction } from "@/lib/audit";
 import { encryptSecret } from "@/lib/crypto";
+import { getAppSettings } from "@/lib/app-settings";
+import { sendEmail } from "@/lib/email/send";
+import { testEmailTemplate } from "@/lib/email/templates";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
@@ -301,6 +304,49 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
   });
   await logAdminAction(admin, { action: "update", entity: "PaymentGatewaySetting", summary: "chaves de pagamento atualizadas" });
   revalidatePath("/admin/pagamentos");
+}
+
+export async function updateEmailSettingsAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const providerRaw = String(formData.get("provider") ?? "BREVO");
+  const provider = providerRaw === "RESEND" ? EmailProvider.RESEND : EmailProvider.BREVO;
+  const apiKey = String(formData.get("apiKey") ?? "").trim();
+  const fromEmail = String(formData.get("fromEmail") ?? "").trim();
+  const fromName = String(formData.get("fromName") ?? "").trim();
+  const replyTo = String(formData.get("replyTo") ?? "").trim();
+  const enabled = formData.get("enabled") === "on";
+
+  // apiKey é segredo: só atualiza quando preenchida (vazio = manter atual).
+  const secretUpdate = apiKey ? { apiKey: encryptSecret(apiKey) } : {};
+  const base = {
+    provider,
+    fromEmail: fromEmail || null,
+    fromName: fromName || null,
+    replyTo: replyTo || null,
+    enabled
+  };
+
+  await prisma.emailSetting.upsert({
+    where: { id: "default" },
+    update: { ...base, ...secretUpdate },
+    create: { id: "default", ...base, ...secretUpdate }
+  });
+  await logAdminAction(admin, { action: "update", entity: "EmailSetting", summary: `provedor de e-mail: ${provider}` });
+  revalidatePath("/admin/email");
+}
+
+export async function sendTestEmailAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const to = String(formData.get("to") ?? "").trim() || admin.email;
+  const appSettings = await getAppSettings();
+  const template = testEmailTemplate(appSettings.appName);
+  const result = await sendEmail({ to, subject: template.subject, html: template.html, text: template.text });
+  await logAdminAction(admin, {
+    action: "test",
+    entity: "EmailSetting",
+    summary: result.ok ? `teste enviado para ${to}` : `falha no teste: ${"error" in result ? result.error : "não configurado"}`
+  });
+  revalidatePath("/admin/email");
 }
 
 export async function createCouponAction(formData: FormData) {

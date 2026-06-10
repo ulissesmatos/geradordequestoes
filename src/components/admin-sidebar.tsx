@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bot, BookOpen, CreditCard, FileQuestion, FolderCog, ListChecks, ScrollText, Settings, Users } from "lucide-react";
+import { BarChart3, Bot, BookOpen, CreditCard, FileQuestion, FolderCog, ListChecks, Mail, ScrollText, Settings, Users } from "lucide-react";
 import { logoutAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,7 @@ const groups = [
   {
     label: "Plataforma",
     links: [
+      { href: "/admin/email", label: "E-mail", icon: Mail },
       { href: "/admin/auditoria", label: "Auditoria", icon: ScrollText },
       { href: "/admin/branding", label: "Branding", icon: Settings }
     ]

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { BadgeCheck, CreditCard, ShieldCheck, Sparkles, User } from "lucide-react";
+import { BadgeCheck, CreditCard, IdCard, ShieldCheck, Sparkles, User } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProfilePersonalForm } from "@/components/profile-personal-form";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getActiveSubscription, getAiUsageStatus } from "@/lib/subscriptions";
@@ -42,6 +43,12 @@ export default async function ProfilePage({
     .join("")
     .toUpperCase();
 
+  // Completude do cadastro fiscal (CPF, telefone, nascimento).
+  const fiscalFields = [user.cpf, user.phone, user.birthDate];
+  const totalFields = fiscalFields.length;
+  const filledCount = fiscalFields.filter(Boolean).length;
+  const profileComplete = filledCount === totalFields;
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <div>
@@ -77,6 +84,30 @@ export default async function ProfilePage({
               Administrador
             </span>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ── Dados pessoais ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <IdCard className="h-5 w-5 text-[var(--primary)]" />
+            Dados pessoais
+          </CardTitle>
+          <CardDescription className="flex flex-wrap items-center gap-2">
+            Usados para emissão de Pix e informações fiscais.
+            <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", profileComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800")}>
+              Cadastro {filledCount}/{totalFields}
+            </span>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ProfilePersonalForm
+            name={user.name ?? ""}
+            cpf={user.cpf}
+            phone={user.phone}
+            birthDate={user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null}
+          />
         </CardContent>
       </Card>
 

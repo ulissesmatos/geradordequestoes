@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { PaymentProvider } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckoutCpfStep } from "@/app/checkout/mercado-pago/cpf-step";
 import { requireUser } from "@/lib/guards";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
 import { prisma } from "@/lib/prisma";
+import { onlyDigits } from "@/lib/validation/cpf";
 
 export default async function MercadoPagoCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   const user = await requireUser();
@@ -55,6 +57,14 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     amountCents = Math.max(plan.priceCents - credit, 100);
   }
 
+  // Pix exige CPF do pagador: se ainda não temos, pedimos uma vez (salvo no perfil).
+  const cpf = onlyDigits(user.cpf ?? "");
+  if (cpf.length !== 11) {
+    return <CheckoutCpfStep planSlug={plan.slug} planName={plan.name} />;
+  }
+  const [firstName, ...restName] = (user.name ?? "").trim().split(/\s+/);
+  const lastName = restName.join(" ");
+
   const localCheckout = await prisma.paymentCheckoutSession.create({
     data: {
       userId: user.id,
@@ -79,7 +89,12 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
           currency_id: "BRL"
         }
       ],
-      payer: { email: user.email },
+      payer: {
+        email: user.email,
+        ...(firstName ? { first_name: firstName } : {}),
+        ...(lastName ? { last_name: lastName } : {}),
+        identification: { type: "CPF", number: cpf }
+      },
       external_reference: localCheckout.id,
       notification_url: `${appUrl()}/api/webhooks/mercado-pago`,
       back_urls: {

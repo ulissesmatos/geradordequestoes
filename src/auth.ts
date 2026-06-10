@@ -1,6 +1,7 @@
 import type { Role } from "@prisma/client";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -16,6 +17,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login"
   },
   providers: [
+    Google,
     Credentials({
       credentials: {
         email: { label: "E-mail", type: "email" },
@@ -29,7 +31,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email: parsed.data.email.toLowerCase() }
         });
 
-        if (!user || user.isBlocked) return null;
+        // Conta só-Google (sem senha) não pode logar por credenciais.
+        if (!user || user.isBlocked || !user.passwordHash) return null;
 
         const isValid = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!isValid) return null;
@@ -45,11 +48,49 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     })
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    // Bloqueia o login do Google para contas banidas (Credentials já trata em authorize).
+    async signIn({ account, profile }) {
+      if (account?.provider === "google") {
+        const email = profile?.email?.toLowerCase();
+        if (!email) return false;
+        const existing = await prisma.user.findUnique({ where: { email }, select: { isBlocked: true } });
+        if (existing?.isBlocked) return false;
+      }
+      return true;
+    },
+    async jwt({ token, user, account, profile }) {
+      // Login por credenciais: o objeto `user` já vem do nosso banco.
       if (user) {
         token.role = user.role;
         token.isBlocked = user.isBlocked;
       }
+
+      // Login pelo Google: faz upsert do usuário no nosso banco e aponta o
+      // token para o User.id local (todas as relações dependem dele).
+      if (account?.provider === "google" && profile?.email) {
+        const email = profile.email.toLowerCase();
+        const name = (profile.name as string | undefined) ?? email.split("@")[0];
+        const image = (profile.picture as string | undefined) ?? null;
+
+        const dbUser = await prisma.user.upsert({
+          where: { email },
+          // Não toca em passwordHash: se a conta já existe por senha, ambos os
+          // métodos passam a funcionar; e-mail do Google é considerado verificado.
+          update: { emailVerified: new Date(), ...(image ? { image } : {}) },
+          create: {
+            name,
+            email,
+            image,
+            emailVerified: new Date()
+          },
+          select: { id: true, role: true, isBlocked: true }
+        });
+
+        token.sub = dbUser.id;
+        token.role = dbUser.role;
+        token.isBlocked = dbUser.isBlocked;
+      }
+
       return token;
     },
     async session({ session, token }) {
