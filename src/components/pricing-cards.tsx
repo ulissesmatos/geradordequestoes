@@ -1,8 +1,7 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { Check, MoveRight, Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
+import { PaymentMethodModal } from "@/components/payment-method-modal";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -17,18 +16,23 @@ type PricingPlan = {
   features: string[];
   priceCents: number;
   aiGenerationsPerDay: number;
+  stripePriceId?: string | null;
 };
 
 export function PricingCards({
   plans,
   compact = false,
   headline = "Planos para estudar com IA todos os dias.",
-  subheadline = "Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados e revisões pelo painel."
+  subheadline = "Escolha um plano ativo e libere a geração de questões, simulados e revisões pelo painel.",
+  hasStripe = true,
+  hasPix = true
 }: {
   plans: PricingPlan[];
   compact?: boolean;
   headline?: string;
   subheadline?: string;
+  hasStripe?: boolean;
+  hasPix?: boolean;
 }) {
   return (
     <section className={cn("w-full", compact ? "py-12" : "py-16 lg:py-24")}>
@@ -53,6 +57,7 @@ export function PricingCards({
           <div className="grid gap-5 pt-12 md:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => {
               const highlighted = Boolean(plan.isHighlighted);
+              const priceFormatted = formatMoney(plan.priceCents);
               return (
                 <Card
                   key={plan.id}
@@ -78,7 +83,7 @@ export function PricingCards({
                   <CardContent>
                     <div className="flex flex-col gap-7">
                       <p className="flex items-end gap-2">
-                        <span className="text-4xl font-semibold tracking-tight">{formatMoney(plan.priceCents)}</span>
+                        <span className="text-4xl font-semibold tracking-tight">{priceFormatted}</span>
                         <span className="pb-1 text-sm text-[var(--muted-foreground)]">/ mês</span>
                       </p>
                       <div className="space-y-4 text-sm">
@@ -86,18 +91,15 @@ export function PricingCards({
                           <Feature key={feature}>{feature}</Feature>
                         ))}
                       </div>
-                      <div className="grid gap-2">
-                        <Button asChild variant={highlighted ? "default" : "outline"} className="w-full">
-                          <Link href={`/checkout/stripe?plan=${plan.slug}`}>
-                            {plan.ctaText || "Assinar com cartão"} <MoveRight className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button asChild variant="outline" className="w-full">
-                          <Link href={`/checkout/mercado-pago?plan=${plan.slug}`}>
-                            Pagar com Pix
-                          </Link>
-                        </Button>
-                      </div>
+                      <PaymentMethodModal
+                        planSlug={plan.slug}
+                        planName={plan.name}
+                        planPrice={priceFormatted}
+                        highlighted={highlighted}
+                        ctaText={plan.ctaText}
+                        hasStripe={hasStripe && !!plan.stripePriceId}
+                        hasPix={hasPix}
+                      />
                     </div>
                   </CardContent>
                 </Card>

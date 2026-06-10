@@ -10,15 +10,18 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
-  const [plans, pricingContent, appSettings] = await Promise.all([
+  const [plans, pricingContent, appSettings, paymentSettings] = await Promise.all([
     prisma.subscriptionPlan.findMany({
       where: { isActive: true },
       orderBy: [{ displayOrder: "asc" }, { priceCents: "asc" }]
     }),
     getPricingContent(),
-    getAppSettings()
+    getAppSettings(),
+    prisma.paymentGatewaySetting.findUnique({ where: { id: "default" } })
   ]);
   const pricedPlans = plans.map((plan) => ({ ...plan, features: planFeatures(plan) }));
+  const hasStripe = !!paymentSettings?.stripeSecretKey;
+  const hasPix = !!paymentSettings?.mercadoPagoAccessToken;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -48,7 +51,7 @@ export default async function PricingPage() {
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 md:px-6">
-        <PricingCards plans={pricedPlans} headline={pricingContent.headline} subheadline={pricingContent.subheadline} />
+        <PricingCards plans={pricedPlans} headline={pricingContent.headline} subheadline={pricingContent.subheadline} hasStripe={hasStripe} hasPix={hasPix} />
       </div>
     </main>
   );
