@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Check, X } from "lucide-react";
 import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
+import { ReportQuestionButton } from "@/components/report-question-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -72,7 +73,10 @@ export function QuestionRunner({
               <div key={question.id} className="rounded-md border border-[var(--border)] p-4">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
-                  <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
+                  <div className="flex items-center gap-1">
+                    <ReportQuestionButton questionId={question.id} />
+                    <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
+                  </div>
                 </div>
                 <p className="mt-1">{question.statement}</p>
                 <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
@@ -122,7 +126,10 @@ export function QuestionRunner({
       <CardHeader>
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Questão {index + 1} de {questions.length}</CardTitle>
-          <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
+          <div className="flex items-center gap-1">
+            <ReportQuestionButton questionId={current.id} />
+            <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
+          </div>
         </div>
         <p className="text-sm text-[var(--muted-foreground)]">
           {current.subject.name} / {current.topic.name} / {current.format === "MULTIPLA_ESCOLHA" ? "Múltipla escolha" : "Certo/Errado"}

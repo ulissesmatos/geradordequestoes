@@ -10,6 +10,7 @@ import {
   Building2,
   CreditCard,
   FileQuestion,
+  Flag,
   FolderCog,
   Inbox,
   ListChecks,
@@ -54,6 +55,8 @@ const groups = [
       { href: "/admin/questoes", label: "Questões", icon: FileQuestion },
       { href: "/admin/questoes/gerar", label: "Gerar questões", icon: Bot },
       { href: "/admin/questoes/revisar", label: "Revisar questões", icon: ListChecks },
+      { href: "/admin/feedbacks", label: "Feedback de questões", icon: Flag },
+      { href: "/admin/referencias", label: "Materiais de referência", icon: BookOpen },
       { href: "/admin/materiais-ia", label: "Materiais IA", icon: FolderCog },
       { href: "/admin/materias", label: "Matérias", icon: BookOpen },
       { href: "/admin/assuntos", label: "Assuntos", icon: ListChecks }

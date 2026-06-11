@@ -167,6 +167,7 @@ model User {
   subscriptionEvents SubscriptionEvent[]
   verificationCodes  EmailVerificationCode[]
   passwordResetCodes PasswordResetCode[]
+  questionFeedbacks  QuestionFeedback[]
 }
 
 model EmailVerificationCode {
@@ -204,6 +205,8 @@ model AiProviderSetting {
   siteUrl              String?
   appName              String?
   chatPresetUsageLevel AiChatPresetUsageLevel @default(MEDIO)
+  webSearchEnabled     Boolean                @default(false)
+  webSearchApiKey      String?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 }
@@ -265,6 +268,7 @@ model Question {
   options       QuestionOption[]
   attempts      QuestionAttempt[]
   favorites     FavoriteQuestion[]
+  feedbacks     QuestionFeedback[]
 }
 
 model QuestionOption {
@@ -640,6 +644,71 @@ model TeamCharge {
   teamAccount TeamAccount @relation(fields: [teamAccountId], references: [id], onDelete: Cascade)
 
   @@index([teamAccountId])
+}
+
+enum FeedbackType {
+  GABARITO_ERRADO
+  ENUNCIADO_CONFUSO
+  DESATUALIZADA
+  OUTRO
+}
+
+enum FeedbackStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+}
+
+model QuestionFeedback {
+  id         String         @id @default(cuid())
+  userId     String
+  questionId String
+  type       FeedbackType   @default(OUTRO)
+  message    String?
+  status     FeedbackStatus @default(PENDING)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([status])
+  @@index([questionId])
+}
+
+enum ReferenceKind {
+  PROVA
+  GABARITO
+  LEI
+  RESUMO
+  OUTRO
+}
+
+model ReferenceDocument {
+  id          String           @id @default(cuid())
+  title       String
+  source      String?
+  kind        ReferenceKind    @default(OUTRO)
+  subjectId   String?
+  topicId     String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  chunks      ReferenceChunk[]
+}
+
+model ReferenceChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  subjectId  String?
+  topicId    String?
+  content    String
+  ordinal    Int
+  createdAt  DateTime          @default(now())
+  document   ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([subjectId])
+  @@index([topicId])
 }
 
 model PaymentCheckoutSession {

@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { formatReferenceContext, getReferenceContext } from "@/lib/reference";
 
 export async function generateAndSaveQuestionSet(input: {
   user: Pick<User, "id" | "role">;
@@ -31,6 +32,17 @@ export async function generateAndSaveQuestionSet(input: {
     prisma.topic.findUniqueOrThrow({ where: { id: input.topicId } })
   ]);
 
+  // Grounding: anexa trechos de material real (provas/gabaritos/leis cadastrados)
+  // ao contexto, para questões fiéis ao estilo e gabarito da banca.
+  const referenceHits = await getReferenceContext({
+    subjectId: input.subjectId,
+    topicId: input.topicId,
+    query: [input.prompt, topic.name, subject.name].filter(Boolean).join(" "),
+    limit: 4
+  });
+  const referenceBlock = formatReferenceContext(referenceHits);
+  const context = [referenceBlock, input.context].filter(Boolean).join("\n\n").slice(0, 12000) || undefined;
+
   const generated = await generateQuestions({
     subject: subject.name,
     topic: topic.name,
@@ -40,7 +52,7 @@ export async function generateAndSaveQuestionSet(input: {
     alternativesCount: input.alternativesCount,
     mode: input.mode,
     prompt: input.prompt,
-    context: input.context
+    context
   });
 
   const title = input.title || buildQuestionSetTitle(input.mode, subject.name, topic.name);

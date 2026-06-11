@@ -19,6 +19,8 @@ export default async function AiSettingsPage() {
   const stored = await prisma.aiProviderSetting.findUnique({ where: { id: "default" } });
   const apiKeyDecrypted = stored?.apiKey ? decryptSecret(stored.apiKey) : null;
   const apiKeyMasked = maskSecret(stored?.apiKey ?? null);
+  const webSearchMasked = maskSecret(stored?.webSearchApiKey ?? null);
+  const webSearchEnabled = stored?.webSearchEnabled ?? false;
 
   const settings = stored ?? {
     provider: AiProvider.OPENAI,
@@ -118,6 +120,28 @@ export default async function AiSettingsPage() {
                   Chave: {apiKeyDecrypted ? <span className="font-semibold text-[var(--success)]">✓ Configurada</span> : <span className="font-semibold text-[var(--warning)]">⚠ Não configurada (fallback env)</span>}
                 </div>
               </div>
+            </div>
+
+            {/* ── Busca na web (Tavily) ── */}
+            <div className="space-y-3 rounded-md border border-[var(--border)] p-4">
+              <div>
+                <p className="text-sm font-semibold">Busca na web (Tavily)</p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Permite que a IA busque informações atuais (editais, datas) via a tool <code>web_search</code> — funciona
+                  em qualquer provedor. Crie uma chave grátis em tavily.com.
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="webSearchEnabled" defaultChecked={webSearchEnabled} className="h-4 w-4" />
+                Ativar busca na web
+              </label>
+              <SecretInput
+                name="webSearchApiKey"
+                label="Tavily API key"
+                masked={webSearchMasked}
+                placeholder="tvly-..."
+                help="Deixe em branco para manter a chave atual. Marque “Remover chave” para limpar."
+              />
             </div>
 
             <SubmitButton>Salvar configuração</SubmitButton>

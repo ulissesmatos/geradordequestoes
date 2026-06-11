@@ -353,6 +353,18 @@ export async function sendTestEmailAction(formData: FormData) {
   revalidatePath("/admin/email");
 }
 
+export async function updateQuestionFeedbackStatusAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const statusRaw = String(formData.get("status") ?? "");
+  const status = (["PENDING", "REVIEWED", "RESOLVED"] as const).includes(statusRaw as never)
+    ? (statusRaw as "PENDING" | "REVIEWED" | "RESOLVED")
+    : "REVIEWED";
+  await prisma.questionFeedback.update({ where: { id }, data: { status } });
+  await logAdminAction(admin, { action: "update", entity: "QuestionFeedback", entityId: id, summary: `status=${status}` });
+  revalidatePath("/admin/feedbacks");
+}
+
 export async function toggleContactHandledAction(formData: FormData) {
   const admin = await requireAdmin();
   const id = String(formData.get("id") ?? "");
@@ -398,11 +410,15 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
 
   // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
   const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
+  const webSearchKeyUpdate = resolveSecretUpdate("webSearchApiKey", String(formData.get("webSearchApiKey") ?? "").trim());
+  const webSearchEnabled = formData.get("webSearchEnabled") === "on";
   await prisma.aiProviderSetting.upsert({
     where: { id: "default" },
     update: {
       provider,
       ...secretUpdate,
+      ...webSearchKeyUpdate,
+      webSearchEnabled,
       model,
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,
@@ -413,6 +429,8 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       id: "default",
       provider,
       apiKey: "apiKey" in secretUpdate ? secretUpdate.apiKey : null,
+      webSearchApiKey: "webSearchApiKey" in webSearchKeyUpdate ? webSearchKeyUpdate.webSearchApiKey : null,
+      webSearchEnabled,
       model,
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,

@@ -11,7 +11,9 @@ export async function getAiSettings() {
     baseUrl: stored?.baseUrl || "",
     siteUrl: stored?.siteUrl || "",
     appName: stored?.appName || "Questões Certo/Errado",
-    chatPresetUsageLevel: stored?.chatPresetUsageLevel ?? AiChatPresetUsageLevel.MEDIO
+    chatPresetUsageLevel: stored?.chatPresetUsageLevel ?? AiChatPresetUsageLevel.MEDIO,
+    webSearchEnabled: stored?.webSearchEnabled ?? false,
+    webSearchApiKey: decryptSecret(stored?.webSearchApiKey) || ""
   };
 }
 

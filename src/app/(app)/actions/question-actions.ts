@@ -1,6 +1,6 @@
 "use server";
 
-import { Difficulty, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus } from "@prisma/client";
+import { Difficulty, FeedbackType, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/guards";
@@ -113,6 +113,29 @@ export async function generateUserQuestionsAction(
 
     return { error: error instanceof Error ? error.message : "Erro ao gerar questões." };
   }
+}
+
+export async function reportQuestionAction(
+  _: { ok?: boolean; error?: string } | null,
+  formData: FormData
+): Promise<{ ok?: boolean; error?: string }> {
+  const user = await requireUser();
+  const questionId = String(formData.get("questionId") ?? "");
+  const typeRaw = String(formData.get("type") ?? "OUTRO");
+  const type = (Object.values(FeedbackType) as string[]).includes(typeRaw)
+    ? (typeRaw as FeedbackType)
+    : FeedbackType.OUTRO;
+  const message = String(formData.get("message") ?? "").trim().slice(0, 500) || null;
+
+  if (!questionId) return { error: "Questão inválida." };
+
+  // Um feedback por usuário por questão (upsert reabre como PENDING ao reenviar).
+  await prisma.questionFeedback.upsert({
+    where: { userId_questionId: { userId: user.id, questionId } },
+    update: { type, message, status: "PENDING" },
+    create: { userId: user.id, questionId, type, message }
+  });
+  return { ok: true };
 }
 
 export async function toggleFavoriteAction(formData: FormData) {

@@ -16,6 +16,8 @@ import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/questio
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
+import { searchReferenceChunks } from "@/lib/reference";
+import { webSearch } from "@/lib/ai/web-search";
 
 export type ToolExecutionResult = {
   resultForModel: string;
@@ -57,6 +59,10 @@ export async function executeToolCall(input: {
         return await runGetStudyHistory(input.user, rawArgs);
       case "generate_review_from_mistakes":
         return await runGenerateReview(input.user, input.sessionId, input.userPrompt, rawArgs);
+      case "search_reference_material":
+        return await runSearchReference(rawArgs);
+      case "web_search":
+        return await runWebSearch(rawArgs);
     }
   } catch (error) {
     return errorResult(
@@ -290,6 +296,66 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
       `Foco principal: **${target.subjectName} / ${target.topicName}**.`,
       `O bloco ficou salvo no seu histórico com ${questionSet.quantity} questões. Você pode responder agora ou voltar nele depois.`
     ].join("\n")
+  };
+}
+
+async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult> {
+  const parsed = parseArgs(chatTools.search_reference_material.schema, rawArgs);
+  if (!parsed.ok) return parsed.result;
+  const args = parsed.args;
+
+  // Resolve matéria/assunto pelos nomes, se informados.
+  let subjectId: string | null = null;
+  let topicId: string | null = null;
+  if (args.subjectName) {
+    const subjects = await prisma.subject.findMany({ include: { topics: true } });
+    const subject = matchByName(subjects, args.subjectName);
+    if (subject) {
+      subjectId = subject.id;
+      if (args.topicName) topicId = matchByName(subject.topics, args.topicName)?.id ?? null;
+    }
+  }
+
+  const hits = await searchReferenceChunks({ query: args.query, subjectId, topicId, limit: args.limit ?? 5 });
+  if (hits.length === 0) {
+    return {
+      resultForModel: JSON.stringify({
+        ok: true,
+        results: [],
+        note: "Nenhum material de referência encontrado para esses termos. Responda com seu conhecimento, deixando claro que não há material interno sobre isso."
+      })
+    };
+  }
+  return {
+    resultForModel: JSON.stringify({
+      ok: true,
+      results: hits.map((h) => ({ title: h.title, source: h.source, excerpt: h.content.slice(0, 700) })),
+      note: "Use estes trechos reais para fundamentar a resposta e conferir o gabarito. Cite a fonte (título) ao usuário."
+    })
+  };
+}
+
+async function runWebSearch(rawArgs: unknown): Promise<ToolExecutionResult> {
+  const parsed = parseArgs(chatTools.web_search.schema, rawArgs);
+  if (!parsed.ok) return parsed.result;
+  const args = parsed.args;
+
+  const outcome = await webSearch(args.query, args.maxResults ?? 5);
+  if (!outcome.ok) {
+    return {
+      resultForModel: JSON.stringify({
+        ok: false,
+        reason: outcome.reason,
+        note: "A busca na web não está disponível agora. Responda com seu conhecimento e avise que não foi possível buscar dados recentes."
+      })
+    };
+  }
+  return {
+    resultForModel: JSON.stringify({
+      ok: true,
+      results: outcome.results,
+      note: "Resultados da web. Cite título e URL ao usuário e deixe claro que são fontes externas."
+    })
   };
 }
 

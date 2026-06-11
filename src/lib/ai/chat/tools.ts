@@ -46,6 +46,24 @@ export const chatTools = {
       quantity: z.number().int().min(1).max(15).optional(),
       format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]).optional()
     })
+  },
+  search_reference_material: {
+    description:
+      "Busca em materiais REAIS cadastrados (provas, gabaritos, leis, resumos) por palavra-chave. Use para fundamentar explicações e CONFERIR o gabarito antes de afirmar, especialmente em pontos polêmicos. Cite a fonte ao usuário quando usar.",
+    schema: z.object({
+      query: z.string().describe("Termos de busca, ex.: 'crase antes de pronomes' ou 'art. 37 CF princípios'."),
+      subjectName: z.string().optional().describe("Filtra por matéria cadastrada, se aplicável."),
+      topicName: z.string().optional().describe("Filtra por assunto cadastrado, se aplicável."),
+      limit: z.number().int().min(1).max(8).optional()
+    })
+  },
+  web_search: {
+    description:
+      "Busca informações ATUAIS na web (editais, datas, notícias recentes, mudanças de lei). Use apenas quando o conhecimento interno pode estar desatualizado ou o usuário pede algo recente. Cite as fontes (título e URL) ao usuário.",
+    schema: z.object({
+      query: z.string().describe("Consulta de busca, ex.: 'edital concurso PF 2026 datas'."),
+      maxResults: z.number().int().min(1).max(8).optional()
+    })
   }
 } as const;
 
