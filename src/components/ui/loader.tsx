@@ -1,5 +1,4 @@
 "use client";
-
 import { cn } from "@/lib/utils";
 
 export function Loader({
@@ -20,11 +19,12 @@ export function Loader({
       </span>
     );
   }
-
+  
   return (
     <span
       className={cn(
-        "inline-block animate-text-shimmer bg-[linear-gradient(110deg,var(--muted-foreground),45%,var(--primary),55%,var(--muted-foreground))] bg-[length:250%_100%] bg-clip-text text-sm font-medium text-transparent",
+        // Substituímos o var(--muted-foreground) por black nas pontas do gradiente
+        "inline-block animate-text-shimmer bg-[linear-gradient(110deg,black,45%,var(--primary),55%,black)] bg-[length:250%_100%] bg-clip-text text-sm font-medium text-transparent",
         className
       )}
     >
