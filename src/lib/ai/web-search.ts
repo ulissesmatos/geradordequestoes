@@ -1,6 +1,6 @@
 import { getAiSettings } from "@/lib/ai/settings";
 
-export type WebSearchResult = { title: string; url: string; content: string };
+export type WebSearchResult = { title: string; url: string; content: string; publishedDate?: string };
 
 export type WebSearchOutcome =
   | { ok: true; results: WebSearchResult[] }
@@ -25,18 +25,23 @@ export async function webSearch(query: string, maxResults = 5): Promise<WebSearc
         api_key: apiKey,
         query,
         max_results: Math.min(Math.max(maxResults, 1), 8),
-        search_depth: "basic",
+        // "advanced" traz trechos mais relevantes e completos — melhor para reduzir
+        // imprecisão/alucinação do modelo (custa mais créditos Tavily que "basic").
+        search_depth: "advanced",
         include_answer: false
       })
     });
     if (!response.ok) {
       return { ok: false, reason: "error", message: `Tavily retornou ${response.status}.` };
     }
-    const data = (await response.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+    const data = (await response.json()) as {
+      results?: Array<{ title?: string; url?: string; content?: string; published_date?: string }>;
+    };
     const results = (data.results ?? []).map((r) => ({
       title: r.title ?? "",
       url: r.url ?? "",
-      content: (r.content ?? "").slice(0, 600)
+      content: (r.content ?? "").slice(0, 800),
+      ...(r.published_date ? { publishedDate: r.published_date } : {})
     }));
     return { ok: true, results };
   } catch (error) {

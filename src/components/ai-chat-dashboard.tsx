@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Link2, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Sparkles, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { MarkdownContent } from "@/components/markdown-content";
@@ -19,12 +19,15 @@ type ChatAttachment = {
   name: string;
 };
 
+type ChatSource = { title: string; url: string };
+
 type ChatMessage = {
   id: string;
   role: "USER" | "ASSISTANT" | "SYSTEM";
   content: string;
   questionSetId?: string | null;
   studyMaterialId?: string | null;
+  sources?: ChatSource[];
   attachments?: ChatAttachment[];
 };
 
@@ -115,6 +118,7 @@ export function AiChatDashboard({
   const [typedResponse, setTypedResponse] = useState("");
   const [typedSetId, setTypedSetId] = useState<string | null>(null);
   const [typedMaterialId, setTypedMaterialId] = useState<string | null>(null);
+  const [typedSources, setTypedSources] = useState<ChatSource[]>([]);
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
@@ -172,6 +176,7 @@ export function AiChatDashboard({
     setTypedResponse("");
     setTypedSetId(null);
     setTypedMaterialId(null);
+    setTypedSources([]);
     setTypedMessageId(null);
     setMessage(initialPrompt ?? "");
     setPastedBlocks([]);
@@ -321,6 +326,7 @@ export function AiChatDashboard({
     setTypedResponse("");
     setTypedSetId(null);
     setTypedMaterialId(null);
+    setTypedSources([]);
     setTypedMessageId(null);
     setStreamError(null);
     setToolStatus(null);
@@ -377,6 +383,7 @@ export function AiChatDashboard({
           } else if (event === "done") {
             setTypedSetId((data.questionSetId as string | null) ?? null);
             setTypedMaterialId((data.studyMaterialId as string | null) ?? null);
+            setTypedSources(Array.isArray(data.sources) ? (data.sources as ChatSource[]) : []);
             setTypedMessageId((data.messageId as string | null) ?? null);
             setIsSubmitting(false);
             setToolStatus(null);
@@ -523,6 +530,7 @@ export function AiChatDashboard({
               {typedResponse && (
                 <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
                   <MarkdownContent content={typedResponse} compact />
+                  <SourceLinks sources={typedSources} />
                   {(typedSetId || typedMaterialId) && typedMessageId && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {typedSetId && (
@@ -817,6 +825,37 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
   );
 }
 
+function hostOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/** Fontes consultadas (busca web) como ícones de link clicáveis. */
+function SourceLinks({ sources }: { sources?: ChatSource[] }) {
+  if (!sources || sources.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--primary-soft-foreground)]/15 pt-2">
+      <span className="text-xs font-medium text-[var(--primary-soft-foreground)]/70">Fontes:</span>
+      {sources.map((source, index) => (
+        <a
+          key={`${source.url}-${index}`}
+          href={source.url}
+          target="_blank"
+          rel="noreferrer"
+          title={source.title}
+          className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-[var(--primary-soft-foreground)]/20 bg-[var(--surface)]/40 px-2 py-0.5 text-xs text-[var(--primary-soft-foreground)] transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]"
+        >
+          <Link2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{hostOf(source.url)}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "USER";
   return (
@@ -867,6 +906,7 @@ function ChatBubble({ message }: { message: ChatMessage }) {
             )}
           </div>
         )}
+        {!isUser && <SourceLinks sources={message.sources} />}
       </div>
     </div>
   );

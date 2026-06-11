@@ -17,13 +17,25 @@ export type ToolTraceEntry = {
 
 export type ChatTurnEvent = { type: "tool_started"; name: string } | { type: "delta"; text: string };
 
+export type ChatSource = { title: string; url: string };
+
 export type ChatTurnResult = {
   message: string;
   model: string;
   questionSetId?: string;
   studyMaterialId?: string;
   toolTrace: ToolTraceEntry[];
+  sources?: ChatSource[];
 };
+
+/** Acumula fontes únicas (por URL), limitando a 6. */
+function pushSources(into: ChatSource[], from?: ChatSource[]) {
+  if (!from?.length) return;
+  for (const source of from) {
+    if (into.length >= 6) break;
+    if (!into.some((existing) => existing.url === source.url)) into.push(source);
+  }
+}
 
 export async function runChatTurn(input: {
   user: { id: string; role: Role };
@@ -44,6 +56,7 @@ export async function runChatTurn(input: {
   const tools = getNeutralToolSpecs();
 
   const toolTrace: ToolTraceEntry[] = [];
+  const collectedSources: ChatSource[] = [];
   let questionSetId: string | undefined;
   let studyMaterialId: string | undefined;
   let lastFallbackMessage: string | undefined;
@@ -112,6 +125,7 @@ export async function runChatTurn(input: {
           materialCount += 1;
         }
         if (execution.fallbackMessage) lastFallbackMessage = execution.fallbackMessage;
+        pushSources(collectedSources, execution.sources);
       }
 
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: resultForModel });
@@ -130,7 +144,8 @@ export async function runChatTurn(input: {
     model: settings.model,
     questionSetId,
     studyMaterialId,
-    toolTrace
+    toolTrace,
+    sources: collectedSources.length ? collectedSources : undefined
   };
 }
 
@@ -152,6 +167,7 @@ export async function streamChatTurn(input: {
   const tools = getNeutralToolSpecs();
 
   const toolTrace: ToolTraceEntry[] = [];
+  const collectedSources: ChatSource[] = [];
   let questionSetId: string | undefined;
   let studyMaterialId: string | undefined;
   let lastFallbackMessage: string | undefined;
@@ -221,6 +237,7 @@ export async function streamChatTurn(input: {
           materialCount += 1;
         }
         if (execution.fallbackMessage) lastFallbackMessage = execution.fallbackMessage;
+        pushSources(collectedSources, execution.sources);
       }
 
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: resultForModel });
@@ -241,7 +258,8 @@ export async function streamChatTurn(input: {
     model: settings.model,
     questionSetId,
     studyMaterialId,
-    toolTrace
+    toolTrace,
+    sources: collectedSources.length ? collectedSources : undefined
   };
 }
 

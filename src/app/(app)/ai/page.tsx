@@ -68,6 +68,7 @@ export default async function AiChatPage({
           content: message.content,
           questionSetId: message.questionSetId,
           studyMaterialId: message.studyMaterialId,
+          sources: extractSources(message.metadata),
           attachments: message.attachments.map((attachment) => ({
             id: attachment.id,
             kind: attachment.kind,
@@ -78,4 +79,14 @@ export default async function AiChatPage({
       />
     </div>
   );
+}
+
+/** Extrai as fontes (busca web) do metadata da mensagem, com validação leve. */
+function extractSources(metadata: unknown): { title: string; url: string }[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const raw = (metadata as { sources?: unknown }).sources;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((s): s is { title?: string; url: string } => !!s && typeof (s as { url?: unknown }).url === "string")
+    .map((s) => ({ title: String(s.title || s.url), url: s.url }));
 }

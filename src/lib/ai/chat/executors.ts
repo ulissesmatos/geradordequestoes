@@ -19,12 +19,16 @@ import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 import { searchReferenceChunks } from "@/lib/reference";
 import { webSearch } from "@/lib/ai/web-search";
 
+export type ToolSource = { title: string; url: string };
+
 export type ToolExecutionResult = {
   resultForModel: string;
   questionSetId?: string;
   studyMaterialId?: string;
   /** Confirmação determinística usada se o modelo não redigir a resposta final. */
   fallbackMessage?: string;
+  /** Fontes externas consultadas (busca web) — viram ícones de link na resposta. */
+  sources?: ToolSource[];
 };
 
 type ToolUser = { id: string; role: Role };
@@ -340,7 +344,7 @@ async function runWebSearch(rawArgs: unknown): Promise<ToolExecutionResult> {
   if (!parsed.ok) return parsed.result;
   const args = parsed.args;
 
-  const outcome = await webSearch(args.query, args.maxResults ?? 5);
+  const outcome = await webSearch(args.query, args.maxResults ?? 6);
   if (!outcome.ok) {
     return {
       resultForModel: JSON.stringify({
@@ -354,8 +358,9 @@ async function runWebSearch(rawArgs: unknown): Promise<ToolExecutionResult> {
     resultForModel: JSON.stringify({
       ok: true,
       results: outcome.results,
-      note: "Resultados da web. Cite título e URL ao usuário e deixe claro que são fontes externas."
-    })
+      note: "Resultados da web. NÃO escreva uma seção de 'Fontes' nem cole URLs no texto — o app exibe automaticamente os links consultados como ícones ao final da resposta. Use as informações e priorize as fontes mais confiáveis."
+    }),
+    sources: outcome.results.filter((r) => r.url).map((r) => ({ title: r.title || r.url, url: r.url }))
   };
 }
 

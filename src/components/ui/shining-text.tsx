@@ -12,7 +12,8 @@ export function ShiningText({ text, className }: { text: string; className?: str
   return (
     <motion.span
       className={cn(
-        "bg-[linear-gradient(110deg,var(--muted-foreground),35%,var(--primary),50%,var(--muted-foreground),75%,var(--muted-foreground))] bg-[length:200%_100%] bg-clip-text text-sm font-medium text-transparent",
+        // Base cinza médio com banda cinza-clara deslizante (mais visível e suave).
+        "bg-[linear-gradient(110deg,#94a3b8,35%,#f1f5f9,50%,#94a3b8,75%,#94a3b8)] bg-[length:200%_100%] bg-clip-text text-sm font-medium text-transparent",
         className
       )}
       initial={{ backgroundPosition: "200% 0" }}
