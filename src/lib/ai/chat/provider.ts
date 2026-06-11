@@ -226,7 +226,7 @@ async function* streamChatClaude(
     body: JSON.stringify({
       model: settings.model,
       max_tokens: maxOutputTokens,
-      system: payload.system,
+      system: toClaudeSystem(payload.system),
       messages: payload.messages,
       stream: true,
       ...(tools.length
@@ -351,6 +351,18 @@ type ClaudeContentBlock =
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
+/**
+ * Converte o system prompt para o formato de blocos do Claude com prompt caching.
+ * O breakpoint no último (único) bloco de system faz o Claude cachear tools + system
+ * juntos (ordem de render: tools → system) — grande ganho de TTFT e custo em
+ * conversas multi-turno, já que o system é reconstruído a cada turno mas costuma
+ * repetir o prefixo. TTL padrão de 5 min; valida via usage.cache_read_input_tokens.
+ */
+function toClaudeSystem(system: string | undefined) {
+  if (!system) return undefined;
+  return [{ type: "text" as const, text: system, cache_control: { type: "ephemeral" as const } }];
+}
+
 function toClaudePayload(messages: NeutralMessage[]) {
   const systemParts: string[] = [];
   const converted: Array<{ role: "user" | "assistant"; content: string | ClaudeContentBlock[] }> = [];
@@ -417,7 +429,7 @@ async function completeWithClaude(
     body: JSON.stringify({
       model: settings.model,
       max_tokens: maxOutputTokens,
-      system: payload.system,
+      system: toClaudeSystem(payload.system),
       messages: payload.messages,
       ...(tools.length
         ? {

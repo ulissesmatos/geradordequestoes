@@ -7,7 +7,7 @@ import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, use
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
-import { Loader } from "@/components/ui/loader";
+import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
@@ -164,7 +164,7 @@ export function AiChatDashboard({
     const timer = window.setInterval(() => {
       index = (index + 1) % loadingLabels.length;
       setLoadingText(loadingLabels[index]);
-    }, 1600);
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [isSubmitting]);
 
@@ -548,7 +548,7 @@ export function AiChatDashboard({
               {isSubmitting && (
                 <div className="flex justify-start">
                   <div className="flex max-w-[88%] items-center gap-3 rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
-                    <Loader variant="text-shimmer" text={toolStatus ?? loadingText} />
+                    <ShiningText text={toolStatus ?? loadingText} />
                   </div>
                 </div>
               )}

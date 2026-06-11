@@ -75,13 +75,9 @@ export async function POST(request: Request) {
           }
         });
 
-        await recordAiUsageEvent({ user, type: AiUsageEventType.CHAT_RESPONSE, model: turn.model, prompt });
-        await summarizeSessionIfNeeded(session.id).catch(() => undefined);
-
-        revalidatePath("/ai");
-        if (turn.questionSetId) revalidatePath("/biblioteca");
-        if (turn.studyMaterialId) revalidatePath("/materiais");
-
+        // Finaliza o turno para o usuário ANTES do trabalho pós-stream: a resposta
+        // já foi transmitida; não faz sentido segurar o "done" por uma sumarização
+        // (que é outra chamada de IA) ou pela contagem de uso.
         send("done", {
           sessionId: session.id,
           messageId: assistant.id,
@@ -89,6 +85,15 @@ export async function POST(request: Request) {
           questionSetId: turn.questionSetId ?? null,
           studyMaterialId: turn.studyMaterialId ?? null
         });
+
+        await recordAiUsageEvent({ user, type: AiUsageEventType.CHAT_RESPONSE, model: turn.model, prompt });
+
+        revalidatePath("/ai");
+        if (turn.questionSetId) revalidatePath("/biblioteca");
+        if (turn.studyMaterialId) revalidatePath("/materiais");
+
+        // Sumarização (chamada de IA extra) roda em segundo plano — nunca atrasa o turno.
+        await summarizeSessionIfNeeded(session.id).catch(() => undefined);
       } catch (error) {
         await recordAiUsageEvent({
           user,
