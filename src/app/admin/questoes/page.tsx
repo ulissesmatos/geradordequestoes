@@ -1,4 +1,5 @@
 import { createQuestionAction, deleteQuestionAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +42,7 @@ export default async function AdminQuestionsPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Questões</h1>
+      <AdminPageHeader title="Questões" description="Crie questões manuais e gerencie o banco de questões." />
       <Card>
         <CardHeader><CardTitle>Nova questão manual Certo/Errado</CardTitle></CardHeader>
         <CardContent>

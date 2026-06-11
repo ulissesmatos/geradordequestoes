@@ -1,4 +1,5 @@
 import { createTopicAction, deleteTopicAction, updateTopicAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +15,7 @@ export default async function AdminTopicsPage() {
   });
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Assuntos</h1>
+      <AdminPageHeader title="Assuntos" description="Tópicos vinculados a cada matéria." />
       <Card>
         <CardHeader><CardTitle>Novo assunto</CardTitle></CardHeader>
         <CardContent>

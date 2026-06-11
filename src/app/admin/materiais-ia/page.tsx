@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StudyMaterialStatus } from "@prisma/client";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 
@@ -27,10 +28,7 @@ export default async function AdminAiMaterialsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Materiais IA</h1>
-        <p className="text-[var(--muted-foreground)]">Materiais de estudo privados gerados pelos alunos via chat.</p>
-      </div>
+      <AdminPageHeader title="Materiais IA" description="Materiais de estudo privados gerados pelos alunos via chat." />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Metric title="Total" value={total} />

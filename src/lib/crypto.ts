@@ -30,6 +30,38 @@ export function encryptSecret(plain: string): string {
   return `${PREFIX}${iv.toString("base64")}:${tag.toString("base64")}:${encrypted.toString("base64")}`;
 }
 
+/** Sentinela enviado pelo SecretInput quando o admin marca "Remover chave". */
+export const CLEAR_SECRET = "__CLEAR__";
+
+/**
+ * Resolve o valor de um campo de segredo vindo de um formulário, no padrão usado
+ * por todas as telas de settings do admin:
+ * - vazio        → `{}` (mantém o que já está salvo)
+ * - `__CLEAR__`  → `{ [field]: null }` (remove a chave)
+ * - qualquer texto → `{ [field]: encryptSecret(texto) }` (cifra e salva)
+ */
+export function resolveSecretUpdate<K extends string>(field: K, raw: string): Partial<Record<K, string | null>> {
+  const value = (raw ?? "").trim();
+  if (!value) return {};
+  if (value === CLEAR_SECRET) return { [field]: null } as Record<K, null>;
+  return { [field]: encryptSecret(value) } as Record<K, string>;
+}
+
+/**
+ * Mascara um segredo cifrado para exibição: mostra o prefixo + bullets.
+ * Retorna null quando não há valor configurado.
+ */
+export function maskSecret(encrypted: string | null | undefined, prefixLen = 8): string | null {
+  if (!encrypted) return null;
+  try {
+    const plain = decryptSecret(encrypted);
+    if (!plain) return null;
+    return `${plain.slice(0, prefixLen)}${"•".repeat(12)}`;
+  } catch {
+    return "••••••••••••";
+  }
+}
+
 /**
  * Decifra um segredo. Valores em texto puro (legado) são retornados como estão.
  * Se for cifrado mas faltar a chave/estiver corrompido, retorna "" (tratado como não configurado).

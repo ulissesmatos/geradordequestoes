@@ -5,6 +5,9 @@ import Google from "next-auth/providers/google";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { getAppSettings } from "@/lib/app-settings";
+import { sendEmail } from "@/lib/email/send";
+import { welcomeEmailTemplate } from "@/lib/email/templates";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -72,6 +75,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const name = (profile.name as string | undefined) ?? email.split("@")[0];
         const image = (profile.picture as string | undefined) ?? null;
 
+        const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+
         const dbUser = await prisma.user.upsert({
           where: { email },
           // Não toca em passwordHash: se a conta já existe por senha, ambos os
@@ -89,6 +94,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.sub = dbUser.id;
         token.role = dbUser.role;
         token.isBlocked = dbUser.isBlocked;
+
+        // Boas-vindas apenas para contas recém-criadas via Google (best-effort).
+        if (!existing) {
+          try {
+            const appSettings = await getAppSettings();
+            const tpl = welcomeEmailTemplate(name, appSettings.appName);
+            await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+          } catch {
+            // ignora
+          }
+        }
       }
 
       return token;

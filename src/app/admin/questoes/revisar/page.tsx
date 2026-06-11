@@ -1,5 +1,6 @@
 import { QuestionStatus } from "@prisma/client";
 import { reviewQuestionAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -15,7 +16,7 @@ export default async function ReviewQuestionsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Revisar questões</h1>
+      <AdminPageHeader title="Revisar questões" description="Questões em rascunho ou aguardando revisão." />
       {questions.length === 0 && <p className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4">Nenhuma questão pendente.</p>}
       {questions.map((question) => (
         <Card key={question.id}>

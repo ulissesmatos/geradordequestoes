@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
-import { PaymentProvider } from "@prisma/client";
+import { MercadoPagoCheckoutMode, PaymentProvider } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckoutCpfStep } from "@/app/checkout/mercado-pago/cpf-step";
 import { requireUser } from "@/lib/guards";
+import { createPixPayment } from "@/lib/mercado-pago";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
+import { isTeamGrantedPlan } from "@/lib/teams";
 import { prisma } from "@/lib/prisma";
 import { onlyDigits } from "@/lib/validation/cpf";
 
@@ -52,8 +54,12 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
         />
       );
     }
+    // Plano cedido por empresa (teams): sem crédito — quem pagou foi a empresa.
+    // O assinante paga o valor cheio e, ao concluir, sai do pacote (vaga revogada
+    // automaticamente em activatePaidSubscription).
+    const teamGranted = await isTeamGrantedPlan(user.id, activeSubscription.planId);
     // Upgrade Pix → Pix: abate o valor proporcional restante da assinatura atual.
-    const credit = remainingCreditCents(activeSubscription);
+    const credit = teamGranted ? 0 : remainingCreditCents(activeSubscription);
     amountCents = Math.max(plan.priceCents - credit, 100);
   }
 
@@ -74,6 +80,35 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
     }
   });
+
+  const description =
+    amountCents < plan.priceCents ? `${plan.name} (upgrade com crédito do plano atual)` : plan.name;
+
+  // ── Checkout transparente: gera o Pix pela API de Payments e exibe o QR Code
+  // em página própria, sem redirecionar para o Mercado Pago. ──
+  if (settings.mercadoPagoCheckoutMode === MercadoPagoCheckoutMode.TRANSPARENT) {
+    let payment;
+    try {
+      payment = await createPixPayment({
+        accessToken: settings.mercadoPagoAccessToken,
+        amountCents,
+        description,
+        payer: { email: user.email, firstName, lastName: lastName || undefined, cpf },
+        externalReference: localCheckout.id,
+        notificationUrl: `${appUrl()}/api/webhooks/mercado-pago`,
+        expiresAt: localCheckout.expiresAt ?? new Date(Date.now() + 1000 * 60 * 60 * 24)
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível criar o pagamento Pix.";
+      return <CheckoutError title="Erro no Mercado Pago" message={message} />;
+    }
+    await prisma.paymentCheckoutSession.update({
+      where: { id: localCheckout.id },
+      data: { externalId: payment.id, metadata: payment.raw as object }
+    });
+    redirect(`/checkout/pix/${localCheckout.id}`);
+  }
+
   const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
     method: "POST",
     headers: {
@@ -83,7 +118,7 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     body: JSON.stringify({
       items: [
         {
-          title: amountCents < plan.priceCents ? `${plan.name} (upgrade com crédito do plano atual)` : plan.name,
+          title: description,
           quantity: 1,
           unit_price: amountCents / 100,
           currency_id: "BRL"

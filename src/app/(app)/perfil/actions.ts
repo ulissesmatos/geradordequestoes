@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
+import { claimTeamSeatByCode, claimTeamSeatByCpf } from "@/lib/teams";
 import { isValidCpf, onlyDigits } from "@/lib/validation/cpf";
 
 export type ProfileActionState = { ok?: boolean; error?: string } | null;
@@ -53,6 +54,36 @@ export async function updateProfileAction(_: ProfileActionState, formData: FormD
     }
   });
 
+  // Allowlist de CPF do plano teams: ao confirmar o CPF, tenta reivindicar uma vaga.
+  // Best-effort: nunca quebra o salvamento do perfil.
+  try {
+    await claimTeamSeatByCpf(user.id, cpf);
+  } catch {
+    // ignora
+  }
+
   revalidatePath("/perfil");
   return { ok: true };
+}
+
+export type RedeemCodeState = { ok?: boolean; error?: string; message?: string } | null;
+
+/** Resgata um código de convite de empresa (plano teams) e ativa o acesso premium. */
+export async function redeemTeamCodeAction(_: RedeemCodeState, formData: FormData): Promise<RedeemCodeState> {
+  const user = await requireUser();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: "Informe o código." };
+
+  const result = await claimTeamSeatByCode(user.id, code);
+  if (result.ok) {
+    revalidatePath("/perfil");
+    return { ok: true, message: "Código aplicado! Seu acesso premium foi ativado." };
+  }
+  const messages: Record<string, string> = {
+    not_found: "Código inválido ou não encontrado.",
+    already_claimed: "Este código já foi utilizado por outra conta.",
+    team_inactive: "O pacote desta empresa não está ativo no momento.",
+    full: "Este pacote já atingiu o limite de vagas."
+  };
+  return { error: messages[result.reason] ?? "Não foi possível aplicar o código." };
 }

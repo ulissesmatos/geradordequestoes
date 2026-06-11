@@ -1,14 +1,13 @@
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
   Bot,
   BrainCircuit,
+  Building2,
   CheckCircle2,
   ClipboardCheck,
   History,
   Layers3,
-  Menu,
   MessageSquareText,
   ShieldCheck,
   Sparkles,
@@ -16,6 +15,8 @@ import {
 } from "lucide-react";
 import { auth } from "@/auth";
 import { PricingCards } from "@/components/pricing-cards";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,7 +60,7 @@ const productHighlights = [
   { icon: Layers3, title: "Banco crescente", text: "Questões geradas alimentam histórico e revisão administrativa." },
   { icon: Target, title: "Treino direcionado", text: "A IA pode usar erros, acertos e favoritas para criar revisões." },
   { icon: ClipboardCheck, title: "Simulados", text: "Gere blocos por formato, dificuldade e quantidade." },
-  { icon: ShieldCheck, title: "Admin seguro", text: "Planos, usuários e provedores ficam configuráveis." }
+  { icon: ShieldCheck, title: "IA Personalizada", text: "A IA aprende com seu desempenho para criar revisões personalizadas." }
 ];
 
 export default async function HomePage() {
@@ -92,35 +93,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/88 backdrop-blur">
-        <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <Image src={appSettings.logoUrl} alt={appSettings.appName} width={744} height={179} className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]" priority />
-          </Link>
-          <details className="group md:hidden">
-            <summary className="flex h-10 w-10 list-none items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm marker:hidden">
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Abrir menu</span>
-            </summary>
-            <nav className="absolute left-3 right-3 top-[calc(100%+8px)] z-40 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-              <Link href="/pricing" className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Planos</Link>
-              <Link href="/login" className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">Entrar</Link>
-              <Link href="/register" className="mt-1 block rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">Criar conta</Link>
-            </nav>
-          </details>
-          <nav className="hidden items-center gap-2 md:flex">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/pricing">Planos</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/login">Entrar</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/register">Criar conta</Link>
-            </Button>
-          </nav>
-        </div>
-      </header>
+      <SiteHeader logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
 
       <section className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:px-6 lg:grid-cols-[1.03fr_0.97fr] lg:items-center lg:py-20">
         <div>
@@ -262,17 +235,30 @@ export default async function HomePage() {
         />
       </div>
 
-      <footer className="border-t border-[var(--border)]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-[var(--muted-foreground)] md:flex-row md:items-center md:justify-between md:px-6">
-          <div className="flex items-center gap-3">
-            <Image src="/brand/logo.png" alt="Gerador de Questões" width={744} height={179} className="h-8 w-auto object-contain" />
+      <section className="mx-auto max-w-7xl px-4 py-14 md:px-6">
+        <div className="flex flex-col items-start gap-6 rounded-lg border border-[var(--border)] bg-[var(--surface-strong)] p-6 text-white md:flex-row md:items-center md:justify-between md:p-10">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+              <Building2 className="h-3.5 w-3.5" />
+              Planos para empresas
+            </div>
+            <h2 className="text-2xl font-semibold tracking-tight md:text-4xl">
+              Assinaturas em grupo para equipes e cursinhos
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-white/80 md:text-base">
+              Ofereça acesso premium para vários alunos em um único pacote. Ideal para empresas, escolas e grupos de estudo. Fale com a gente para montar
+              o plano da sua equipe.
+            </p>
           </div>
-          <div className="flex gap-4">
-            <Link href="/pricing" className="hover:text-[var(--foreground)]">Planos</Link>
-            <Link href="/login" className="hover:text-[var(--foreground)]">Entrar</Link>
-          </div>
+          <Button asChild size="lg" variant="secondary" className="shrink-0">
+            <Link href="/contato?empresa=1">
+              Falar sobre planos para empresas <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
-      </footer>
+      </section>
+
+      <SiteFooter logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
     </main>
   );
 }

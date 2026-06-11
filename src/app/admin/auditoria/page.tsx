@@ -1,3 +1,4 @@
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -25,10 +26,7 @@ export default async function AdminAuditPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Auditoria</h1>
-        <p className="text-[var(--muted-foreground)]">Registro de ações administrativas sensíveis.</p>
-      </div>
+      <AdminPageHeader title="Auditoria" description="Registro de ações administrativas sensíveis." />
 
       <Card>
         <CardHeader>

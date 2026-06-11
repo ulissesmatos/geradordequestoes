@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents, activatePaidSubscription, recordPaymentTransaction } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
+import { isTeamGrantedPlan } from "@/lib/teams";
 import { prisma } from "@/lib/prisma";
 
 export default async function StripeCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
@@ -129,8 +130,12 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
 
     // Upgrade vindo de assinatura Pix (prazo fixo): abate o valor proporcional
     // restante como cupom de uso único na primeira fatura.
+    // Exceção: plano cedido por empresa (teams) não gera crédito — quem pagou
+    // foi a empresa. O assinante paga o valor cheio e sai do pacote (a vaga é
+    // revogada automaticamente em activatePaidSubscription).
     let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
-    if (activeSubscription) {
+    const teamGranted = activeSubscription ? await isTeamGrantedPlan(user.id, activeSubscription.planId) : false;
+    if (activeSubscription && !teamGranted) {
       const credit = Math.min(remainingCreditCents(activeSubscription), plan.priceCents - 100);
       if (credit > 0) {
         const coupon = await stripe.coupons.create({

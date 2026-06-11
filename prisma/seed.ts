@@ -85,29 +85,33 @@ async function main() {
       name: "Essencial",
       slug: "essencial",
       description: "Geração de questões para rotina individual de estudos.",
-      priceCents: 2990,
+      priceCents: 1990,
       aiGenerationsPerDay: 20
     },
     {
       name: "Pro",
       slug: "pro",
       description: "Mais gerações diárias para simulados e revisões intensivas.",
-      priceCents: 5990,
+      priceCents: 4990,
       aiGenerationsPerDay: 60
     },
     {
       name: "Premium",
       slug: "premium",
       description: "Uso avançado para preparação constante.",
-      priceCents: 9990,
+      priceCents: 14990,
       aiGenerationsPerDay: 150
     }
   ];
 
   for (const plan of plans) {
+    // IMPORTANTE: `update: {}` (vazio) — o seed só cria o plano se ele não existir.
+    // Nunca sobrescreve preço/descrição/limites de planos já existentes, para que
+    // as edições feitas no painel admin PERSISTAM entre deploys. O alinhamento
+    // único de preços é feito pela migração 20260611020000_update_plan_prices.
     await prisma.subscriptionPlan.upsert({
       where: { slug: plan.slug },
-      update: plan,
+      update: {},
       create: plan
     });
   }

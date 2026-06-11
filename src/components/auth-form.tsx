@@ -49,8 +49,23 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             Senha
             <Input name="password" type="password" required minLength={mode === "register" ? 8 : 6} />
           </label>
+          {mode === "login" && (
+            <p className="text-right text-sm">
+              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/recuperar-senha">
+                Esqueci minha senha
+              </Link>
+            </p>
+          )}
           {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
           <SubmitButton className="w-full">{mode === "login" ? "Entrar" : "Cadastrar"}</SubmitButton>
+          {mode === "register" && (
+            <p className="text-center text-xs text-[var(--muted-foreground)]">
+              Ao criar conta, você concorda com os{" "}
+              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos">Termos de Uso</Link>{" "}
+              e a{" "}
+              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade">Política de Privacidade</Link>.
+            </p>
+          )}
         </form>
         <p className="mt-4 text-center text-sm text-[var(--muted-foreground)]">
           {mode === "login" ? "Ainda não tem conta?" : "Já tem conta?"}{" "}

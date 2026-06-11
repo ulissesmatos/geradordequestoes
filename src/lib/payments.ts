@@ -52,6 +52,17 @@ export async function activatePaidSubscription(input: {
       payload: toJson(input.payload)
     }
   });
+
+  // Compra pessoal (não vinda de pacote teams): se o usuário tinha plano cedido
+  // por empresa, a vaga dele é revogada — evita que a renovação do pacote
+  // rebaixe o plano que ele acabou de pagar e libera a vaga para outra pessoa.
+  if (!input.externalId?.startsWith("team:")) {
+    await prisma.teamSeat.updateMany({
+      where: { userId: input.userId, status: "CLAIMED" },
+      data: { status: "REVOKED" }
+    });
+  }
+
   return subscription;
 }
 

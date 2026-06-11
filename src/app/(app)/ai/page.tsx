@@ -3,7 +3,7 @@ import { Paywall } from "@/components/paywall";
 import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { getAiUsageStatus, hasActiveSubscription } from "@/lib/subscriptions";
+import { getAiUsageStatus, getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
 
 export default async function AiChatPage({
   searchParams
@@ -11,7 +11,9 @@ export default async function AiChatPage({
   searchParams: Promise<{ sessionId?: string; new?: string; prompt?: string }>;
 }) {
   const user = await requireUser();
-  const allowed = await hasActiveSubscription(user);
+  // Trial é o estado padrão: assinantes, admins e usuários com trial habilitado
+  // entram no chat; o limite de gerações é aplicado na hora de gerar.
+  const allowed = (await hasActiveSubscription(user)) || (await getTrialStatus(user.id)).enabled;
   if (!allowed) return <Paywall />;
 
   const params = await searchParams;

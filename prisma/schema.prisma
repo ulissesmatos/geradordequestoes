@@ -149,6 +149,7 @@ model User {
   role              Role               @default(USER)
   isBlocked         Boolean            @default(false)
   stripeCustomerId  String?
+  trialGenerationsUsed Int             @default(0)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   createdQuestions  Question[]         @relation("CreatedQuestions")
@@ -165,9 +166,23 @@ model User {
   paymentTransactions PaymentTransaction[]
   subscriptionEvents SubscriptionEvent[]
   verificationCodes  EmailVerificationCode[]
+  passwordResetCodes PasswordResetCode[]
 }
 
 model EmailVerificationCode {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetCode {
   id         String    @id @default(cuid())
   userId     String
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -444,6 +459,7 @@ model SubscriptionPlan {
   subscriptions       UserSubscription[]
   checkoutSessions    PaymentCheckoutSession[]
   paymentTransactions PaymentTransaction[]
+  teamAccounts        TeamAccount[]
 }
 
 model UserSubscription {
@@ -454,6 +470,7 @@ model UserSubscription {
   status    SubscriptionStatus @default(ACTIVE)
   startsAt  DateTime           @default(now())
   endsAt    DateTime?
+  reminderSentAt DateTime?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -498,8 +515,16 @@ model AppSetting {
   institutionalText String   @default("Plataforma AI-first para gerar questões, simulados, revisões e materiais de estudo para concursos públicos.")
   termsUrl          String?
   privacyUrl        String?
+  termsContent      String?
+  privacyContent    String?
+  trialGenerationsLimit Int  @default(10)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+enum MercadoPagoCheckoutMode {
+  CHECKOUT_PRO
+  TRANSPARENT
 }
 
 model PaymentGatewaySetting {
@@ -510,6 +535,7 @@ model PaymentGatewaySetting {
   mercadoPagoAccessToken      String?
   mercadoPagoWebhookSecret    String?
   mercadoPagoPublicKey        String?
+  mercadoPagoCheckoutMode     MercadoPagoCheckoutMode @default(CHECKOUT_PRO)
   testMode                    Boolean         @default(true)
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
@@ -525,6 +551,95 @@ model EmailSetting {
   enabled   Boolean       @default(false)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+}
+
+enum ContactMessageKind {
+  GENERAL
+  TEAMS
+}
+
+model ContactMessage {
+  id        String             @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  kind      ContactMessageKind @default(GENERAL)
+  userId    String?
+  handledAt DateTime?
+  createdAt DateTime           @default(now())
+
+  @@index([kind])
+  @@index([handledAt])
+}
+
+enum TeamAccountStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+enum TeamSeatStatus {
+  PENDING
+  CLAIMED
+  REVOKED
+}
+
+model TeamAccount {
+  id                 String            @id @default(cuid())
+  name               String
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  cpfCnpj            String?
+  planId             String
+  seats              Int               @default(1)
+  priceCents         Int               @default(0)
+  status             TeamAccountStatus @default(ACTIVE)
+  currentPeriodEndsAt DateTime?
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  plan    SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  members TeamSeat[]
+  charges TeamCharge[]
+}
+
+model TeamSeat {
+  id            String         @id @default(cuid())
+  teamAccountId String
+  cpf           String?
+  inviteCode    String?        @unique
+  userId        String?
+  claimedAt     DateTime?
+  status        TeamSeatStatus @default(PENDING)
+  createdAt     DateTime       @default(now())
+
+  teamAccount TeamAccount @relation(fields: [teamAccountId], references: [id], onDelete: Cascade)
+
+  @@index([teamAccountId])
+  @@index([cpf])
+  @@index([userId])
+}
+
+model TeamCharge {
+  id              String                   @id @default(cuid())
+  teamAccountId   String
+  amountCents     Int
+  status          PaymentTransactionStatus @default(PENDING)
+  externalId      String?
+  pixQrCode       String?
+  pixQrCodeBase64 String?
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  teamAccount TeamAccount @relation(fields: [teamAccountId], references: [id], onDelete: Cascade)
+
+  @@index([teamAccountId])
 }
 
 model PaymentCheckoutSession {

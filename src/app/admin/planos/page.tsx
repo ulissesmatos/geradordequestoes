@@ -1,4 +1,5 @@
 import { createCouponAction, createPlanAction, deleteCouponAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,10 +18,7 @@ export default async function AdminPlansPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Planos & Pricing</h1>
-        <p className="text-[var(--muted-foreground)]">Controle planos, features, textos públicos, cupons e IDs dos gateways.</p>
-      </div>
+      <AdminPageHeader title="Planos & Pricing" description="Controle planos, features, textos públicos, cupons e IDs dos gateways." />
 
       <Card>
         <CardHeader>

@@ -98,7 +98,7 @@ export function AiChatDashboard({
 }: {
   userName: string;
   currentSessionId: string | null;
-  usage: { used: number; limit: number | null; percent: number; resetsAt?: string };
+  usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean };
   sessions: ChatSessionSummary[];
   messages: ChatMessage[];
   initialPrompt?: string;
@@ -748,7 +748,7 @@ function usageDismissKey() {
   return `ai-usage-notice-dismissed:${new Date().toISOString().slice(0, 10)}`;
 }
 
-function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string } }) {
+function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean } }) {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -764,21 +764,28 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
   // Aviso parcial pode ser dispensado; aos 100% volta a aparecer sempre.
   if (!exhausted && dismissed) return null;
 
-  const resetHours = hoursUntil(usage.resetsAt);
+  const isTrial = usage.isTrial;
+  const resetHours = hoursUntil(usage.resetsAt ?? undefined);
 
   if (exhausted) {
     return (
       <div className="mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">
         <span>
-          Você atingiu 100% do seu limite diário de uso da IA.
-          {resetHours !== null && <> O limite renova em cerca de <strong>{resetHours}h</strong>.</>}
+          {isTrial ? (
+            <>Você usou todas as suas <strong>{usage.limit}</strong> gerações gratuitas. Assine um plano para continuar.</>
+          ) : (
+            <>
+              Você atingiu 100% do seu limite diário de uso da IA.
+              {resetHours !== null && <> O limite renova em cerca de <strong>{resetHours}h</strong>.</>}
+            </>
+          )}
         </span>
         <Link
           href="/pricing"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          Fazer upgrade
+          {isTrial ? "Assinar agora" : "Fazer upgrade"}
         </Link>
       </div>
     );
@@ -786,7 +793,11 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
 
   return (
     <div className="mx-auto mb-3 flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-soft-foreground)]">
-      <span>Você já usou {usage.percent}% do limite diário de IA ({usage.used}/{usage.limit}).</span>
+      <span>
+        {isTrial
+          ? `Você já usou ${usage.used} das ${usage.limit} gerações gratuitas.`
+          : `Você já usou ${usage.percent}% do limite diário de IA (${usage.used}/${usage.limit}).`}
+      </span>
       <button
         type="button"
         aria-label="Dispensar aviso"

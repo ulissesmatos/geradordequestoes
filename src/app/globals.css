@@ -183,6 +183,69 @@ textarea {
   animation: fade-in 0.22s ease-out both;
 }
 
+/* Conteúdo legal (Termos/Privacidade) renderizado de Markdown */
+.prose-legal h2 {
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.prose-legal h3 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.prose-legal p {
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+.prose-legal ul {
+  margin: 0.5rem 0 0.5rem 1.25rem;
+  list-style: disc;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+.prose-legal strong {
+  color: var(--foreground);
+}
+.prose-legal em {
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.prose-legal a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.24s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.24s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

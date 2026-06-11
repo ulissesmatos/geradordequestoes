@@ -1,11 +1,13 @@
 import { AiProvider } from "@prisma/client";
 import { updateAiProviderSettingsAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
+import { SecretInput } from "@/components/admin/secret-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
-import { decryptSecret } from "@/lib/crypto";
+import { decryptSecret, maskSecret } from "@/lib/crypto";
 
 const defaultModels = {
   OPENAI: "gpt-4.1-mini",
@@ -16,6 +18,7 @@ const defaultModels = {
 export default async function AiSettingsPage() {
   const stored = await prisma.aiProviderSetting.findUnique({ where: { id: "default" } });
   const apiKeyDecrypted = stored?.apiKey ? decryptSecret(stored.apiKey) : null;
+  const apiKeyMasked = maskSecret(stored?.apiKey ?? null);
 
   const settings = stored ?? {
     provider: AiProvider.OPENAI,
@@ -28,12 +31,10 @@ export default async function AiSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Configuração de IA</h1>
-        <p className="text-[var(--muted-foreground)]">
-          Escolha o provedor usado por admins e alunos na geração de questões.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Configuração de IA"
+        description="Escolha o provedor usado por admins e alunos na geração de questões."
+      />
 
       <Card>
         <CardHeader>
@@ -65,27 +66,13 @@ export default async function AiSettingsPage() {
               </label>
             </div>
 
-            <div className="space-y-2">
-              <label className="space-y-1 text-sm font-medium">
-                Chave da API
-                <Input
-                  name="apiKey"
-                  type="password"
-                  placeholder={apiKeyDecrypted ? "Cole uma nova chave para trocar, ou deixe em branco" : "Cole a chave do provedor"}
-                  autoComplete="off"
-                />
-              </label>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                {apiKeyDecrypted ? (
-                  <>
-                    ✓ Chave configurada. Deixe vazio para manter, ou cole uma nova para trocar. Para <strong>limpar</strong>,
-                    selecione o campo, delete o conteúdo (se houver) e salve vazio.
-                  </>
-                ) : (
-                  <>Cole sua chave de API. Será salva criptografada no banco de dados.</>
-                )}
-              </p>
-            </div>
+            <SecretInput
+              name="apiKey"
+              label="Chave da API"
+              masked={apiKeyMasked}
+              placeholder="Cole a chave do provedor"
+              help="Será salva criptografada no banco. Marque “Remover chave” para usar o fallback do ambiente."
+            />
 
             <div className="grid gap-3 md:grid-cols-3">
               <label className="space-y-1 text-sm font-medium">

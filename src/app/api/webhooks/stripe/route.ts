@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { PaymentCheckoutStatus, PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { activatePaidSubscription, getPaymentSettings, recordPaymentTransaction } from "@/lib/payments";
+import { sendPaymentReceiptEmail } from "@/lib/email/notifications";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -157,6 +158,17 @@ export async function POST(request: Request) {
           payload: invoice as any
         }
       });
+      // Recibo (cobre primeira cobrança e renovações). Não envia para fatura
+      // zerada (ex.: upgrade totalmente abatido por crédito).
+      if ((invoice.amount_paid ?? 0) > 0) {
+        await sendPaymentReceiptEmail({
+          userId: local.userId,
+          planId: local.subscription.planId,
+          amountCents: invoice.amount_paid ?? 0,
+          provider: "STRIPE",
+          endsAt: null
+        });
+      }
     }
   }
 

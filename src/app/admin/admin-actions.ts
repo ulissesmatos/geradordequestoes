@@ -1,11 +1,11 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
+import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { logAdminAction } from "@/lib/audit";
-import { encryptSecret } from "@/lib/crypto";
+import { resolveSecretUpdate } from "@/lib/crypto";
 import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
 import { testEmailTemplate } from "@/lib/email/templates";
@@ -117,6 +117,7 @@ export async function updateUserAction(formData: FormData) {
   });
   await logAdminAction(admin, { action: "update", entity: "User", entityId: userId, summary: `role=${nextRole} bloqueado=${nextIsBlocked}` });
   revalidatePath("/admin/usuarios");
+  revalidatePath("/admin/usuarios/[id]", "page");
 }
 
 export async function activateUserSubscriptionAction(formData: FormData) {
@@ -141,6 +142,7 @@ export async function activateUserSubscriptionAction(formData: FormData) {
 
   await logAdminAction(admin, { action: "activate_subscription", entity: "User", entityId: userId, summary: `plano=${planId}` });
   revalidatePath("/admin/usuarios");
+  revalidatePath("/admin/usuarios/[id]", "page");
 }
 
 export async function cancelUserSubscriptionAction(formData: FormData) {
@@ -152,6 +154,7 @@ export async function cancelUserSubscriptionAction(formData: FormData) {
   });
   await logAdminAction(admin, { action: "cancel_subscription", entity: "User", entityId: userId });
   revalidatePath("/admin/usuarios");
+  revalidatePath("/admin/usuarios/[id]", "page");
 }
 
 export async function createPlanAction(formData: FormData) {
@@ -237,37 +240,31 @@ export async function updatePricingContentAction(formData: FormData) {
 
 export async function updateAppSettingsAction(formData: FormData) {
   await requireAdmin();
+  const fields = {
+    appName: String(formData.get("appName") || "Gerador de Questões"),
+    logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
+    faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
+    primaryColor: String(formData.get("primaryColor") || "#13666a"),
+    accentColor: String(formData.get("accentColor") || "#f6d979"),
+    publicUrl: String(formData.get("publicUrl") || "") || null,
+    adminEmails: String(formData.get("adminEmails") || ""),
+    institutionalText: String(formData.get("institutionalText") || ""),
+    termsUrl: String(formData.get("termsUrl") || "") || null,
+    privacyUrl: String(formData.get("privacyUrl") || "") || null,
+    termsContent: String(formData.get("termsContent") || "") || null,
+    privacyContent: String(formData.get("privacyContent") || "") || null,
+    trialGenerationsLimit: Math.max(0, Number(formData.get("trialGenerationsLimit") ?? 10) || 0)
+  };
   await prisma.appSetting.upsert({
     where: { id: "default" },
-    update: {
-      appName: String(formData.get("appName") || "Gerador de Questões"),
-      logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
-      faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
-      primaryColor: String(formData.get("primaryColor") || "#13666a"),
-      accentColor: String(formData.get("accentColor") || "#f6d979"),
-      publicUrl: String(formData.get("publicUrl") || "") || null,
-      adminEmails: String(formData.get("adminEmails") || ""),
-      institutionalText: String(formData.get("institutionalText") || ""),
-      termsUrl: String(formData.get("termsUrl") || "") || null,
-      privacyUrl: String(formData.get("privacyUrl") || "") || null
-    },
-    create: {
-      id: "default",
-      appName: String(formData.get("appName") || "Gerador de Questões"),
-      logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
-      faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
-      primaryColor: String(formData.get("primaryColor") || "#13666a"),
-      accentColor: String(formData.get("accentColor") || "#f6d979"),
-      publicUrl: String(formData.get("publicUrl") || "") || null,
-      adminEmails: String(formData.get("adminEmails") || ""),
-      institutionalText: String(formData.get("institutionalText") || ""),
-      termsUrl: String(formData.get("termsUrl") || "") || null,
-      privacyUrl: String(formData.get("privacyUrl") || "") || null
-    }
+    update: fields,
+    create: { id: "default", ...fields }
   });
   revalidatePath("/");
   revalidatePath("/pricing");
   revalidatePath("/admin/branding");
+  revalidatePath("/termos");
+  revalidatePath("/privacidade");
 }
 
 export async function updatePaymentGatewaySettingsAction(formData: FormData) {
@@ -278,19 +275,25 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
   const mercadoPagoWebhookSecret = String(formData.get("mercadoPagoWebhookSecret") ?? "").trim();
   const mercadoPagoPublicKey = String(formData.get("mercadoPagoPublicKey") ?? "").trim();
 
-  // Campos de segredo: só atualiza quando o usuário preencheu (vazio = manter o que já está)
+  // Campos de segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar (resolveSecretUpdate)
   const secretUpdates = {
-    ...(stripeSecretKey ? { stripeSecretKey: encryptSecret(stripeSecretKey) } : {}),
-    ...(stripeWebhookSecret ? { stripeWebhookSecret: encryptSecret(stripeWebhookSecret) } : {}),
-    ...(mercadoPagoAccessToken ? { mercadoPagoAccessToken: encryptSecret(mercadoPagoAccessToken) } : {}),
-    ...(mercadoPagoWebhookSecret ? { mercadoPagoWebhookSecret: encryptSecret(mercadoPagoWebhookSecret) } : {})
+    ...resolveSecretUpdate("stripeSecretKey", stripeSecretKey),
+    ...resolveSecretUpdate("stripeWebhookSecret", stripeWebhookSecret),
+    ...resolveSecretUpdate("mercadoPagoAccessToken", mercadoPagoAccessToken),
+    ...resolveSecretUpdate("mercadoPagoWebhookSecret", mercadoPagoWebhookSecret)
   };
+
+  const mercadoPagoCheckoutMode =
+    String(formData.get("mercadoPagoCheckoutMode") ?? "") === "TRANSPARENT"
+      ? MercadoPagoCheckoutMode.TRANSPARENT
+      : MercadoPagoCheckoutMode.CHECKOUT_PRO;
 
   await prisma.paymentGatewaySetting.upsert({
     where: { id: "default" },
     update: {
       ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
+      mercadoPagoCheckoutMode,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
     },
@@ -298,6 +301,7 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
       id: "default",
       ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
+      mercadoPagoCheckoutMode,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
     }
@@ -316,8 +320,8 @@ export async function updateEmailSettingsAction(formData: FormData) {
   const replyTo = String(formData.get("replyTo") ?? "").trim();
   const enabled = formData.get("enabled") === "on";
 
-  // apiKey é segredo: só atualiza quando preenchida (vazio = manter atual).
-  const secretUpdate = apiKey ? { apiKey: encryptSecret(apiKey) } : {};
+  // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
+  const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
   const base = {
     provider,
     fromEmail: fromEmail || null,
@@ -347,6 +351,18 @@ export async function sendTestEmailAction(formData: FormData) {
     summary: result.ok ? `teste enviado para ${to}` : `falha no teste: ${"error" in result ? result.error : "não configurado"}`
   });
   revalidatePath("/admin/email");
+}
+
+export async function toggleContactHandledAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const handled = formData.get("handled") === "true";
+  await prisma.contactMessage.update({
+    where: { id },
+    data: { handledAt: handled ? new Date() : null }
+  });
+  await logAdminAction(admin, { action: "update", entity: "ContactMessage", entityId: id, summary: handled ? "marcado como tratado" : "reaberto" });
+  revalidatePath("/admin/contato");
 }
 
 export async function createCouponAction(formData: FormData) {
@@ -380,12 +396,13 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   const baseUrl = isSelfReferencing ? "" : rawBaseUrl;
   const chatPresetUsageLevel = (formData.get("chatPresetUsageLevel") as AiChatPresetUsageLevel) || AiChatPresetUsageLevel.MEDIO;
 
+  // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
+  const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
   await prisma.aiProviderSetting.upsert({
     where: { id: "default" },
     update: {
       provider,
-      // Só atualiza a chave quando o usuário preencheu — vazio = manter a existente
-      ...(apiKey ? { apiKey: encryptSecret(apiKey) } : {}),
+      ...secretUpdate,
       model,
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,
@@ -395,7 +412,7 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
     create: {
       id: "default",
       provider,
-      apiKey: apiKey ? encryptSecret(apiKey) : null,
+      apiKey: "apiKey" in secretUpdate ? secretUpdate.apiKey : null,
       model,
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,

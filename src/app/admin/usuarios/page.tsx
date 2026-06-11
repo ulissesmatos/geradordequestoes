@@ -1,8 +1,10 @@
-import { activateUserSubscriptionAction, cancelUserSubscriptionAction, updateUserAction } from "@/app/admin/admin-actions";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/page-header";
+import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
 
 const PAGE_SIZE = 25;
@@ -24,12 +26,12 @@ export default async function UsersPage({
       }
     : {};
 
-  const [users, total, plans, coupons] = await Promise.all([
+  const [users, total] = await Promise.all([
     prisma.user.findMany({
       where,
       include: {
         subscriptions: {
-          include: { plan: true, coupon: true },
+          include: { plan: true },
           orderBy: { createdAt: "desc" },
           take: 1
         }
@@ -38,60 +40,51 @@ export default async function UsersPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE
     }),
-    prisma.user.count({ where }),
-    prisma.subscriptionPlan.findMany({ where: { isActive: true }, orderBy: { priceCents: "asc" } }),
-    prisma.coupon.findMany({ where: { isActive: true }, orderBy: { code: "asc" } })
+    prisma.user.count({ where })
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Usuários</h1>
+      <AdminPageHeader title="Usuários" description={`${total} usuários · página ${page} de ${totalPages}`} />
+
       <form method="get" className="flex flex-wrap items-center gap-2">
         <Input name="q" defaultValue={query} placeholder="Buscar por nome ou e-mail..." className="max-w-sm" />
         <SubmitButton variant="outline">Buscar</SubmitButton>
-        <span className="text-sm text-[var(--muted-foreground)]">{total} usuários · página {page} de {totalPages}</span>
       </form>
-      {users.map((user) => {
-        const subscription = user.subscriptions[0];
-        return (
-          <Card key={user.id}>
-            <CardContent className="space-y-4 pt-5">
-              <form action={updateUserAction} className="grid gap-3 md:grid-cols-[1fr_160px_140px_auto] md:items-center">
-                <input type="hidden" name="userId" value={user.id} />
-                <div>
-                  <p className="font-semibold">{user.name}</p>
-                  <p className="text-sm text-[var(--muted-foreground)]">{user.email}</p>
-                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                    Assinatura: {subscription ? `${subscription.plan.name} / ${subscription.status}` : "sem plano"}
-                  </p>
-                </div>
-                <Select name="role" defaultValue={user.role}><option value="USER">USER</option><option value="ADMIN">ADMIN</option></Select>
-                <label className="flex items-center gap-2 text-sm"><input name="isBlocked" type="checkbox" defaultChecked={user.isBlocked} /> Bloqueado</label>
-                <SubmitButton>Salvar usuário</SubmitButton>
-              </form>
 
-              <div className="grid gap-3 border-t border-[var(--border)] pt-4 md:grid-cols-[1fr_auto]">
-                <form action={activateUserSubscriptionAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                  <input type="hidden" name="userId" value={user.id} />
-                  <Select name="planId" required>
-                    {plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
-                  </Select>
-                  <Select name="couponId" defaultValue="">
-                    <option value="">Sem cupom</option>
-                    {coupons.map((coupon) => <option key={coupon.id} value={coupon.id}>{coupon.code}</option>)}
-                  </Select>
-                  <SubmitButton>Ativar assinatura</SubmitButton>
-                </form>
-                <form action={cancelUserSubscriptionAction}>
-                  <input type="hidden" name="userId" value={user.id} />
-                  <SubmitButton variant="outline">Cancelar assinatura</SubmitButton>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
+      <Card>
+        <CardContent className="divide-y divide-[var(--border)] p-0">
+          {users.map((user) => {
+            const subscription = user.subscriptions[0];
+            return (
+              <Link
+                key={user.id}
+                href={`/admin/usuarios/${user.id}`}
+                className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-[var(--surface-subtle)]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{user.name}</p>
+                  <p className="truncate text-sm text-[var(--muted-foreground)]">{user.email}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {user.isBlocked && <StatusBadge tone="danger">Bloqueado</StatusBadge>}
+                  {user.role === "ADMIN" && <StatusBadge tone="info">Admin</StatusBadge>}
+                  {subscription ? (
+                    <StatusBadge tone={statusTone(subscription.status)}>{subscription.plan.name}</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="neutral">Sem plano</StatusBadge>
+                  )}
+                  <ChevronRight className="h-4 w-4 text-[var(--muted-foreground)]" />
+                </div>
+              </Link>
+            );
+          })}
+          {users.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-[var(--muted-foreground)]">Nenhum usuário encontrado.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="flex items-center justify-between">
         <a

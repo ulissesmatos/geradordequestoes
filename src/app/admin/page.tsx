@@ -1,4 +1,5 @@
 import { AiUsageEventStatus, PaymentTransactionStatus, QuestionStatus, SubscriptionStatus } from "@prisma/client";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 
@@ -47,7 +48,7 @@ export default async function AdminHomePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Dashboard admin</h1>
+      <AdminPageHeader title="Dashboard" description="Visão geral da plataforma." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(([label, value]) => (
           <Card key={label}>

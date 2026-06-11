@@ -1,49 +1,12 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import { updatePaymentGatewaySettingsAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
+import { SecretInput } from "@/components/admin/secret-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
-import { decryptSecret } from "@/lib/crypto";
-
-function maskSecret(encrypted: string | null): string | null {
-  if (!encrypted) return null;
-  try {
-    const plain = decryptSecret(encrypted);
-    if (!plain) return null;
-    // Show prefix type hint + masked middle, e.g. "sk_test_••••••••"
-    const prefix = plain.slice(0, 10);
-    return `${prefix}${"•".repeat(12)}`;
-  } catch {
-    return "••••••••••••";
-  }
-}
-
-function KeyStatus({ configured, masked }: { configured: boolean; masked: string | null }) {
-  if (configured) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Configurada{masked ? `: ${masked}` : ""}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--muted-foreground)]">
-      <XCircle className="h-3.5 w-3.5" />
-      Não configurada
-    </span>
-  );
-}
-
-function FieldLabel({ label, status }: { label: string; status: React.ReactNode }) {
-  return (
-    <div className="mb-1.5 flex items-center justify-between gap-2">
-      <span className="text-sm font-medium">{label}</span>
-      {status}
-    </div>
-  );
-}
+import { maskSecret } from "@/lib/crypto";
 
 export default async function AdminPaymentsPage() {
   const [settings, checkouts, transactions, events] = await Promise.all([
@@ -72,12 +35,10 @@ export default async function AdminPaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Pagamentos</h1>
-        <p className="text-[var(--muted-foreground)]">
-          Configure Stripe e Mercado Pago. Campos de chave deixados em branco mantêm o valor já salvo.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Pagamentos"
+        description="Configure Stripe e Mercado Pago. Campos de chave deixados em branco mantêm o valor já salvo."
+      />
 
       <form action={updatePaymentGatewaySettingsAction} className="space-y-4">
         {/* ── Stripe ── */}
@@ -89,35 +50,20 @@ export default async function AdminPaymentsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            <div>
-              <FieldLabel
-                label="Secret key"
-                status={<KeyStatus configured={!!settings?.stripeSecretKey} masked={stripeKeyMasked} />}
-              />
-              <Input
-                name="stripeSecretKey"
-                type="password"
-                placeholder="sk_live_... ou sk_test_..."
-                autoComplete="off"
-              />
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Deixe vazio para manter a chave atual.</p>
-            </div>
+            <SecretInput
+              name="stripeSecretKey"
+              label="Secret key"
+              masked={stripeKeyMasked}
+              placeholder="sk_live_... ou sk_test_..."
+            />
 
-            <div>
-              <FieldLabel
-                label="Webhook signing secret"
-                status={<KeyStatus configured={!!settings?.stripeWebhookSecret} masked={stripeWebhookMasked} />}
-              />
-              <Input
-                name="stripeWebhookSecret"
-                type="password"
-                placeholder="whsec_..."
-                autoComplete="off"
-              />
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                Stripe Dashboard → Developers → Webhooks → Signing secret.
-              </p>
-            </div>
+            <SecretInput
+              name="stripeWebhookSecret"
+              label="Webhook signing secret"
+              masked={stripeWebhookMasked}
+              placeholder="whsec_..."
+              help="Stripe Dashboard → Developers → Webhooks → Signing secret."
+            />
 
             <div className="md:col-span-2 flex flex-wrap gap-4 text-sm pt-1">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -141,48 +87,51 @@ export default async function AdminPaymentsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
-            <div>
-              <FieldLabel
-                label="Access token (secret)"
-                status={<KeyStatus configured={!!settings?.mercadoPagoAccessToken} masked={mpTokenMasked} />}
-              />
-              <Input
-                name="mercadoPagoAccessToken"
-                type="password"
-                placeholder="APP_USR-..."
-                autoComplete="off"
-              />
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Deixe vazio para manter.</p>
-            </div>
+            <SecretInput
+              name="mercadoPagoAccessToken"
+              label="Access token (secret)"
+              masked={mpTokenMasked}
+              placeholder="APP_USR-..."
+            />
+
+            <SecretInput
+              name="mercadoPagoWebhookSecret"
+              label="Webhook secret"
+              masked={mpWebhookMasked}
+              placeholder="Secret do webhook"
+            />
 
             <div>
-              <FieldLabel
-                label="Webhook secret"
-                status={<KeyStatus configured={!!settings?.mercadoPagoWebhookSecret} masked={mpWebhookMasked} />}
-              />
-              <Input
-                name="mercadoPagoWebhookSecret"
-                type="password"
-                placeholder="Secret do webhook"
-                autoComplete="off"
-              />
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Deixe vazio para manter.</p>
-            </div>
-
-            <div>
-              <FieldLabel
-                label="Public key"
-                status={
-                  settings?.mercadoPagoPublicKey
-                    ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Configurada</span>
-                    : <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--muted-foreground)]"><XCircle className="h-3.5 w-3.5" />Não configurada</span>
-                }
-              />
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">Public key</span>
+                {settings?.mercadoPagoPublicKey ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Configurada</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--muted-foreground)]"><XCircle className="h-3.5 w-3.5" />Não configurada</span>
+                )}
+              </div>
               <Input
                 name="mercadoPagoPublicKey"
                 defaultValue={settings?.mercadoPagoPublicKey ?? ""}
                 placeholder="APP_USR-... (public)"
               />
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Chave pública (não é segredo).</p>
+            </div>
+
+            <div className="md:col-span-3">
+              <label className="mb-1.5 block text-sm font-medium">Modo de checkout Pix</label>
+              <select
+                name="mercadoPagoCheckoutMode"
+                defaultValue={settings?.mercadoPagoCheckoutMode ?? "CHECKOUT_PRO"}
+                className="h-10 w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm"
+              >
+                <option value="CHECKOUT_PRO">Checkout Pro — redireciona para a página do Mercado Pago</option>
+                <option value="TRANSPARENT">Transparente — QR Code Pix exibido em página própria do site</option>
+              </select>
+              <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                No modo transparente o aluno paga sem sair do site: mostramos o QR Code e o copia-e-cola, e o acesso
+                libera sozinho na aprovação.
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { BadgeCheck, CreditCard, IdCard, ShieldCheck, Sparkles, User } from "lucide-react";
+import { BadgeCheck, Building2, CreditCard, IdCard, ShieldCheck, Sparkles, User } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfilePersonalForm } from "@/components/profile-personal-form";
+import { TeamCodeRedeem } from "@/components/team-code-redeem";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getActiveSubscription, getAiUsageStatus } from "@/lib/subscriptions";
@@ -170,6 +171,24 @@ export default async function ProfilePage({
                 </div>
               )}
             </>
+          ) : usage.isTrial && usage.limit ? (
+            <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold">Gerações gratuitas</span>
+                <span className="font-semibold">{usage.used} de {usage.limit}</span>
+              </div>
+              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
+                <div
+                  className={cn("h-full rounded-full transition-all", usage.percent >= 90 ? "bg-amber-500" : "bg-[var(--primary)]")}
+                  style={{ width: `${Math.min(100, usage.percent)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                {usage.used >= usage.limit
+                  ? "Você usou todas as suas gerações gratuitas. Assine um plano para continuar gerando com IA."
+                  : `Você tem ${usage.limit - usage.used} ${usage.limit - usage.used === 1 ? "geração gratuita restante" : "gerações gratuitas restantes"}. Sem cartão.`}
+              </p>
+            </div>
           ) : (
             <div className="rounded-[var(--radius)] border border-dashed border-[var(--border)] p-4 text-center">
               <p className="text-sm text-[var(--muted-foreground)]">Você não tem uma assinatura ativa.</p>
@@ -191,6 +210,24 @@ export default async function ProfilePage({
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Código da empresa (plano teams) ── */}
+      {!isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-[var(--primary)]" />
+              Código da empresa
+            </CardTitle>
+            <CardDescription>
+              Recebeu um código de uma empresa ou grupo? Aplique aqui para ativar seu acesso premium.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TeamCodeRedeem />
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Histórico de pagamentos ── */}
       <Card>
@@ -251,7 +288,7 @@ function formatDate(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
 }
 
-function hoursUntilReset(resetsAt: string | undefined) {
+function hoursUntilReset(resetsAt: string | null | undefined) {
   if (!resetsAt) return 24;
   const ms = new Date(resetsAt).getTime() - Date.now();
   return Math.max(1, Math.ceil(ms / 3_600_000));

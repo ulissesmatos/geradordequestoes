@@ -6,6 +6,10 @@ import { z } from "zod";
 import { auth, signIn, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { confirmEmailVerificationCode, issueEmailVerificationCode } from "@/lib/verification";
+import { confirmPasswordReset, issuePasswordResetCode } from "@/lib/password-reset";
+import { getAppSettings } from "@/lib/app-settings";
+import { sendEmail } from "@/lib/email/send";
+import { welcomeEmailTemplate } from "@/lib/email/templates";
 
 const registerSchema = z.object({
   name: z.string().min(2, "Informe seu nome."),
@@ -50,12 +54,19 @@ export async function registerAction(_: unknown, formData: FormData) {
     }
   });
 
-  // Dispara o código de verificação antes do signIn (que redireciona).
+  // Dispara o código de verificação + boas-vindas antes do signIn (que redireciona).
   // Best-effort: falha de e-mail nunca impede o cadastro.
   try {
     await issueEmailVerificationCode(created.id);
   } catch {
     // ignora — o banner permitirá reenviar
+  }
+  try {
+    const appSettings = await getAppSettings();
+    const tpl = welcomeEmailTemplate(created.name, appSettings.appName);
+    await sendEmail({ to: created.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+  } catch {
+    // ignora — boas-vindas é best-effort
   }
 
   await signIn("credentials", {
@@ -144,6 +155,49 @@ export async function updateUnverifiedEmailAction(_: unknown, formData: FormData
     // ignora — o banner permite reenviar
   }
   return { ok: true, message: "E-mail atualizado. Enviamos um novo código." };
+}
+
+const emailSchema = z.object({ email: z.string().email("Informe um e-mail válido.") });
+const resetSchema = z.object({
+  email: z.string().email("Informe um e-mail válido."),
+  code: z.string().min(6, "O código tem 6 dígitos."),
+  password: z.string().min(8, "Use pelo menos 8 caracteres.")
+});
+
+/** Solicita o código de redefinição de senha (resposta sempre genérica). */
+export async function requestPasswordResetAction(
+  _: unknown,
+  formData: FormData
+): Promise<{ ok: boolean; message?: string }> {
+  const parsed = emailSchema.safeParse({ email: String(formData.get("email") ?? "") });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "E-mail inválido." };
+  await issuePasswordResetCode(parsed.data.email);
+  // Anti-enumeração: sempre responde igual, exista ou não a conta.
+  return { ok: true };
+}
+
+/** Confirma o código e redefine a senha. */
+export async function resetPasswordAction(
+  _: unknown,
+  formData: FormData
+): Promise<{ ok: boolean; message?: string }> {
+  const parsed = resetSchema.safeParse({
+    email: String(formData.get("email") ?? ""),
+    code: String(formData.get("code") ?? "").replace(/\D/g, ""),
+    password: String(formData.get("password") ?? "")
+  });
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const result = await confirmPasswordReset(parsed.data.email, parsed.data.code, parsed.data.password);
+  if (result.ok) return { ok: true };
+  const messages: Record<string, string> = {
+    invalid_account: "Não foi possível redefinir a senha desta conta.",
+    no_code: "Nenhum código ativo. Solicite um novo.",
+    expired: "Código expirado. Solicite um novo.",
+    too_many_attempts: "Muitas tentativas. Solicite um novo código.",
+    invalid: "Código incorreto. Verifique e tente novamente."
+  };
+  return { ok: false, message: messages[result.reason] ?? "Não foi possível redefinir a senha." };
 }
 
 export async function googleSignInAction() {

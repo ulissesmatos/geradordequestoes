@@ -1,4 +1,5 @@
 import { AiChatRole, AiUsageEventStatus } from "@prisma/client";
+import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 
@@ -35,10 +36,7 @@ export default async function AiLogsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Logs de IA</h1>
-        <p className="text-sm text-[var(--muted-foreground)]">Diagnóstico em tempo real de erros de tools, geração e uso.</p>
-      </div>
+      <AdminPageHeader title="Logs de IA" description="Diagnóstico em tempo real de erros de tools, geração e uso." />
 
       {/* ── Chat: Tool Traces ─────────────────────────────────────── */}
       <section className="space-y-3">

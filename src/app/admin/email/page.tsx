@@ -1,38 +1,11 @@
-import { CheckCircle2, XCircle } from "lucide-react";
 import { sendTestEmailAction, updateEmailSettingsAction } from "@/app/admin/admin-actions";
+import { AdminPageHeader } from "@/components/admin/page-header";
+import { SecretInput } from "@/components/admin/secret-input";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
-import { decryptSecret } from "@/lib/crypto";
-
-function maskSecret(encrypted: string | null): string | null {
-  if (!encrypted) return null;
-  try {
-    const plain = decryptSecret(encrypted);
-    if (!plain) return null;
-    return `${plain.slice(0, 8)}${"•".repeat(12)}`;
-  } catch {
-    return "••••••••••••";
-  }
-}
-
-function KeyStatus({ configured, masked }: { configured: boolean; masked: string | null }) {
-  if (configured) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" />
-        Configurada{masked ? `: ${masked}` : ""}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--muted-foreground)]">
-      <XCircle className="h-3.5 w-3.5" />
-      Não configurada
-    </span>
-  );
-}
+import { maskSecret } from "@/lib/crypto";
 
 export default async function AdminEmailPage() {
   const settings = await prisma.emailSetting.findUnique({ where: { id: "default" } });
@@ -41,12 +14,10 @@ export default async function AdminEmailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">E-mail</h1>
-        <p className="text-[var(--muted-foreground)]">
-          Configure o envio de e-mails (verificação de conta e comunicados). A chave deixada em branco mantém a atual.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="E-mail"
+        description="Configure o envio de e-mails (verificação de conta e comunicados). A chave deixada em branco mantém a atual."
+      />
 
       <form action={updateEmailSettingsAction} className="space-y-4">
         <Card>
@@ -70,14 +41,12 @@ export default async function AdminEmailPage() {
               </select>
             </div>
 
-            <div>
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">API key</span>
-                <KeyStatus configured={!!settings?.apiKey} masked={apiKeyMasked} />
-              </div>
-              <Input name="apiKey" type="password" placeholder="xkeysib-... (Brevo) ou re_... (Resend)" autoComplete="off" />
-              <p className="mt-1 text-xs text-[var(--muted-foreground)]">Deixe vazio para manter a chave atual.</p>
-            </div>
+            <SecretInput
+              name="apiKey"
+              label="API key"
+              masked={apiKeyMasked}
+              placeholder="xkeysib-... (Brevo) ou re_... (Resend)"
+            />
 
             <div>
               <label className="mb-1.5 block text-sm font-medium">E-mail remetente</label>
