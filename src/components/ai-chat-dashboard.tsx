@@ -670,9 +670,6 @@ export function AiChatDashboard({
               </div>
             </div>
           </form>
-          <p className="mx-auto mt-3 max-w-3xl px-1 text-xs text-[var(--muted-foreground)]">
-            Anexe prints ou PDFs (clipe, colar ou arrastar), cole um texto longo como contexto, ou peça algo como “revisão dos meus erros de informática”.
-          </p>
         </div>
       </main>
     </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, BookOpen, Download, Sparkles, Tag } from "lucide-react";
+import { DeleteMaterialButton } from "@/components/delete-material-button";
 import { MaterialEditor } from "@/components/material-editor";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/guards";
@@ -53,9 +54,9 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-[var(--muted-foreground)]">
             Gerado por IA em {createdAt}
-            {material.aiModel ? ` · ${material.aiModel}` : ""}
           </p>
           <div className="flex gap-2">
+            <DeleteMaterialButton materialId={material.id} />
             <Button asChild variant="outline" size="sm">
               <Link href={`/materiais/${material.id}/pdf`}>
                 <Download className="h-4 w-4" />

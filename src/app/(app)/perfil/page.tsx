@@ -217,10 +217,10 @@ export default async function ProfilePage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-[var(--primary)]" />
-              Código da empresa
+              Tem um código?
             </CardTitle>
             <CardDescription>
-              Recebeu um código de uma empresa ou grupo? Aplique aqui para ativar seu acesso premium.
+              Recebeu um código? Aplique aqui para ativar seu acesso premium.
             </CardDescription>
           </CardHeader>
           <CardContent>

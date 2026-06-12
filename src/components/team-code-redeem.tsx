@@ -14,8 +14,8 @@ export function TeamCodeRedeem() {
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           name="code"
-          placeholder="Código da empresa (ex.: ABCD2345)"
-          className="uppercase tracking-wider"
+          placeholder="Digite seu código aqui"
+          className="tracking-wider"
           autoComplete="off"
         />
         <Button type="submit" disabled={pending} className="shrink-0">

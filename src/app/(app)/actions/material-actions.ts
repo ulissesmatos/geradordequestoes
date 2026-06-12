@@ -12,3 +12,11 @@ export async function updateStudyMaterialAction(id: string, content: string) {
   });
   revalidatePath(`/materiais/${id}`);
 }
+
+export async function deleteStudyMaterialAction(id: string) {
+  const user = await requireUser();
+  await prisma.studyMaterial.deleteMany({
+    where: { id, userId: user.id }
+  });
+  revalidatePath("/materiais");
+}

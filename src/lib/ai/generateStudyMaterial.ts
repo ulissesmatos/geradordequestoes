@@ -2,6 +2,17 @@ import { AiProvider } from "@prisma/client";
 import OpenAI from "openai";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
 
+function stripTrailingAiQuestion(content: string): string {
+  const trimmed = content.trim();
+  const paras = trimmed.split(/\n{2,}/);
+  if (paras.length <= 1) return trimmed;
+  const last = paras[paras.length - 1].trim();
+  if (last.endsWith("?") && !last.startsWith("#") && !/^[-*\d]/.test(last)) {
+    return paras.slice(0, -1).join("\n\n").trim();
+  }
+  return trimmed;
+}
+
 export async function generateStudyMaterial(input: {
   prompt: string;
   context?: string;
@@ -42,7 +53,7 @@ async function generateWithOpenAI(settings: Awaited<ReturnType<typeof getAiSetti
   });
   const text = response.output_text?.trim();
   if (!text) throw new Error("A IA não retornou um material.");
-  return { content: text, model: settings.model };
+  return { content: stripTrailingAiQuestion(text), model: settings.model };
 }
 
 async function generateWithClaude(settings: Awaited<ReturnType<typeof getAiSettings>>, system: string, userContent: string) {
@@ -68,7 +79,7 @@ async function generateWithClaude(settings: Awaited<ReturnType<typeof getAiSetti
     .join("\n")
     .trim();
   if (!text) throw new Error("A IA não retornou um material.");
-  return { content: text, model: settings.model };
+  return { content: stripTrailingAiQuestion(text), model: settings.model };
 }
 
 async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiSettings>>, system: string, userContent: string) {
@@ -92,7 +103,7 @@ async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiS
   const data = await readJsonResponse(response);
   const text = data.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("A IA não retornou um material.");
-  return { content: text, model: settings.model };
+  return { content: stripTrailingAiQuestion(text), model: settings.model };
 }
 
 async function readJsonResponse(response: Response) {
