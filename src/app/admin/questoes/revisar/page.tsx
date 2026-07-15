@@ -8,10 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/lib/prisma";
 
 export default async function ReviewQuestionsPage() {
+  // Fila de revisão: processa das mais antigas; o limite evita carregar
+  // centenas de formulários de uma vez — revisadas saem da fila e liberam as próximas.
   const questions = await prisma.question.findMany({
     where: { status: { in: [QuestionStatus.DRAFT, QuestionStatus.PENDING_REVIEW] } },
     include: { subject: true, topic: true, createdBy: true, options: { orderBy: { order: "asc" } } },
-    orderBy: { createdAt: "asc" }
+    orderBy: { createdAt: "asc" },
+    take: 50
   });
 
   return (
@@ -25,7 +28,7 @@ export default async function ReviewQuestionsPage() {
             <p className="text-xs text-[var(--muted-foreground)]">Criada por: {question.createdBy?.email ?? "sem usuário"}</p>
           </CardHeader>
           <CardContent>
-            <form action={reviewQuestionAction} className="grid gap-3">
+            <form key={question.updatedAt.getTime()} action={reviewQuestionAction} className="grid gap-3">
               <input type="hidden" name="questionId" value={question.id} />
               <Textarea name="statement" defaultValue={question.statement} />
               {question.options.length > 0 && (

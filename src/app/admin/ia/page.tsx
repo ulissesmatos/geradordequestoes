@@ -46,7 +46,7 @@ export default async function AiSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateAiProviderSettingsAction} className="grid gap-4">
+          <form key={stored?.updatedAt?.getTime() ?? "new"} action={updateAiProviderSettingsAction} className="grid gap-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm font-medium">
                 Provedor

@@ -63,25 +63,84 @@ export async function runStudyTool(input: {
   return getReviewGenerationTarget(input.userId, subjectFilter);
 }
 
+// Cache curto do snapshot: são 4 queries executadas em TODO turno de chat.
+// 3 min de staleness é aceitável — perguntas sobre desempenho usam a tool
+// get_performance, que consulta dados ao vivo.
+const SNAPSHOT_TTL_MS = 3 * 60_000;
+const snapshotCache = new Map<string, { value: string; expiresAt: number }>();
+
 export async function getUserStudySnapshot(userId: string) {
-  const [recentSets, recentAttempts, favoritesCount, totalAttempts] = await Promise.all([
+  const cached = snapshotCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const value = await computeUserStudySnapshot(userId);
+  if (snapshotCache.size > 5000) snapshotCache.clear();
+  snapshotCache.set(userId, { value, expiresAt: Date.now() + SNAPSHOT_TTL_MS });
+  return value;
+}
+
+async function computeUserStudySnapshot(userId: string) {
+  const [recentSets, favoritesCount, totalAttempts] = await Promise.all([
     prisma.questionSet.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      take: 5,
+      take: 3,
       include: { subject: true, topic: true }
-    }),
-    prisma.questionAttempt.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      include: { question: { include: { subject: true, topic: true } } }
     }),
     prisma.favoriteQuestion.count({ where: { userId } }),
     prisma.questionAttempt.count({ where: { userId } })
   ]);
 
-  const correct = recentAttempts.filter((attempt) => attempt.isCorrect).length;
+  // Calcula nota por bloco usando a tentativa mais recente por questão.
+  let setScoreLines: string[] = [];
+  if (recentSets.length > 0) {
+    const setIds = recentSets.map((s) => s.id);
+    const questionsInSets = await prisma.question.findMany({
+      where: { questionSetId: { in: setIds } },
+      select: { id: true, questionSetId: true }
+    });
+    const allQuestionIds = questionsInSets.map((q) => q.id);
+    const questionToSet = new Map(questionsInSets.map((q) => [q.id, q.questionSetId!]));
+
+    const attempts = allQuestionIds.length
+      ? await prisma.questionAttempt.findMany({
+          where: { userId, questionId: { in: allQuestionIds } },
+          select: { questionId: true, isCorrect: true },
+          orderBy: { createdAt: "desc" }
+        })
+      : [];
+
+    // Dedupe: primeiro visto = mais recente (orderBy DESC)
+    const latestByQ = new Map<string, boolean>();
+    for (const a of attempts) {
+      if (!latestByQ.has(a.questionId)) latestByQ.set(a.questionId, a.isCorrect);
+    }
+
+    const bySet = new Map<string, { correct: number; answered: number }>();
+    for (const [qId, isCorrect] of latestByQ) {
+      const setId = questionToSet.get(qId)!;
+      const current = bySet.get(setId) ?? { correct: 0, answered: 0 };
+      current.answered += 1;
+      if (isCorrect) current.correct += 1;
+      bySet.set(setId, current);
+    }
+
+    setScoreLines = recentSets.map((set) => {
+      const score = bySet.get(set.id);
+      const total = set.quantity;
+      if (!score) return `- ${set.title} (${total} questões) — ainda não respondido`;
+      const pct = Math.round((score.correct / total) * 100);
+      return `- ${set.title} (${total} questões) — ${score.correct}/${total} (${pct}%)`;
+    });
+  }
+
+  const recentAttempts = await prisma.questionAttempt.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { isCorrect: true }
+  });
+  const correct = recentAttempts.filter((a) => a.isCorrect).length;
   const recentAccuracy = recentAttempts.length ? Math.round((correct / recentAttempts.length) * 100) : null;
 
   return [
@@ -89,16 +148,9 @@ export async function getUserStudySnapshot(userId: string) {
     `- Tentativas registradas: ${totalAttempts}`,
     recentAccuracy === null ? "" : `- Aproveitamento nas últimas ${recentAttempts.length} tentativas: ${recentAccuracy}%`,
     `- Questões favoritas: ${favoritesCount}`,
-    recentSets.length
-      ? `- Blocos recentes: ${recentSets
-          .map((set) => `${set.title} (${set.quantity} questões, ${set.subject.name} / ${set.topic.name})`)
-          .join("; ")}`
-      : "- Blocos recentes: nenhum bloco gerado ainda",
-    recentAttempts.length
-      ? `- Últimas tentativas: ${recentAttempts
-          .map((attempt) => `${attempt.isCorrect ? "acerto" : "erro"} em ${attempt.question.subject.name} / ${attempt.question.topic.name}`)
-          .join("; ")}`
-      : "- Últimas tentativas: nenhuma questão respondida ainda"
+    setScoreLines.length
+      ? `- Blocos recentes:\n${setScoreLines.join("\n")}`
+      : "- Blocos recentes: nenhum bloco gerado ainda"
   ]
     .filter(Boolean)
     .join("\n")

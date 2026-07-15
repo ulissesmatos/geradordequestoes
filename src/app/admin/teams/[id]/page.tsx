@@ -200,7 +200,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       <Card>
         <CardHeader><CardTitle>Dados do pacote</CardTitle></CardHeader>
         <CardContent>
-          <form action={updateTeamAccountAction} className="grid gap-4 md:grid-cols-2">
+          <form key={team.updatedAt.getTime()} action={updateTeamAccountAction} className="grid gap-4 md:grid-cols-2">
             <input type="hidden" name="id" value={team.id} />
             <label className="block space-y-1 text-sm font-medium">
               Nome

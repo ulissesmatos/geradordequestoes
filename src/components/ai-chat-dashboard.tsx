@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, FileText, History, Image as ImageIcon, Link2, Loader2, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
+import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
@@ -97,7 +99,10 @@ export function AiChatDashboard({
   sessions,
   messages,
   initialPrompt,
-  subjectNames
+  subjectNames,
+  isAdmin = false,
+  initialSidebarOpen = true,
+  banner
 }: {
   userName: string;
   currentSessionId: string | null;
@@ -106,6 +111,9 @@ export function AiChatDashboard({
   messages: ChatMessage[];
   initialPrompt?: string;
   subjectNames?: string[];
+  isAdmin?: boolean;
+  initialSidebarOpen?: boolean;
+  banner?: React.ReactNode;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState(initialPrompt ?? "");
@@ -113,8 +121,8 @@ export function AiChatDashboard({
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [typedResponse, setTypedResponse] = useState("");
   const [typedSetId, setTypedSetId] = useState<string | null>(null);
   const [typedMaterialId, setTypedMaterialId] = useState<string | null>(null);
@@ -130,8 +138,13 @@ export function AiChatDashboard({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const quickPrompts = useMemo(() => buildQuickPrompts(subjectNames), [subjectNames]);
-  const placeholders = useMemo(() => buildPlaceholders(subjectNames), [subjectNames]);
+  // Inicializa vazio para SSR determinístico; useEffect (cliente-only) randomiza após hidratação.
+  const [quickPrompts, setQuickPrompts] = useState<string[]>([]);
+  const [placeholders, setPlaceholders] = useState<string[]>([]);
+  useEffect(() => {
+    setQuickPrompts(buildQuickPrompts(subjectNames));
+    setPlaceholders(buildPlaceholders(subjectNames));
+  }, [subjectNames]);
   const composedPrompt = useMemo(
     () => [message.trim(), ...pastedBlocks.map((block) => block.text)].filter(Boolean).join("\n\n"),
     [message, pastedBlocks]
@@ -186,7 +199,7 @@ export function AiChatDashboard({
     setStreamError(null);
     setStreamSessionId(null);
     setOptimisticMessage(null);
-    setMobileHistoryOpen(false);
+    setMobileMenuOpen(false);
   }, [currentSessionId, initialPrompt]);
 
   useEffect(() => {
@@ -406,12 +419,12 @@ export function AiChatDashboard({
     <SessionList
       sessions={sessions}
       activeSessionId={activeSessionId}
-      onNavigate={() => setMobileHistoryOpen(false)}
+      onNavigate={() => setMobileMenuOpen(false)}
     />
   );
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] -my-8 flex h-[calc(100svh-61px)] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100vh-73px)]">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] -my-8 flex h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100vh-73px)]">
       <aside
         className={cn(
           "hidden border-r border-[var(--border)] bg-[var(--surface-subtle)] transition-all duration-200 md:flex md:flex-col",
@@ -420,7 +433,19 @@ export function AiChatDashboard({
       >
         <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] p-3">
           {sidebarOpen && <span className="text-sm font-semibold">Chats</span>}
-          <Button variant="ghost" size="icon" title={sidebarOpen ? "Recolher histórico" : "Abrir histórico"} onClick={() => setSidebarOpen((value) => !value)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            title={sidebarOpen ? "Recolher histórico" : "Abrir histórico"}
+            onClick={() =>
+              setSidebarOpen((value) => {
+                const next = !value;
+                // Persiste a preferência entre reloads; lida no server em ai/page.tsx.
+                document.cookie = `ai-sidebar=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+                return next;
+              })
+            }
+          >
             {sidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeftOpen className="h-5 w-5" />}
           </Button>
         </div>
@@ -437,33 +462,35 @@ export function AiChatDashboard({
         {sidebarOpen ? sessionList : <div className="flex-1" />}
       </aside>
 
-      {mobileHistoryOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <button
-            type="button"
-            aria-label="Fechar histórico"
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setMobileHistoryOpen(false)}
-          />
-          <div className="absolute inset-y-0 left-0 flex w-80 max-w-[85vw] flex-col border-r border-[var(--border)] bg-[var(--surface)] shadow-xl">
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] p-3">
-              <span className="text-sm font-semibold">Chats</span>
-              <Button variant="ghost" size="icon" title="Fechar histórico" onClick={() => setMobileHistoryOpen(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="p-2">
-              <Button asChild variant="outline" className="w-full" onClick={() => setMobileHistoryOpen(false)}>
-                <Link href="/ai?new=1">
-                  <MessageSquarePlus className="h-4 w-4" />
-                  Novo chat
-                </Link>
-              </Button>
-            </div>
-            {sessionList}
+      {/* Drawer mobile único: novo chat + histórico + navegação do app (estilo ChatGPT) */}
+      <div className="md:hidden">
+        <Sheet open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} side="left" className="w-80 border-r border-[var(--border)] bg-[var(--surface)]">
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] p-3">
+            <span className="text-sm font-semibold">Chats</span>
+            <Button variant="ghost" size="icon" title="Fechar menu" onClick={() => setMobileMenuOpen(false)}>
+              <X className="h-5 w-5" />
+            </Button>
           </div>
-        </div>
-      )}
+          <div className="p-2">
+            <Button asChild variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
+              <Link href="/ai?new=1">
+                <MessageSquarePlus className="h-4 w-4" />
+                Novo chat
+              </Link>
+            </Button>
+          </div>
+          {sessionList}
+          <nav className="border-t border-[var(--border)] p-2">
+            <DrawerNavLink href="/ai" icon={Sparkles} label="Chat IA" onNavigate={() => setMobileMenuOpen(false)} />
+            <DrawerNavLink href="/simulados" icon={Timer} label="Simulados" onNavigate={() => setMobileMenuOpen(false)} />
+            <DrawerNavLink href="/biblioteca" icon={FolderOpen} label="Biblioteca" onNavigate={() => setMobileMenuOpen(false)} />
+            <DrawerNavLink href="/materiais" icon={BookOpen} label="Materiais" onNavigate={() => setMobileMenuOpen(false)} />
+            <DrawerNavLink href="/perfil" icon={User} label="Perfil e assinatura" onNavigate={() => setMobileMenuOpen(false)} />
+            {isAdmin && <DrawerNavLink href="/admin" icon={Settings} label="Admin" onNavigate={() => setMobileMenuOpen(false)} />}
+            <LogoutButton className="mt-1 flex w-full items-center rounded-md px-3 py-2.5 text-left text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]" />
+          </nav>
+        </Sheet>
+      </div>
 
       <main
         className="relative flex min-w-0 flex-1 flex-col"
@@ -477,26 +504,31 @@ export function AiChatDashboard({
             <p className="text-sm font-semibold text-[var(--primary-soft-foreground)]">Solte imagens ou PDFs para anexar</p>
           </div>
         )}
-        {/* Controles flutuantes no mobile — liberam a altura antes ocupada pelo subheader */}
-        <div className="pointer-events-none absolute left-3 top-3 z-20 flex gap-2 md:hidden">
+        {/* Mini-header mobile (estilo ChatGPT): menu + título + novo chat */}
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
           <button
             type="button"
-            aria-label="Abrir histórico de chats"
-            onClick={() => setMobileHistoryOpen(true)}
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]/90 text-[var(--foreground)] shadow-sm backdrop-blur"
+            aria-label="Abrir menu"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
           >
-            <History className="h-4 w-4" />
+            <Menu className="h-5 w-5" />
           </button>
+          <span className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
+            {sessions.find((item) => item.id === activeSessionId)?.title ?? "Chat IA"}
+          </span>
           <Link
             href="/ai?new=1"
             aria-label="Novo chat"
-            className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]/90 text-[var(--foreground)] shadow-sm backdrop-blur"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
           >
-            <MessageSquarePlus className="h-4 w-4" />
+            <MessageSquarePlus className="h-5 w-5" />
           </Link>
         </div>
 
-        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "pb-6 pt-14 md:pt-6" : "grid place-items-center py-8")}>
+        {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
+
+        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "pb-6 pt-4 md:pt-6" : "grid place-items-center py-8")}>
           {!hasConversation ? (
             <div className="w-full max-w-3xl text-center">
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]">
@@ -673,6 +705,29 @@ export function AiChatDashboard({
         </div>
       </main>
     </div>
+  );
+}
+
+function DrawerNavLink({
+  href,
+  icon: Icon,
+  label,
+  onNavigate
+}: {
+  href: string;
+  icon: typeof Sparkles;
+  label: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </Link>
   );
 }
 

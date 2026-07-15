@@ -8,20 +8,25 @@ export async function POST(request: Request) {
     const settings = await getPaymentSettings();
     if (!settings.mercadoPagoAccessToken) return new Response("Mercado Pago não configurado.", { status: 400 });
 
+    // Fail closed: sem o secret configurado, qualquer um poderia forjar webhooks
+    // e ativar assinaturas. Configure o segredo do webhook no painel admin.
+    if (!settings.mercadoPagoWebhookSecret) {
+      console.error("[mp-webhook] Webhook recebido sem mercadoPagoWebhookSecret configurado — rejeitado.");
+      return new Response("Webhook não configurado.", { status: 503 });
+    }
+
     const url = new URL(request.url);
     const queryDataId = url.searchParams.get("data.id");
     const body = await request.json().catch(() => ({}));
     const dataId = queryDataId || body?.data?.id || body?.id;
 
-    if (settings.mercadoPagoWebhookSecret) {
-      const valid = validateMercadoPagoSignature({
-        secret: settings.mercadoPagoWebhookSecret,
-        signature: request.headers.get("x-signature"),
-        requestId: request.headers.get("x-request-id"),
-        dataId
-      });
-      if (!valid) return new Response("Assinatura inválida.", { status: 401 });
-    }
+    const valid = validateMercadoPagoSignature({
+      secret: settings.mercadoPagoWebhookSecret,
+      signature: request.headers.get("x-signature"),
+      requestId: request.headers.get("x-request-id"),
+      dataId
+    });
+    if (!valid) return new Response("Assinatura inválida.", { status: 401 });
 
     if (!dataId) return Response.json({ received: true });
 

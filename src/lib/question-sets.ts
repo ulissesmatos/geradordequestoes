@@ -26,22 +26,21 @@ export async function generateAndSaveQuestionSet(input: {
   title?: string;
   chatSessionId?: string;
   context?: string;
+  modelOverride?: string;
 }) {
   const [subject, topic] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: input.subjectId } }),
     prisma.topic.findUniqueOrThrow({ where: { id: input.topicId } })
   ]);
 
-  // Grounding: anexa trechos de material real (provas/gabaritos/leis cadastrados)
-  // ao contexto, para questões fiéis ao estilo e gabarito da banca.
-  const referenceHits = await getReferenceContext({
+  // Grounding: busca questões reais de prova para âncora de estilo — canal separado do contexto do aluno.
+  const { hits, usedStructuredQuestions } = await getReferenceContext({
     subjectId: input.subjectId,
     topicId: input.topicId,
     query: [input.prompt, topic.name, subject.name].filter(Boolean).join(" "),
     limit: 4
   });
-  const referenceBlock = formatReferenceContext(referenceHits);
-  const context = [referenceBlock, input.context].filter(Boolean).join("\n\n").slice(0, 12000) || undefined;
+  const referenceBlock = formatReferenceContext(hits);
 
   const generated = await generateQuestions({
     subject: subject.name,
@@ -52,7 +51,9 @@ export async function generateAndSaveQuestionSet(input: {
     alternativesCount: input.alternativesCount,
     mode: input.mode,
     prompt: input.prompt,
-    context
+    referenceContext: referenceBlock || undefined,
+    context: input.context?.slice(0, 12000),
+    modelOverride: input.modelOverride
   });
 
   const title = input.title || buildQuestionSetTitle(input.mode, subject.name, topic.name);
@@ -118,7 +119,7 @@ export async function generateAndSaveQuestionSet(input: {
     prompt: generated.prompt
   });
 
-  return questionSet;
+  return Object.assign(questionSet, { referenceUsed: usedStructuredQuestions });
 }
 
 export function buildQuestionSetTitle(mode: QuestionSetMode, subject: string, topic: string) {

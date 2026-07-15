@@ -20,7 +20,8 @@ export async function requireUser() {
       image: true,
       cpf: true,
       birthDate: true,
-      phone: true
+      phone: true,
+      preferredStates: true
     }
   });
 

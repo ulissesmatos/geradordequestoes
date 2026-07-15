@@ -75,15 +75,22 @@ export async function generateQuestions(input: {
   prompt?: string;
   extraInstructions?: string;
   context?: string;
+  /** Questões reais de prova para servir de âncora de estilo — bloco proeminente separado do contexto do aluno. */
+  referenceContext?: string;
+  /** Modelo alternativo (mesma API key do provedor configurado). Vazio = modelo padrão. */
+  modelOverride?: string;
 }) {
-  const settings = await getAiSettings();
-  if (!settings.apiKey) {
-    throw new Error(`Configure a chave da ${providerLabel(settings.provider)} no painel admin.`);
+  const baseSettings = await getAiSettings();
+  if (!baseSettings.apiKey) {
+    throw new Error(`Configure a chave da ${providerLabel(baseSettings.provider)} no painel admin.`);
   }
+  const settings = input.modelOverride?.trim()
+    ? { ...baseSettings, model: input.modelOverride.trim() }
+    : baseSettings;
 
   const format = input.format ?? "CERTO_ERRADO";
   const alternativesCount = clampAlternatives(input.alternativesCount ?? 4);
-  const prompt = buildPrompt({ ...input, format, alternativesCount });
+  const prompt = buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
 
   if (settings.provider === AiProvider.CLAUDE) {
     return generateWithClaude(settings, prompt);
@@ -107,6 +114,7 @@ function buildPrompt(input: {
   prompt?: string;
   extraInstructions?: string;
   context?: string;
+  referenceContext?: string;
 }) {
   const formatInstruction =
     input.format === "CERTO_ERRADO"
@@ -120,11 +128,14 @@ function buildPrompt(input: {
     `Quantidade: ${input.quantity}`,
     `Modo: ${input.mode ?? "ESTUDO"}`,
     formatInstruction,
+    input.referenceContext
+      ? `QUESTÕES REAIS DE PROVA (use como âncora de estilo, dificuldade, fraseado e pegadinhas):\n${input.referenceContext}\n\nProduza questões NOVAS e originais nesse mesmo estilo da banca (Cebraspe); espelhe as pegadinhas e a estrutura; NÃO copie verbatim.`
+      : "",
     input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
     input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
-    input.context ? `Contexto de desempenho do aluno: ${input.context}` : "",
+    input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",
     "Gere questões originais de concurso público.",
-    "Não copie questões reais, provas oficiais ou bancos pagos.",
+    "Não copie verbatim; inspire-se no estilo e nas pegadinhas das provas reais para criar itens inéditos.",
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
     "Evite temas polêmicos ou desatualizados sem contexto."

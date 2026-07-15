@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { generateQuestionsAction } from "@/app/admin/admin-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,9 @@ type SubjectWithTopics = {
 
 export function GenerateForm({ subjects }: { subjects: SubjectWithTopics[] }) {
   const [state, formAction] = useActionState(generateQuestionsAction, null);
-  const topics = subjects.flatMap((subject) => subject.topics.map((topic) => ({ ...topic, subjectName: subject.name })));
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
+  // Assuntos em cascata: só os da matéria escolhida.
+  const topics = subjects.find((subject) => subject.id === subjectId)?.topics ?? [];
 
   return (
     <Card>
@@ -23,8 +25,8 @@ export function GenerateForm({ subjects }: { subjects: SubjectWithTopics[] }) {
       <CardContent>
         <form action={formAction} className="grid gap-3">
           <div className="grid gap-3 md:grid-cols-4">
-            <Select name="subjectId" required>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select>
-            <Select name="topicId" required>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subjectName} / {topic.name}</option>)}</Select>
+            <Select name="subjectId" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select>
+            <Select name="topicId" key={subjectId} required>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}</Select>
             <Select name="difficulty" defaultValue="MEDIO"><option value="FACIL">Fácil</option><option value="MEDIO">Médio</option><option value="DIFICIL">Difícil</option></Select>
             <Select name="quantity" defaultValue="5">{[3, 5, 10, 15, 20].map((value) => <option key={value} value={value}>{value} questões</option>)}</Select>
           </div>

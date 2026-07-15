@@ -19,7 +19,7 @@ export default async function AdminEmailPage() {
         description="Configure o envio de e-mails (verificação de conta e comunicados). A chave deixada em branco mantém a atual."
       />
 
-      <form action={updateEmailSettingsAction} className="space-y-4">
+      <form key={settings?.updatedAt.getTime() ?? "new"} action={updateEmailSettingsAction} className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Provedor de envio</CardTitle>

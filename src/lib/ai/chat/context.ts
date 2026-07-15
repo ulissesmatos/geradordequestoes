@@ -1,6 +1,7 @@
 import { AiChatRole, AttachmentKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getUserStudySnapshot } from "@/lib/ai/study-tools";
+import { getReferenceCatalog } from "@/lib/reference";
 import { buildSystemPrompt } from "@/lib/ai/chat/system-prompt";
 import { completeChat, type AiSettings, type NeutralMessage } from "@/lib/ai/chat/provider";
 
@@ -33,7 +34,7 @@ async function blobToDataUrl(url: string): Promise<string | null> {
 }
 
 export async function buildTurnMessages(input: { sessionId: string; userId: string }): Promise<NeutralMessage[]> {
-  const [session, subjects, snapshot] = await Promise.all([
+  const [session, subjects, snapshot, userPrefs, referenceCatalog] = await Promise.all([
     prisma.aiChatSession.findUnique({
       where: { id: input.sessionId },
       select: { summary: true, summarizedCount: true }
@@ -42,7 +43,12 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
       include: { topics: { orderBy: { name: "asc" }, select: { name: true } } },
       orderBy: { name: "asc" }
     }),
-    getUserStudySnapshot(input.userId)
+    getUserStudySnapshot(input.userId),
+    prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { preferredStates: true }
+    }),
+    getReferenceCatalog()
   ]);
 
   const subjectCatalog = subjects
@@ -52,6 +58,8 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
   const system = buildSystemPrompt({
     subjectCatalog,
     studySnapshot: snapshot,
+    preferredStates: userPrefs?.preferredStates,
+    referenceCatalog,
     conversationSummary: session?.summary
   });
 

@@ -1,0 +1,183 @@
+import { TeamSeatStatus, type MockExam, type MockExamSession } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+
+/** Estado da janela de disponibilidade de um simulado. */
+export type ExamWindowState = "futuro" | "aberto" | "encerrado";
+
+/** Team (cursinho) do aluno, se houver vaga reivindicada. */
+export async function getStudentTeamAccountId(userId: string): Promise<string | null> {
+  const seat = await prisma.teamSeat.findFirst({
+    where: { userId, status: TeamSeatStatus.CLAIMED },
+    select: { teamAccountId: true }
+  });
+  return seat?.teamAccountId ?? null;
+}
+
+export function getExamWindowState(
+  exam: Pick<MockExam, "opensAt" | "closesAt">,
+  now: Date = new Date()
+): ExamWindowState {
+  if (exam.opensAt && now < exam.opensAt) return "futuro";
+  if (exam.closesAt && now > exam.closesAt) return "encerrado";
+  return "aberto";
+}
+
+/**
+ * Prazo da sessão: agora + duração, limitado ao fechamento do simulado
+ * (quem inicia perto do fim tem menos tempo — avisado na capa).
+ */
+export function computeExpiresAt(
+  exam: Pick<MockExam, "durationMinutes" | "closesAt">,
+  now: Date = new Date()
+): Date {
+  const byDuration = new Date(now.getTime() + exam.durationMinutes * 60_000);
+  if (exam.closesAt && exam.closesAt < byDuration) return exam.closesAt;
+  return byDuration;
+}
+
+/**
+ * Finaliza e corrige a sessão. Idempotente: a transição finishedAt null → now
+ * acontece uma única vez (resolve a corrida countdown × botão Finalizar × lazy).
+ * Única fonte de correção — o gabarito nunca é enviado ao cliente durante a prova.
+ */
+export async function finalizeMockExamSession(sessionId: string): Promise<void> {
+  const now = new Date();
+  const claimed = await prisma.mockExamSession.updateMany({
+    where: { id: sessionId, finishedAt: null },
+    data: { finishedAt: now }
+  });
+  if (claimed.count === 0) return; // já finalizada por outro caminho
+
+  const session = await prisma.mockExamSession.findUniqueOrThrow({
+    where: { id: sessionId },
+    include: {
+      answers: { select: { questionId: true, userAnswer: true } },
+      mockExam: {
+        select: {
+          questionSet: {
+            select: { quantity: true, questions: { select: { id: true, answer: true } } }
+          }
+        }
+      }
+    }
+  });
+
+  const answerKey = new Map(session.mockExam.questionSet.questions.map((q) => [q.id, q.answer]));
+  const totalQuestions = session.mockExam.questionSet.questions.length || session.mockExam.questionSet.quantity;
+
+  let correct = 0;
+  let wrong = 0;
+  const attemptsData: {
+    userId: string;
+    questionId: string;
+    userAnswer: NonNullable<(typeof session.answers)[number]["userAnswer"]>;
+    userAnswerText: string;
+    isCorrect: boolean;
+    timeSpentSeconds: number;
+    mockExamSessionId: string;
+  }[] = [];
+
+  const effectiveEnd = now < session.expiresAt ? now : session.expiresAt;
+  const totalSeconds = Math.max(0, Math.floor((effectiveEnd.getTime() - session.startedAt.getTime()) / 1000));
+  const answered = session.answers.filter((a) => a.userAnswer !== null);
+  const avgSeconds = answered.length ? Math.max(1, Math.floor(totalSeconds / answered.length)) : 0;
+
+  for (const answer of answered) {
+    const key = answerKey.get(answer.questionId);
+    if (!key || !answer.userAnswer) continue;
+    const isCorrect = answer.userAnswer === key;
+    if (isCorrect) correct += 1;
+    else wrong += 1;
+    attemptsData.push({
+      userId: session.userId,
+      questionId: answer.questionId,
+      userAnswer: answer.userAnswer,
+      userAnswerText: answer.userAnswer === "CERTO" ? "Certo" : "Errado",
+      isCorrect,
+      timeSpentSeconds: avgSeconds,
+      mockExamSessionId: session.id
+    });
+  }
+
+  const blank = Math.max(0, totalQuestions - correct - wrong);
+
+  await prisma.$transaction([
+    prisma.mockExamSession.update({
+      where: { id: session.id },
+      data: {
+        netScore: correct - wrong,
+        correctCount: correct,
+        wrongCount: wrong,
+        blankCount: blank,
+        totalSeconds
+      }
+    }),
+    // Espelha nas tentativas do aluno: alimenta estatísticas e a personalização da IA.
+    ...(attemptsData.length ? [prisma.questionAttempt.createMany({ data: attemptsData })] : [])
+  ]);
+}
+
+/** Lazy auto-finish: expira a sessão no servidor em qualquer leitura/gravação (dispensa cron). */
+export async function ensureSessionCurrent(
+  session: Pick<MockExamSession, "id" | "finishedAt" | "expiresAt">
+): Promise<boolean> {
+  if (session.finishedAt) return true;
+  if (new Date() > session.expiresAt) {
+    await finalizeMockExamSession(session.id);
+    return true;
+  }
+  return false;
+}
+
+const MIN_PARTICIPANTS_FOR_COMPARATIVES = 5;
+
+export type MockExamComparatives = {
+  participants: number;
+  /** % de participantes com resultado pior que o meu (nota líquida; desempate por tempo). */
+  percentBeaten: number;
+  averageNetScore: number;
+};
+
+/**
+ * Comparativos anônimos do resultado. Retorna null com menos de 5 participantes
+ * finalizados. Os dados nominais ficam no banco — migrar para ranking aberto
+ * no futuro é só uma nova UI ordenando por (netScore desc, totalSeconds asc).
+ */
+export async function getMockExamComparatives(
+  mockExamId: string,
+  mySession: Pick<MockExamSession, "id" | "netScore" | "totalSeconds">
+): Promise<MockExamComparatives | null> {
+  const finished = await prisma.mockExamSession.findMany({
+    where: { mockExamId, finishedAt: { not: null } },
+    select: { id: true, netScore: true, totalSeconds: true }
+  });
+  if (finished.length < MIN_PARTICIPANTS_FOR_COMPARATIVES) return null;
+  if (mySession.netScore === null || mySession.totalSeconds === null) return null;
+
+  const myScore = mySession.netScore;
+  const myTime = mySession.totalSeconds;
+  const others = finished.filter((s) => s.id !== mySession.id);
+  const worse = others.filter((s) => {
+    const score = s.netScore ?? Number.MIN_SAFE_INTEGER;
+    const time = s.totalSeconds ?? Number.MAX_SAFE_INTEGER;
+    return score < myScore || (score === myScore && time > myTime);
+  }).length;
+
+  const sum = finished.reduce((acc, s) => acc + (s.netScore ?? 0), 0);
+
+  return {
+    participants: finished.length,
+    percentBeaten: others.length ? Math.round((100 * worse) / others.length) : 0,
+    averageNetScore: Math.round((sum / finished.length) * 10) / 10
+  };
+}
+
+/** Formata segundos como "1h 02min" / "12min 30s". */
+export function formatExamDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  if (m > 0) return `${m}min ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}

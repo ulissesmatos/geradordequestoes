@@ -1,11 +1,10 @@
-import { createQuestionAction, deleteQuestionAction } from "@/app/admin/admin-actions";
+import { deleteQuestionAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
+import { ManualQuestionForm } from "@/components/admin/manual-question-form";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/lib/prisma";
 
 const PAGE_SIZE = 50;
@@ -37,7 +36,6 @@ export default async function AdminQuestionsPage({
     }),
     prisma.question.count({ where })
   ]);
-  const topics = subjects.flatMap((subject) => subject.topics.map((topic) => ({ ...topic, subjectName: subject.name })));
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -46,18 +44,9 @@ export default async function AdminQuestionsPage({
       <Card>
         <CardHeader><CardTitle>Nova questão manual Certo/Errado</CardTitle></CardHeader>
         <CardContent>
-          <form action={createQuestionAction} className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
-              <Select name="subjectId" required>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select>
-              <Select name="topicId" required>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subjectName} / {topic.name}</option>)}</Select>
-              <Select name="difficulty" defaultValue="MEDIO"><option value="FACIL">Fácil</option><option value="MEDIO">Médio</option><option value="DIFICIL">Difícil</option></Select>
-              <Select name="status" defaultValue="PENDING_REVIEW"><option value="DRAFT">Rascunho</option><option value="PENDING_REVIEW">Pendente</option><option value="APPROVED">Aprovada</option><option value="REJECTED">Rejeitada</option></Select>
-            </div>
-            <Textarea name="statement" placeholder="Enunciado" required />
-            <Select name="answer" defaultValue="CERTO"><option value="CERTO">CERTO</option><option value="ERRADO">ERRADO</option></Select>
-            <Textarea name="explanation" placeholder="Justificativa" required />
-            <SubmitButton>Criar questão</SubmitButton>
-          </form>
+          <ManualQuestionForm
+            subjects={subjects.map((s) => ({ id: s.id, name: s.name, topics: s.topics.map((t) => ({ id: t.id, name: t.name })) }))}
+          />
         </CardContent>
       </Card>
       <form method="get" className="flex flex-wrap items-center gap-2">

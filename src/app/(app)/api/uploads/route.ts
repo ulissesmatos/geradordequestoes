@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { put } from "@vercel/blob";
 import { requireUser } from "@/lib/guards";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { ATTACHMENT_LIMITS, attachmentKindFromMime } from "@/lib/uploads";
 
 export const runtime = "nodejs";
@@ -35,7 +36,15 @@ async function extractPdfText(buffer: Uint8Array): Promise<string> {
 
 export async function POST(request: Request) {
   try {
-    await requireUser();
+    const user = await requireUser();
+
+    const rate = checkRateLimit(`uploads:${user.id}`, RATE_LIMITS.uploads);
+    if (!rate.ok) {
+      return Response.json(
+        { error: "Muitos uploads em sequência. Aguarde um pouco e tente de novo." },
+        { status: 429, headers: { "retry-after": String(rate.retryAfterSeconds) } }
+      );
+    }
 
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
       return Response.json(

@@ -2,6 +2,7 @@
 
 import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { logAdminAction } from "@/lib/audit";
@@ -37,7 +38,48 @@ export async function createTopicAction(formData: FormData) {
       description: String(formData.get("description") ?? "")
     }
   });
-  revalidatePath("/admin/assuntos");
+  revalidatePath("/admin/materias");
+}
+
+export type CreateTopicsBulkState = { ok?: boolean; created?: number; skipped?: number; error?: string; stamp?: number } | null;
+
+/**
+ * Cria vários assuntos de uma vez para uma matéria. Aceita nomes separados por
+ * vírgula, ponto e vírgula ou quebra de linha (cola direta do conteúdo
+ * programático do edital). Duplicados (mesmo slug na matéria) são ignorados.
+ */
+export async function createTopicsBulkAction(_: CreateTopicsBulkState, formData: FormData): Promise<CreateTopicsBulkState> {
+  const admin = await requireAdmin();
+  const subjectId = String(formData.get("subjectId") ?? "");
+  const raw = String(formData.get("names") ?? "");
+
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { id: true, name: true } });
+  if (!subject) return { error: "Matéria não encontrada.", stamp: Date.now() };
+
+  const names = [...new Map(
+    raw
+      .split(/[,;\n]/)
+      .map((part) => part.trim().replace(/\s+/g, " "))
+      .filter((part) => part.length >= 2)
+      .map((part) => [slugify(part), part] as const)
+  ).entries()].map(([slug, name]) => ({ slug, name }));
+
+  if (!names.length) return { error: "Informe ao menos um assunto (separe vários por vírgula ou linha).", stamp: Date.now() };
+  if (names.length > 60) return { error: "Máximo de 60 assuntos por vez.", stamp: Date.now() };
+
+  const result = await prisma.topic.createMany({
+    data: names.map(({ name, slug }) => ({ subjectId: subject.id, name, slug, description: "" })),
+    skipDuplicates: true
+  });
+
+  await logAdminAction(admin, {
+    action: "create",
+    entity: "Topic",
+    summary: `${result.count} assunto(s) em ${subject.name}`
+  });
+
+  revalidatePath("/admin/materias");
+  return { ok: true, created: result.count, skipped: names.length - result.count, stamp: Date.now() };
 }
 
 export async function createQuestionAction(formData: FormData) {
@@ -155,6 +197,55 @@ export async function cancelUserSubscriptionAction(formData: FormData) {
   await logAdminAction(admin, { action: "cancel_subscription", entity: "User", entityId: userId });
   revalidatePath("/admin/usuarios");
   revalidatePath("/admin/usuarios/[id]", "page");
+}
+
+export async function deleteUserAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+
+  if (admin.id === userId) {
+    throw new Error("Você não pode excluir a própria conta.");
+  }
+
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, name: true, email: true }
+  });
+  if (!target) throw new Error("Usuário não encontrado.");
+
+  if (target.role === Role.ADMIN) {
+    const activeAdminCount = await prisma.user.count({ where: { role: Role.ADMIN, isBlocked: false } });
+    if (activeAdminCount <= 1) {
+      throw new Error("Não é possível excluir o único administrador ativo.");
+    }
+  }
+
+  // Cancela assinaturas ativas antes da exclusão (fica registrado no histórico via ON DELETE CASCADE).
+  await prisma.userSubscription.updateMany({
+    where: { userId, status: SubscriptionStatus.ACTIVE },
+    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+  });
+
+  // Remove explicitamente os logs de IA para que o banco comece limpo.
+  // As sessões de chat são apagadas em cascata pelo ON DELETE CASCADE do User,
+  // mas fazemos aqui explicitamente antes para garantir a ordem.
+  await prisma.aiChatSession.deleteMany({ where: { userId } });
+  await prisma.aiGenerationLog.deleteMany({ where: { adminId: userId } });
+  await prisma.aiUsageEvent.deleteMany({ where: { userId } });
+
+  // Exclui o usuário — o restante (tentativas, favoritos, materiais, pagamentos, etc.) é removido via cascata.
+  await prisma.user.delete({ where: { id: userId } });
+
+  // Auditoria: AdminAuditLog não tem FK para User, então o registro persiste mesmo após a exclusão.
+  await logAdminAction(admin, {
+    action: "delete",
+    entity: "User",
+    entityId: userId,
+    summary: `${target.name} <${target.email}>`
+  });
+
+  revalidatePath("/admin/usuarios");
+  redirect("/admin/usuarios");
 }
 
 export async function createPlanAction(formData: FormData) {
@@ -572,7 +663,7 @@ export async function deleteSubjectAction(formData: FormData) {
   const subject = await prisma.subject.delete({ where: { id } });
   await logAdminAction(admin, { action: "delete", entity: "Subject", entityId: id, summary: subject.name });
   revalidatePath("/admin/materias");
-  revalidatePath("/admin/assuntos");
+  revalidatePath("/admin/materias");
 }
 
 export async function updateTopicAction(formData: FormData) {
@@ -582,7 +673,7 @@ export async function updateTopicAction(formData: FormData) {
   if (!id || name.length < 2) return;
   await prisma.topic.update({ where: { id }, data: { name, description: String(formData.get("description") ?? "") } });
   await logAdminAction(admin, { action: "update", entity: "Topic", entityId: id, summary: name });
-  revalidatePath("/admin/assuntos");
+  revalidatePath("/admin/materias");
 }
 
 export async function deleteTopicAction(formData: FormData) {
@@ -595,7 +686,7 @@ export async function deleteTopicAction(formData: FormData) {
   }
   const topic = await prisma.topic.delete({ where: { id } });
   await logAdminAction(admin, { action: "delete", entity: "Topic", entityId: id, summary: topic.name });
-  revalidatePath("/admin/assuntos");
+  revalidatePath("/admin/materias");
 }
 
 export async function deleteCouponAction(formData: FormData) {

@@ -150,6 +150,7 @@ model User {
   isBlocked         Boolean            @default(false)
   stripeCustomerId  String?
   trialGenerationsUsed Int             @default(0)
+  preferredStates   String[]           @default([])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   createdQuestions  Question[]         @relation("CreatedQuestions")
@@ -168,6 +169,8 @@ model User {
   verificationCodes  EmailVerificationCode[]
   passwordResetCodes PasswordResetCode[]
   questionFeedbacks  QuestionFeedback[]
+  mockExamSessions   MockExamSession[]
+  createdMockExams   MockExam[]         @relation("CreatedMockExams")
 }
 
 model EmailVerificationCode {
@@ -207,6 +210,7 @@ model AiProviderSetting {
   chatPresetUsageLevel AiChatPresetUsageLevel @default(MEDIO)
   webSearchEnabled     Boolean                @default(false)
   webSearchApiKey      String?
+  extractionModel      String?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 }
@@ -269,6 +273,7 @@ model Question {
   attempts      QuestionAttempt[]
   favorites     FavoriteQuestion[]
   feedbacks     QuestionFeedback[]
+  mockExamAnswers MockExamAnswer[]
 }
 
 model QuestionOption {
@@ -285,18 +290,20 @@ model QuestionOption {
 }
 
 model QuestionAttempt {
-  id               String          @id @default(cuid())
-  userId           String
-  questionId       String
-  userAnswer       QuestionAnswer?
-  selectedOptionId String?
-  userAnswerText   String?
-  isCorrect        Boolean
-  timeSpentSeconds Int
-  createdAt        DateTime        @default(now())
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  question         Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  selectedOption   QuestionOption? @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  id                String           @id @default(cuid())
+  userId            String
+  questionId        String
+  userAnswer        QuestionAnswer?
+  selectedOptionId  String?
+  userAnswerText    String?
+  isCorrect         Boolean
+  timeSpentSeconds  Int
+  mockExamSessionId String?
+  createdAt         DateTime         @default(now())
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question          Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption    QuestionOption?  @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  mockExamSession   MockExamSession? @relation(fields: [mockExamSessionId], references: [id], onDelete: SetNull)
 }
 
 model FavoriteQuestion {
@@ -362,6 +369,70 @@ model QuestionSet {
   chatSession       AiChatSession?    @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
   questions         Question[]
   messages          AiChatMessage[]
+  mockExam          MockExam?
+}
+
+enum MockExamStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+model MockExam {
+  id              String         @id @default(cuid())
+  title           String
+  description     String?
+  questionSetId   String         @unique
+  teamAccountId   String?
+  durationMinutes Int
+  opensAt         DateTime?
+  closesAt        DateTime?
+  status          MockExamStatus @default(DRAFT)
+  createdById     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  questionSet     QuestionSet    @relation(fields: [questionSetId], references: [id], onDelete: Restrict)
+  teamAccount     TeamAccount?   @relation(fields: [teamAccountId], references: [id], onDelete: SetNull)
+  createdBy       User?          @relation("CreatedMockExams", fields: [createdById], references: [id], onDelete: SetNull)
+  sessions        MockExamSession[]
+
+  @@index([status])
+  @@index([teamAccountId])
+}
+
+model MockExamSession {
+  id           String            @id @default(cuid())
+  mockExamId   String
+  userId       String
+  startedAt    DateTime          @default(now())
+  expiresAt    DateTime
+  finishedAt   DateTime?
+  netScore     Int?
+  correctCount Int?
+  wrongCount   Int?
+  blankCount   Int?
+  totalSeconds Int?
+  createdAt    DateTime          @default(now())
+  mockExam     MockExam          @relation(fields: [mockExamId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers      MockExamAnswer[]
+  attempts     QuestionAttempt[]
+
+  @@unique([mockExamId, userId])
+  @@index([mockExamId, finishedAt])
+}
+
+model MockExamAnswer {
+  id         String          @id @default(cuid())
+  sessionId  String
+  questionId String
+  userAnswer QuestionAnswer?
+  updatedAt  DateTime        @updatedAt
+  session    MockExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question   Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
 }
 
 model AiChatSession {
@@ -606,9 +677,10 @@ model TeamAccount {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  plan    SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
-  members TeamSeat[]
-  charges TeamCharge[]
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  members   TeamSeat[]
+  charges   TeamCharge[]
+  mockExams MockExam[]
 }
 
 model TeamSeat {
@@ -679,21 +751,55 @@ model QuestionFeedback {
 enum ReferenceKind {
   PROVA
   GABARITO
+  EDITAL
   LEI
   RESUMO
   OUTRO
 }
 
+enum ReferenceExtractionStatus {
+  PENDING
+  PROCESSING
+  DONE
+  ERROR
+}
+
 model ReferenceDocument {
-  id          String           @id @default(cuid())
-  title       String
-  source      String?
-  kind        ReferenceKind    @default(OUTRO)
-  subjectId   String?
-  topicId     String?
-  createdById String?
-  createdAt   DateTime         @default(now())
-  chunks      ReferenceChunk[]
+  id               String                    @id @default(cuid())
+  title            String
+  source           String?
+  kind             ReferenceKind             @default(OUTRO)
+  subjectId        String?
+  topicId          String?
+  createdById      String?
+  extractionStatus ReferenceExtractionStatus @default(PENDING)
+  extractionCursor Int                       @default(0)
+  extractionError  String?
+  createdAt        DateTime                  @default(now())
+  chunks           ReferenceChunk[]
+  questions        ReferenceQuestion[]
+}
+
+model ReferenceQuestion {
+  id               String            @id @default(cuid())
+  documentId       String
+  subjectId        String?
+  topicId          String?
+  statement        String
+  answer           QuestionAnswer?
+  answerText       String?
+  explanation      String?
+  trickNote        String?
+  hasImage         Boolean           @default(false)
+  imageDescription String?
+  topicHint        String?
+  ordinal          Int
+  createdAt        DateTime          @default(now())
+  document         ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([subjectId])
+  @@index([topicId])
 }
 
 model ReferenceChunk {

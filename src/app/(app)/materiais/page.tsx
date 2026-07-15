@@ -1,19 +1,34 @@
 import Link from "next/link";
-import { FileText, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 
-export default async function MaterialsPage() {
+const PAGE_SIZE = 24;
+
+export default async function MaterialsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requireUser();
   await requireActiveSubscription(user);
-  const materials = await prisma.studyMaterial.findMany({
-    where: { userId: user.id },
-    include: { subject: true, topic: true },
-    orderBy: { createdAt: "desc" }
-  });
+  const params = await searchParams;
+  const page = Math.max(1, Number(params.page) || 1);
+
+  const [materials, total] = await Promise.all([
+    prisma.studyMaterial.findMany({
+      where: { userId: user.id },
+      include: { subject: true, topic: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE
+    }),
+    prisma.studyMaterial.count({ where: { userId: user.id } })
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -55,6 +70,40 @@ export default async function MaterialsPage() {
           </Link>
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          {page > 1 ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/materiais?page=${page - 1}`}>
+                <ChevronLeft className="h-4 w-4" />
+                Anterior
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" disabled>
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+          )}
+          <span className="text-sm text-[var(--muted-foreground)]">
+            Página {page} de {totalPages}
+          </span>
+          {page < totalPages ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/materiais?page=${page + 1}`}>
+                Próxima
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" disabled>
+              Próxima
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

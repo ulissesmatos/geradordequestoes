@@ -1,12 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BookOpen, FolderOpen, Menu, Settings, Sparkles, User } from "lucide-react";
+import { BookOpen, FolderOpen, Menu, Settings, Sparkles, Timer, User } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 
 const links = [
   { href: "/ai", label: "Chat IA", icon: Sparkles },
+  { href: "/simulados", label: "Simulados", icon: Timer },
   { href: "/biblioteca", label: "Biblioteca", icon: FolderOpen },
   { href: "/materiais", label: "Materiais", icon: BookOpen }
 ];

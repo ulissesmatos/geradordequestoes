@@ -1,4 +1,4 @@
-import { Prisma, type ReferenceKind } from "@prisma/client";
+import { Prisma, type QuestionAnswer, type ReferenceKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const CHUNK_TARGET = 1000;
@@ -107,28 +107,155 @@ export async function searchReferenceChunks(input: {
   `);
 }
 
+export type ReferenceQuestionHit = {
+  id: string;
+  documentId: string;
+  statement: string;
+  answer: QuestionAnswer | null;
+  answerText: string | null;
+  explanation: string | null;
+  trickNote: string | null;
+  hasImage: boolean;
+  imageDescription: string | null;
+  topicHint: string | null;
+  title: string;
+  source: string | null;
+};
+
 /**
- * Trechos de referência para fundamentar a GERAÇÃO de questões. Tenta full-text
- * pelo tema; se não houver match (ou sem query), recai para os trechos da
- * matéria/assunto. Vazio quando não há material cadastrado.
+ * Busca QUESTÕES estruturadas extraídas por IA dos materiais (banco refinado).
+ * Muito mais preciso e barato que vasculhar chunks crus: gabarito, justificativa
+ * e pegadinha já vêm mapeados.
+ */
+export async function searchReferenceQuestions(input: {
+  query: string;
+  subjectId?: string | null;
+  topicId?: string | null;
+  limit?: number;
+}): Promise<ReferenceQuestionHit[]> {
+  const query = (input.query ?? "").trim();
+  if (!query) return [];
+  const limit = Math.min(Math.max(input.limit ?? 5, 1), 12);
+
+  const filters: Prisma.Sql[] = [
+    Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ plainto_tsquery('portuguese', ${query})`
+  ];
+  if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
+  if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
+  const where = Prisma.join(filters, " AND ");
+
+  return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
+    SELECT q.id, q."documentId", q.statement, q.answer, q."answerText", q.explanation,
+           q."trickNote", q."hasImage", q."imageDescription", q."topicHint",
+           d.title, d.source
+    FROM "ReferenceQuestion" q
+    JOIN "ReferenceDocument" d ON d.id = q."documentId"
+    WHERE ${where}
+    ORDER BY ts_rank(
+      to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '')),
+      plainto_tsquery('portuguese', ${query})
+    ) DESC
+    LIMIT ${limit}
+  `);
+}
+
+/**
+ * Catálogo curto dos materiais de referência disponíveis, para o system prompt.
+ * Assim a IA SABE o que existe no acervo interno e pode listar/responder
+ * "quais materiais você tem" sem precisar adivinhar uma busca por palavra-chave.
+ */
+export async function getReferenceCatalog(): Promise<string> {
+  const documents = await prisma.referenceDocument.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 40,
+    select: {
+      title: true,
+      source: true,
+      kind: true,
+      _count: { select: { questions: true } }
+    }
+  });
+  if (documents.length === 0) return "";
+
+  const lines = documents.map((doc) => {
+    const meta = [doc.source, doc._count.questions ? `${doc._count.questions} questões` : null].filter(Boolean).join(", ");
+    return `- ${doc.title} (${doc.kind}${meta ? `; ${meta}` : ""})`;
+  });
+  return lines.join("\n");
+}
+
+/** Formata uma questão extraída como texto de contexto/exemplar para prompts. */
+export function formatReferenceQuestion(question: ReferenceQuestionHit): string {
+  const gabarito = question.answer ?? question.answerText ?? "desconhecido";
+  return [
+    `Questão real (${question.title}${question.source ? ` — ${question.source}` : ""}) [gabarito: ${gabarito}]`,
+    question.statement,
+    question.explanation ? `Justificativa: ${question.explanation}` : "",
+    question.trickNote ? `Pegadinha: ${question.trickNote}` : "",
+    question.hasImage ? `Atenção: a questão original depende de imagem/charge${question.imageDescription ? ` (${question.imageDescription})` : ""}.` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Trechos de referência para fundamentar a GERAÇÃO de questões. Prioriza as
+ * QUESTÕES estruturadas extraídas por IA (exemplares com gabarito conferido);
+ * recai para full-text nos trechos crus e, por fim, trechos da matéria/assunto.
+ *
+ * Filtro suave: se subjectId/topicId não casar (ex.: material sem matéria atribuída),
+ * refaz sem filtro — ts_rank mantém os on-topic no topo de qualquer forma.
+ *
+ * Retorna `usedStructuredQuestions: true` apenas quando o Tier 1 (questões extraídas)
+ * casou — é o sinal de "havia prova real cadastrada".
  */
 export async function getReferenceContext(input: {
   subjectId?: string | null;
   topicId?: string | null;
   query?: string;
   limit?: number;
-}): Promise<ReferenceHit[]> {
+}): Promise<{ hits: ReferenceHit[]; usedStructuredQuestions: boolean }> {
   const limit = input.limit ?? 4;
+
+  // 1) Banco estruturado: questões extraídas por IA, com gabarito mapeado.
   if (input.query && input.query.trim()) {
-    const hits = await searchReferenceChunks({
+    let questionHits = await searchReferenceQuestions({
       query: input.query,
       subjectId: input.subjectId,
       topicId: input.topicId,
       limit
     });
-    if (hits.length) return hits;
+    if (questionHits.length === 0 && (input.subjectId || input.topicId)) {
+      questionHits = await searchReferenceQuestions({ query: input.query, limit });
+    }
+    if (questionHits.length) {
+      return {
+        hits: questionHits.map((q) => ({
+          id: q.id,
+          documentId: q.documentId,
+          content: formatReferenceQuestion(q),
+          title: q.title,
+          source: q.source
+        })),
+        usedStructuredQuestions: true
+      };
+    }
   }
-  if (!input.subjectId && !input.topicId) return [];
+
+  // 2) Fallback: full-text nos trechos crus.
+  if (input.query && input.query.trim()) {
+    let hits = await searchReferenceChunks({
+      query: input.query,
+      subjectId: input.subjectId,
+      topicId: input.topicId,
+      limit
+    });
+    if (hits.length === 0 && (input.subjectId || input.topicId)) {
+      hits = await searchReferenceChunks({ query: input.query, limit });
+    }
+    if (hits.length) return { hits, usedStructuredQuestions: false };
+  }
+  if (!input.subjectId && !input.topicId) return { hits: [], usedStructuredQuestions: false };
   const chunks = await prisma.referenceChunk.findMany({
     where: {
       ...(input.topicId ? { topicId: input.topicId } : {}),
@@ -138,13 +265,16 @@ export async function getReferenceContext(input: {
     take: limit,
     include: { document: { select: { title: true, source: true } } }
   });
-  return chunks.map((c) => ({
-    id: c.id,
-    documentId: c.documentId,
-    content: c.content,
-    title: c.document.title,
-    source: c.document.source
-  }));
+  return {
+    hits: chunks.map((c) => ({
+      id: c.id,
+      documentId: c.documentId,
+      content: c.content,
+      title: c.document.title,
+      source: c.document.source
+    })),
+    usedStructuredQuestions: false
+  };
 }
 
 /** Formata trechos como bloco de contexto para o prompt de geração. */

@@ -26,7 +26,7 @@ export default async function AdminPlansPage() {
           <CardDescription>Esses textos aparecem na landing, /pricing e paywall.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updatePricingContentAction} className="grid gap-3">
+          <form key={pricingContent.updatedAt.getTime()} action={updatePricingContentAction} className="grid gap-3">
             <Input name="headline" defaultValue={pricingContent.headline} placeholder="Headline dos planos" required />
             <Textarea name="subheadline" defaultValue={pricingContent.subheadline} placeholder="Subheadline dos planos" required />
             <Input name="paywallTitle" defaultValue={pricingContent.paywallTitle} placeholder="Título do paywall" required />
@@ -79,7 +79,7 @@ export default async function AdminPlansPage() {
               <CardDescription>{plan.isActive ? "Ativo publicamente" : "Oculto publicamente"} {plan.isHighlighted ? "/ destacado" : ""}</CardDescription>
             </CardHeader>
             <CardContent>
-              <form action={updatePlanAction} className="space-y-3">
+              <form key={plan.updatedAt.getTime()} action={updatePlanAction} className="space-y-3">
                 <input type="hidden" name="planId" value={plan.id} />
                 <div className="grid gap-3 md:grid-cols-2">
                   <Input name="name" defaultValue={plan.name} required />

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { BR_UF_SET } from "@/lib/br-states";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { claimTeamSeatByCode, claimTeamSeatByCpf } from "@/lib/teams";
@@ -64,6 +65,41 @@ export async function updateProfileAction(_: ProfileActionState, formData: FormD
 
   revalidatePath("/perfil");
   return { ok: true };
+}
+
+/** Salva os estados (UFs) de interesse do usuário para concursos. Lista vazia limpa a preferência. */
+export async function updateStudyPreferencesAction(_: ProfileActionState, formData: FormData): Promise<ProfileActionState> {
+  const user = await requireUser();
+
+  const raw = formData.getAll("states").map((value) => String(value).toUpperCase().trim());
+  const states = [...new Set(raw)].filter((uf) => BR_UF_SET.has(uf));
+  if (raw.length > 0 && states.length === 0) {
+    return { error: "Estados inválidos. Tente novamente." };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { preferredStates: states }
+  });
+
+  revalidatePath("/perfil");
+  revalidatePath("/ai");
+  return { ok: true };
+}
+
+/** Atalho de 1 clique (banner do chat) para definir os estados de interesse. */
+export async function setPreferredStatesQuickAction(ufs: string[]) {
+  const user = await requireUser();
+  const states = [...new Set(ufs.map((uf) => uf.toUpperCase().trim()))].filter((uf) => BR_UF_SET.has(uf));
+  if (!states.length) return;
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { preferredStates: states }
+  });
+
+  revalidatePath("/ai");
+  revalidatePath("/perfil");
 }
 
 export type RedeemCodeState = { ok?: boolean; error?: string; message?: string } | null;

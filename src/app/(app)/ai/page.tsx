@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { AiChatDashboard } from "@/components/ai-chat-dashboard";
 import { Paywall } from "@/components/paywall";
 import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt";
+import { StudyStatesPrompt } from "@/components/study-states-prompt";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getAiUsageStatus, getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
@@ -17,6 +19,8 @@ export default async function AiChatPage({
   if (!allowed) return <Paywall />;
 
   const params = await searchParams;
+  const cookieStore = await cookies();
+  const initialSidebarOpen = cookieStore.get("ai-sidebar")?.value !== "0";
   const [sessions, usage, subjects] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
@@ -47,14 +51,24 @@ export default async function AiChatPage({
   // (evita empilhar com o banner de verificação) e quando falta CPF.
   const showProfilePrompt = !user.cpf && !!user.emailVerified;
 
+  // Banners entram como prop: o chat usa layout full-bleed (margens negativas)
+  // e qualquer elemento renderizado antes dele quebraria a altura da tela.
+  const banner = showProfilePrompt ? (
+    <ProfileCompletionPrompt />
+  ) : user.preferredStates.length === 0 ? (
+    <StudyStatesPrompt />
+  ) : undefined;
+
   return (
     <div>
-      {showProfilePrompt && <ProfileCompletionPrompt />}
       <AiChatDashboard
+        banner={banner}
         key={params.new ? "new-chat" : session?.id ?? "empty-chat"}
         userName={user.name}
         currentSessionId={session?.id ?? null}
         usage={usage}
+        isAdmin={user.role === "ADMIN"}
+        initialSidebarOpen={initialSidebarOpen}
         subjectNames={subjects.map((subject) => subject.name)}
         initialPrompt={params.prompt ? params.prompt.slice(0, 500) : undefined}
         sessions={sessions.map((item) => ({

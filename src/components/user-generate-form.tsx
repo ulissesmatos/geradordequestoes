@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Bot, Play } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { generateUserQuestionsAction } from "@/app/(app)/actions/question-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,9 @@ type SubjectWithTopics = {
 
 export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }) {
   const [state, formAction] = useActionState(generateUserQuestionsAction, null);
-  const topics = subjects.flatMap((subject) =>
-    subject.topics.map((topic) => ({ id: topic.id, name: topic.name, subjectName: subject.name }))
-  );
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
+  // Assuntos em cascata: só os da matéria escolhida.
+  const topics = subjects.find((subject) => subject.id === subjectId)?.topics ?? [];
   const studyHref = state?.questionSetId
     ? `/biblioteca?setId=${state.questionSetId}`
     : "";
@@ -39,17 +39,18 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
       <CardContent>
         <form action={formAction} className="grid gap-3">
           <div className="grid gap-3 md:grid-cols-4">
-            <Select name="subjectId" required>
+            <Select name="subjectId" value={subjectId} onChange={(e) => setSubjectId(e.target.value)} required>
               {subjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>
                   {subject.name}
                 </option>
               ))}
             </Select>
-            <Select name="topicId" required>
+            {/* key remonta o select ao trocar a matéria, voltando ao primeiro assunto dela */}
+            <Select name="topicId" key={subjectId} required>
               {topics.map((topic) => (
                 <option key={topic.id} value={topic.id}>
-                  {topic.subjectName} / {topic.name}
+                  {topic.name}
                 </option>
               ))}
             </Select>

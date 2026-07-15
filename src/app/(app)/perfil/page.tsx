@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { BadgeCheck, Building2, CreditCard, IdCard, ShieldCheck, Sparkles, User } from "lucide-react";
+import { BadgeCheck, Building2, CreditCard, IdCard, MapPin, ShieldCheck, Sparkles, User } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProfilePersonalForm } from "@/components/profile-personal-form";
+import { StudyPreferencesForm } from "@/components/study-preferences-form";
 import { TeamCodeRedeem } from "@/components/team-code-redeem";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -109,6 +110,23 @@ export default async function ProfilePage({
             phone={user.phone}
             birthDate={user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null}
           />
+        </CardContent>
+      </Card>
+
+      {/* ── Preferências de estudo ── */}
+      <Card id="preferencias">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-[var(--primary)]" />
+            Preferências de estudo
+          </CardTitle>
+          <CardDescription>
+            Escolha os estados onde pretende prestar concursos. A IA usa essa informação para alinhar
+            exemplos, legislação estadual, órgãos e editais à sua região.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <StudyPreferencesForm selected={user.preferredStates} />
         </CardContent>
       </Card>
 

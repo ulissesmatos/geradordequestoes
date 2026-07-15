@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { activateUserSubscriptionAction, cancelUserSubscriptionAction, updateUserAction } from "@/app/admin/admin-actions";
+import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -117,7 +118,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form action={updateUserAction} className="space-y-3">
+            <form key={user.updatedAt.getTime()} action={updateUserAction} className="space-y-3">
               <input type="hidden" name="userId" value={user.id} />
               <label className="block space-y-1 text-sm font-medium">
                 Papel
@@ -213,6 +214,20 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
               )}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      {/* ── Zona de perigo ── */}
+      <Card className="border-red-200 dark:border-red-900">
+        <CardHeader>
+          <CardTitle className="text-red-700 dark:text-red-400">Zona de perigo</CardTitle>
+          <CardDescription>
+            Exclui permanentemente o usuário, cancela assinaturas ativas e apaga todos os logs de IA e histórico de chat.
+            Os logs de auditoria do sistema são mantidos. Ação irreversível.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteUserButton userId={user.id} userName={user.name} />
         </CardContent>
       </Card>
     </div>

@@ -50,13 +50,17 @@ export default async function LibraryPage({
       include: {
         subject: true,
         topic: true,
+        // A lista só precisa de contagem respondidas/total; o conteúdo das
+        // questões é carregado apenas ao abrir um bloco (setId).
         questions: {
-          include: {
-            attempts: { where: { userId: user.id } }
+          select: {
+            id: true,
+            attempts: { where: { userId: user.id }, select: { questionId: true } }
           }
         }
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      take: 60
     }),
     prisma.favoriteQuestion.findMany({
       where: { userId: user.id },

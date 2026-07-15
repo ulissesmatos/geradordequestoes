@@ -1,26 +1,44 @@
-import { BookOpen } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, Eye } from "lucide-react";
+import { ReferenceExtractionStatus, ReferenceKind } from "@prisma/client";
 import { createReferenceAction, deleteReferenceAction } from "@/app/admin/referencias/actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
+import { ExtractionModelPicker } from "@/components/admin/extraction-model-picker";
+import { ReferenceProcessButton } from "@/components/admin/reference-process-button";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { getModelOptionsForProvider } from "@/lib/ai/model-catalog";
+import { getAiSettings, providerLabel } from "@/lib/ai/settings";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
 }
 
+const extractionMeta: Record<ReferenceExtractionStatus, { label: string; tone: "neutral" | "success" | "warning" | "danger" }> = {
+  [ReferenceExtractionStatus.PENDING]: { label: "Não processado", tone: "neutral" },
+  [ReferenceExtractionStatus.PROCESSING]: { label: "Parcial", tone: "warning" },
+  [ReferenceExtractionStatus.DONE]: { label: "Processado", tone: "success" },
+  [ReferenceExtractionStatus.ERROR]: { label: "Erro", tone: "danger" }
+};
+
+/** Kinds onde extrair QUESTÕES estruturadas faz sentido como fluxo principal. Para os demais, o material já fica
+ * pesquisável pelo chat assim que é indexado, então a extração vira uma ação secundária/opcional. */
+const questionSourceKinds: ReferenceKind[] = [ReferenceKind.PROVA, ReferenceKind.GABARITO];
+
 export default async function AdminReferenciasPage() {
-  const [subjects, documents] = await Promise.all([
+  const [subjects, documents, aiSettings] = await Promise.all([
     prisma.subject.findMany({ include: { topics: { orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
     prisma.referenceDocument.findMany({
       orderBy: { createdAt: "desc" },
-      include: { _count: { select: { chunks: true } } }
-    })
+      include: { _count: { select: { chunks: true, questions: true } } }
+    }),
+    getAiSettings()
   ]);
   const subjectName = new Map(subjects.map((s) => [s.id, s.name]));
 
@@ -28,7 +46,7 @@ export default async function AdminReferenciasPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Materiais de referência"
-        description="Provas reais, gabaritos, leis e resumos que a IA consulta (busca por palavra-chave) para gerar questões fiéis e conferir gabaritos."
+        description="Provas reais, gabaritos, editais, leis e resumos/apostilas. Todo material vira trechos pesquisáveis pelo chat assim que é salvo — 'Processar com IA' é um passo à parte, só para extrair questões estruturadas (enunciado, gabarito, pegadinha) de provas."
       />
 
       {/* ── Adicionar material ── */}
@@ -36,26 +54,32 @@ export default async function AdminReferenciasPage() {
         <CardHeader>
           <CardTitle>Adicionar material</CardTitle>
           <CardDescription>
-            Cole o texto ou envie um PDF com texto extraível. O conteúdo é dividido em trechos e indexado para busca.
+            Cole o texto ou envie um PDF com texto extraível — provas, gabaritos, editais, leis, resumos ou apostilas.
+            O conteúdo é indexado na hora e já fica disponível para o chat consultar. Para provas, use depois o botão
+            &quot;Processar com IA&quot; para também extrair cada questão em formato estruturado.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form action={createReferenceAction} className="grid gap-4 md:grid-cols-2">
             <label className="block space-y-1 text-sm font-medium">
               Título
-              <Input name="title" required placeholder="Ex.: Prova CEBRASPE — PF Agente 2021" />
+              <Input name="title" required placeholder="Ex.: Edital CEBRASPE — PRF 2026" />
+              <p className="text-xs font-normal text-[var(--muted-foreground)]">
+                Um título claro ajuda a IA a encontrar este material quando o aluno perguntar sobre ele no chat.
+              </p>
             </label>
             <label className="block space-y-1 text-sm font-medium">
               Fonte
-              <Input name="source" placeholder="Ex.: CEBRASPE 2021" />
+              <Input name="source" placeholder="Ex.: CEBRASPE 2026" />
             </label>
             <label className="block space-y-1 text-sm font-medium">
               Tipo
               <Select name="kind" defaultValue="PROVA">
                 <option value="PROVA">Prova</option>
                 <option value="GABARITO">Gabarito</option>
+                <option value="EDITAL">Edital</option>
                 <option value="LEI">Lei</option>
-                <option value="RESUMO">Resumo</option>
+                <option value="RESUMO">Resumo / apostila</option>
                 <option value="OUTRO">Outro</option>
               </Select>
             </label>
@@ -66,7 +90,7 @@ export default async function AdminReferenciasPage() {
                 {subjects.map((s) => (
                   <optgroup key={s.id} label={s.name}>
                     {s.topics.map((t) => (
-                      <option key={t.id} value={t.id}>{s.name} / {t.name}</option>
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </optgroup>
                 ))}
@@ -89,33 +113,92 @@ export default async function AdminReferenciasPage() {
 
       {/* ── Lista ── */}
       <Card>
-        <CardHeader><CardTitle>Materiais cadastrados ({documents.length})</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Materiais cadastrados ({documents.length})</CardTitle>
+            <ExtractionModelPicker
+              providerName={providerLabel(aiSettings.provider)}
+              defaultModel={aiSettings.model}
+              currentModel={aiSettings.extractionModel}
+              options={getModelOptionsForProvider(aiSettings.provider)}
+            />
+          </div>
+          <CardDescription>
+            A IA da extração roda uma vez por material — vale usar um modelo forte aqui, mesmo que o chat use um modelo
+            econômico: a qualidade do banco extraído é o que o chat consulta depois.
+          </CardDescription>
+        </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="text-left text-xs uppercase text-[var(--muted-foreground)]">
-              <tr><th className="py-2">Título</th><th>Tipo</th><th>Matéria</th><th>Trechos</th><th>Criado</th><th></th></tr>
+              <tr><th className="py-2">Título</th><th>Tipo</th><th>Matéria</th><th>Trechos</th><th>Extração IA</th><th>Criado</th><th></th></tr>
             </thead>
             <tbody>
-              {documents.map((doc) => (
-                <tr key={doc.id} className="border-t border-[var(--border)]">
-                  <td className="py-3">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 text-[var(--primary)]" />
-                      <span className="font-medium">{doc.title}</span>
-                    </div>
-                    {doc.source && <span className="text-xs text-[var(--muted-foreground)]">{doc.source}</span>}
-                  </td>
-                  <td><StatusBadge tone="neutral">{doc.kind}</StatusBadge></td>
-                  <td>{doc.subjectId ? subjectName.get(doc.subjectId) ?? "—" : "—"}</td>
-                  <td>{doc._count.chunks}</td>
-                  <td className="text-[var(--muted-foreground)]">{formatDate(doc.createdAt)}</td>
-                  <td className="text-right">
-                    <ConfirmDeleteButton action={deleteReferenceAction} id={doc.id} confirmMessage={`Excluir "${doc.title}" e seus trechos?`} />
-                  </td>
-                </tr>
-              ))}
+              {documents.map((doc) => {
+                const meta = extractionMeta[doc.extractionStatus];
+                const isQuestionSource = questionSourceKinds.includes(doc.kind);
+                return (
+                  <tr key={doc.id} className="border-t border-[var(--border)]">
+                    <td className="py-3">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4 text-[var(--primary)]" />
+                        <Link href={`/admin/referencias/${doc.id}`} className="font-medium text-[var(--primary)] hover:underline">
+                          {doc.title}
+                        </Link>
+                      </div>
+                      {doc.source && <span className="text-xs text-[var(--muted-foreground)]">{doc.source}</span>}
+                    </td>
+                    <td><StatusBadge tone="neutral">{doc.kind}</StatusBadge></td>
+                    <td>{doc.subjectId ? subjectName.get(doc.subjectId) ?? "—" : "—"}</td>
+                    <td>{doc._count.chunks}</td>
+                    <td>
+                      <div className="flex flex-col gap-0.5">
+                        {isQuestionSource ? (
+                          <StatusBadge tone={meta.tone}>{meta.label}</StatusBadge>
+                        ) : (
+                          <StatusBadge tone={doc._count.chunks > 0 ? "success" : "neutral"}>
+                            {doc._count.chunks > 0 ? "Indexado e pesquisável" : "Sem conteúdo"}
+                          </StatusBadge>
+                        )}
+                        {doc._count.questions > 0 && (
+                          <span className="text-xs text-[var(--muted-foreground)]">{doc._count.questions} questões</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-[var(--muted-foreground)]">{formatDate(doc.createdAt)}</td>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {doc.extractionStatus !== ReferenceExtractionStatus.DONE && (
+                          <ReferenceProcessButton
+                            documentId={doc.id}
+                            totalChunks={doc._count.chunks}
+                            initialProcessed={doc.extractionCursor}
+                            variant={isQuestionSource ? "primary" : "secondary"}
+                            label={
+                              doc.extractionStatus === ReferenceExtractionStatus.PENDING
+                                ? isQuestionSource
+                                  ? "Processar com IA"
+                                  : "Extrair questões (opcional)"
+                                : "Continuar"
+                            }
+                          />
+                        )}
+                        <Link
+                          href={`/admin/referencias/${doc.id}`}
+                          title="Ver questões extraídas"
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 text-xs font-semibold text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Ver
+                        </Link>
+                        <ConfirmDeleteButton action={deleteReferenceAction} id={doc.id} label="" confirmMessage={`Excluir "${doc.title}", seus trechos e questões extraídas?`} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {documents.length === 0 && (
-                <tr><td colSpan={6} className="py-5 text-center text-[var(--muted-foreground)]">Nenhum material cadastrado ainda.</td></tr>
+                <tr><td colSpan={7} className="py-5 text-center text-[var(--muted-foreground)]">Nenhum material cadastrado ainda.</td></tr>
               )}
             </tbody>
           </table>

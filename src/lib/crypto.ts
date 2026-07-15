@@ -6,7 +6,15 @@ const PREFIX = "enc:v1:";
 
 function getKey(): Buffer | null {
   const raw = process.env.ENCRYPTION_KEY;
-  if (!raw) return null;
+  if (!raw) {
+    // Em produção, segredos NUNCA podem ir para o banco em texto puro.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "ENCRYPTION_KEY não definida. Configure a variável de ambiente em produção para proteger as chaves de IA e de pagamento em repouso."
+      );
+    }
+    return null;
+  }
   // Aceita qualquer string; deriva 32 bytes determinísticos via SHA-256.
   return crypto.createHash("sha256").update(raw).digest();
 }
@@ -16,8 +24,8 @@ export function isEncrypted(value: string | null | undefined): boolean {
 }
 
 /**
- * Cifra um segredo. Sem ENCRYPTION_KEY definido, retorna o texto puro
- * (degradação segura — nada quebra; a migração para cifrado acontece quando a chave existir).
+ * Cifra um segredo. Sem ENCRYPTION_KEY definido, retorna o texto puro APENAS
+ * em desenvolvimento; em produção a ausência da chave lança erro (fail closed).
  */
 export function encryptSecret(plain: string): string {
   if (!plain) return plain;

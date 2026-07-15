@@ -7,12 +7,22 @@ import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { parseAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const user = await requireUser();
+
+  const rate = checkRateLimit(`chat:${user.id}`, RATE_LIMITS.aiChat);
+  if (!rate.ok) {
+    return Response.json(
+      { error: "Muitas mensagens em sequência. Aguarde alguns segundos e tente de novo." },
+      { status: 429, headers: { "retry-after": String(rate.retryAfterSeconds) } }
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const prompt = String(body?.prompt ?? "").trim();
   const sessionId = String(body?.sessionId ?? "");

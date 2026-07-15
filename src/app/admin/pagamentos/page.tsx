@@ -40,7 +40,7 @@ export default async function AdminPaymentsPage() {
         description="Configure Stripe e Mercado Pago. Campos de chave deixados em branco mantêm o valor já salvo."
       />
 
-      <form action={updatePaymentGatewaySettingsAction} className="space-y-4">
+      <form key={settings?.updatedAt.getTime() ?? "new"} action={updatePaymentGatewaySettingsAction} className="space-y-4">
         {/* ── Stripe ── */}
         <Card>
           <CardHeader>

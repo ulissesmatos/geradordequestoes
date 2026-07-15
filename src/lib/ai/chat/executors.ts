@@ -16,7 +16,7 @@ import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/questio
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
-import { searchReferenceChunks } from "@/lib/reference";
+import { searchReferenceChunks, searchReferenceQuestions } from "@/lib/reference";
 import { webSearch } from "@/lib/ai/web-search";
 
 export type ToolSource = { title: string; url: string };
@@ -67,6 +67,8 @@ export async function executeToolCall(input: {
         return await runSearchReference(rawArgs);
       case "web_search":
         return await runWebSearch(rawArgs);
+      case "get_question_set_results":
+        return await runGetQuestionSetResults(input.user, rawArgs);
     }
   } catch (error) {
     return errorResult(
@@ -159,7 +161,10 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       mode: questionSetModeLabel(mode),
       format: questionFormatLabel(format),
       difficulty: difficultyLabel(difficulty),
-      note: "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links."
+      referenceUsed: questionSet.referenceUsed,
+      note: questionSet.referenceUsed
+        ? "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links."
+        : "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links. Avise brevemente que não havia prova real cadastrada sobre este ponto; as questões seguem o estilo da banca."
     }),
     fallbackMessage: buildGenerationFallback({
       quantity: questionSet.quantity,
@@ -167,7 +172,8 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       mode,
       difficulty,
       subjectName: subject.name,
-      topicName: topic.name
+      topicName: topic.name,
+      referenceUsed: questionSet.referenceUsed
     })
   };
 }
@@ -184,7 +190,10 @@ async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawAr
     getRecentConversationText(sessionId),
     getPerformanceContext(user.id)
   ]);
-  const context = [recentContext, performanceContext].filter(Boolean).join("\n\n").slice(0, 5200);
+  const context = [recentContext, performanceContext]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 5200);
 
   const generated = await generateStudyMaterial({ prompt: materialPrompt, context });
   await recordAiUsageEvent({
@@ -320,7 +329,39 @@ async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult
     }
   }
 
-  const hits = await searchReferenceChunks({ query: args.query, subjectId, topicId, limit: args.limit ?? 5 });
+  const limit = args.limit ?? 5;
+
+  // 1) Banco estruturado: questões extraídas por IA (gabarito/pegadinha já mapeados).
+  // Filtro de matéria/assunto é PREFERÊNCIA: se não casar (ex.: material sem
+  // matéria atribuída), refaz a busca sem filtro para não retornar vazio à toa.
+  let questionHits = await searchReferenceQuestions({ query: args.query, subjectId, topicId, limit });
+  if (questionHits.length === 0 && (subjectId || topicId)) {
+    questionHits = await searchReferenceQuestions({ query: args.query, limit });
+  }
+  if (questionHits.length > 0) {
+    return {
+      resultForModel: JSON.stringify({
+        ok: true,
+        questions: questionHits.map((q) => ({
+          statement: q.statement.slice(0, 900),
+          gabarito: q.answer ?? q.answerText ?? null,
+          justificativa: q.explanation?.slice(0, 500) ?? null,
+          pegadinha: q.trickNote ?? null,
+          dependeDeImagem: q.hasImage,
+          imagem: q.imageDescription ?? null,
+          assunto: q.topicHint ?? null,
+          fonte: `${q.title}${q.source ? ` — ${q.source}` : ""}`
+        })),
+        note: "Questões REAIS extraídas dos materiais cadastrados, com gabarito conferido. Use como fundamento e cite a fonte ao usuário. Se a questão depende de imagem/charge, avise que o original tem elemento visual."
+      })
+    };
+  }
+
+  // 2) Fallback: busca crua nos trechos dos documentos (mesmo filtro suave).
+  let hits = await searchReferenceChunks({ query: args.query, subjectId, topicId, limit });
+  if (hits.length === 0 && (subjectId || topicId)) {
+    hits = await searchReferenceChunks({ query: args.query, limit });
+  }
   if (hits.length === 0) {
     return {
       resultForModel: JSON.stringify({
@@ -337,6 +378,104 @@ async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult
       note: "Use estes trechos reais para fundamentar a resposta e conferir o gabarito. Cite a fonte (título) ao usuário."
     })
   };
+}
+
+async function runGetQuestionSetResults(user: ToolUser, rawArgs: unknown): Promise<ToolExecutionResult> {
+  const parsed = parseArgs(chatTools.get_question_set_results.schema, rawArgs);
+  if (!parsed.ok) return parsed.result;
+  const args = parsed.args;
+
+  let subjectId: string | undefined;
+  let topicId: string | undefined;
+  if (args.subjectName) {
+    const subjects = await prisma.subject.findMany({ include: { topics: true } });
+    const subject = matchByName(subjects, args.subjectName);
+    if (subject) {
+      subjectId = subject.id;
+      if (args.topicName) topicId = matchByName(subject.topics, args.topicName)?.id;
+    }
+  }
+
+  const questionSet = await prisma.questionSet.findFirst({
+    where: {
+      userId: user.id,
+      ...(args.which === "last_simulado" ? { mode: QuestionSetMode.SIMULADO } : {}),
+      ...(subjectId ? { subjectId } : {}),
+      ...(topicId ? { topicId } : {})
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      subject: true,
+      topic: true,
+      questions: { include: { options: true }, orderBy: { orderInSet: "asc" } }
+    }
+  });
+
+  if (!questionSet) {
+    const kind = args.which === "last_simulado" ? "simulado" : "bloco";
+    return errorResult(
+      `Nenhum ${kind} encontrado${args.subjectName ? ` em ${args.subjectName}` : ""}. Avise o usuário que não há dados disponíveis.`
+    );
+  }
+
+  const questionIds = questionSet.questions.map((q) => q.id);
+  const attempts = questionIds.length
+    ? await prisma.questionAttempt.findMany({
+        where: { userId: user.id, questionId: { in: questionIds } },
+        orderBy: { createdAt: "desc" }
+      })
+    : [];
+
+  // Dedupe: primeiro visto = mais recente (orderBy DESC)
+  const latestByQ = new Map<string, (typeof attempts)[number]>();
+  for (const a of attempts) {
+    if (!latestByQ.has(a.questionId)) latestByQ.set(a.questionId, a);
+  }
+
+  const total = questionSet.questions.length;
+  const answered = latestByQ.size;
+  const correct = [...latestByQ.values()].filter((a) => a.isCorrect).length;
+  const pct = total ? Math.round((correct / total) * 100) : 0;
+
+  const wrongLines: string[] = [];
+  const unansweredLines: string[] = [];
+
+  for (const q of questionSet.questions) {
+    const attempt = latestByQ.get(q.id);
+    if (!attempt) {
+      unansweredLines.push(`- ${q.statement.slice(0, 120).trim()}…`);
+      continue;
+    }
+    if (!attempt.isCorrect) {
+      let yourAnswer: string;
+      let correctAnswer: string;
+      if (q.format === "CERTO_ERRADO") {
+        yourAnswer = attempt.userAnswer ?? "não respondido";
+        correctAnswer = q.answer ?? "?";
+      } else {
+        const selected = q.options.find((o) => o.id === attempt.selectedOptionId);
+        const correctOpt = q.options.find((o) => o.isCorrect);
+        yourAnswer = selected ? `${selected.label}) ${selected.text}` : "não respondido";
+        correctAnswer = correctOpt ? `${correctOpt.label}) ${correctOpt.text}` : "?";
+      }
+      wrongLines.push(
+        `- ${q.statement.slice(0, 140).trim()}…\n  Sua resposta: **${yourAnswer}** | Gabarito: **${correctAnswer}**`
+      );
+    }
+  }
+
+  const lines = [
+    `**${questionSet.title}**`,
+    `Resultado: **${correct}/${total} (${pct}%)**`,
+    answered < total ? `(${total - answered} questão(ões) não respondida(s))` : "",
+    "",
+    wrongLines.length > 0 ? `**Questões erradas (${wrongLines.length}):**\n${wrongLines.join("\n")}` : "Nenhuma questão errada — parabéns!",
+    unansweredLines.length > 0 ? `\n**Não respondidas (${unansweredLines.length}):**\n${unansweredLines.join("\n")}` : ""
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+
+  return { resultForModel: lines };
 }
 
 async function runWebSearch(rawArgs: unknown): Promise<ToolExecutionResult> {
@@ -371,13 +510,17 @@ function buildGenerationFallback(input: {
   difficulty: Difficulty;
   subjectName: string;
   topicName: string;
+  referenceUsed: boolean;
 }) {
   const modeLabel = {
     [QuestionSetMode.ESTUDO]: "bloco de estudo",
     [QuestionSetMode.SIMULADO]: "simulado",
     [QuestionSetMode.REVISAO]: "bloco de revisão"
   }[input.mode];
-  return `Boa. Preparei um ${modeLabel} com ${input.quantity} questões de ${input.subjectName}, em ${questionFormatLabel(input.format)}, no nível ${difficultyLabel(input.difficulty).toLowerCase()}. Usei ${input.topicName} como eixo do bloco e deixei as justificativas prontas para você revisar depois da resposta. O bloco já está salvo no seu histórico. Quando quiser, é só começar por "Responder agora".`;
+  const base = `Boa. Preparei um ${modeLabel} com ${input.quantity} questões de ${input.subjectName}, em ${questionFormatLabel(input.format)}, no nível ${difficultyLabel(input.difficulty).toLowerCase()}. Usei ${input.topicName} como eixo do bloco e deixei as justificativas prontas para você revisar depois da resposta. O bloco já está salvo no seu histórico. Quando quiser, é só começar por "Responder agora".`;
+  return input.referenceUsed
+    ? base
+    : `${base}\n\nObs.: não havia prova real cadastrada sobre este ponto — as questões foram criadas no estilo Cebraspe.`;
 }
 
 function matchByName<T extends { name: string }>(items: T[], query: string): T | null {

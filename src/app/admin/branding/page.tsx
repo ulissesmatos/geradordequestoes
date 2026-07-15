@@ -19,7 +19,7 @@ export default async function AdminBrandingPage() {
           <CardDescription>Use URLs internas, como /brand/logo.png, ou URLs absolutas de assets hospedados.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateAppSettingsAction} className="grid gap-4">
+          <form key={settings.updatedAt.getTime()} action={updateAppSettingsAction} className="grid gap-4">
             <div className="grid gap-3 md:grid-cols-2">
               <Input name="appName" defaultValue={settings.appName} placeholder="Nome do app" required />
               <Input name="publicUrl" defaultValue={settings.publicUrl ?? ""} placeholder="URL pública, ex.: https://www.geradordequestoes.site" />
@@ -63,7 +63,7 @@ export default async function AdminBrandingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={updateAppSettingsAction} className="grid gap-4">
+          <form key={settings.updatedAt.getTime()} action={updateAppSettingsAction} className="grid gap-4">
             {/* Reenvia os demais campos do AppSetting para a action não sobrescrevê-los. */}
             <input type="hidden" name="appName" value={settings.appName} />
             <input type="hidden" name="logoUrl" value={settings.logoUrl} />

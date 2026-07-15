@@ -49,7 +49,7 @@ export const chatTools = {
   },
   search_reference_material: {
     description:
-      "Busca em materiais REAIS cadastrados (provas, gabaritos, leis, resumos) por palavra-chave. Use para fundamentar explicações e CONFERIR o gabarito antes de afirmar, especialmente em pontos polêmicos. Cite a fonte ao usuário quando usar.",
+      "Busca em materiais REAIS cadastrados no acervo interno (provas, gabaritos, editais, leis, resumos, apostilas, guias) por palavra-chave. Use tanto para fundamentar explicações e CONFERIR o gabarito antes de afirmar, quanto para responder perguntas administrativas sobre concursos (datas, vagas, cargos, requisitos, cronograma) quando houver edital ou material cadastrado. Prefira esta ferramenta a web_search quando o assunto já estiver no acervo interno. Cite a fonte ao usuário quando usar.",
     schema: z.object({
       query: z.string().describe("Termos de busca, ex.: 'crase antes de pronomes' ou 'art. 37 CF princípios'."),
       subjectName: z.string().optional().describe("Filtra por matéria cadastrada, se aplicável."),
@@ -59,10 +59,22 @@ export const chatTools = {
   },
   web_search: {
     description:
-      "Busca informações ATUAIS na web (editais, datas, notícias recentes, mudanças de lei). Use apenas quando o conhecimento interno pode estar desatualizado ou o usuário pede algo recente. Cite as fontes (título e URL) ao usuário.",
+      "Busca informações ATUAIS na web (editais, datas, notícias recentes, mudanças de lei). Use como FALLBACK: quando não houver material relevante cadastrado no acervo interno (confira o catálogo e/ou tente search_reference_material primeiro) ou quando o conhecimento interno/acervo puder estar desatualizado. Cite as fontes (título e URL) ao usuário.",
     schema: z.object({
       query: z.string().describe("Consulta de busca, ex.: 'edital concurso PF 2026 datas'."),
       maxResults: z.number().int().min(1).max(8).optional()
+    })
+  },
+  get_question_set_results: {
+    description:
+      "Mostra o resultado detalhado de UM bloco/simulado específico: nota, questões erradas e resposta vs gabarito. Use para 'resultado do último simulado', 'como fui no bloco X', 'quais errei', 'minha nota'.",
+    schema: z.object({
+      which: z
+        .enum(["last", "last_simulado"])
+        .default("last")
+        .describe("last = bloco mais recente de qualquer tipo; last_simulado = simulado mais recente."),
+      subjectName: z.string().optional().describe("Filtra por matéria, se o usuário citar."),
+      topicName: z.string().optional().describe("Filtra por assunto, se o usuário citar.")
     })
   }
 } as const;
