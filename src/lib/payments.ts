@@ -6,7 +6,10 @@ import { decryptSecret } from "@/lib/crypto";
 
 export function appUrl() {
   // AUTH_URL serve de fallback porque já é obrigatório para o NextAuth em produção
-  return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.AUTH_URL || "http://localhost:3000";
+  const url =
+    process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.AUTH_URL || "http://localhost:3000";
+  // Remove barra(s) finais para evitar "//" ao concatenar com o path (ex.: `${appUrl()}/r/${code}`)
+  return url.replace(/\/+$/, "");
 }
 
 export async function getPaymentSettings() {
