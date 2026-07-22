@@ -21,7 +21,10 @@ export async function requireUser() {
       cpf: true,
       birthDate: true,
       phone: true,
-      preferredStates: true
+      preferredStates: true,
+      reviewReminderOptOut: true,
+      dailyQuestionGoal: true,
+      weeklySummaryOptOut: true
     }
   });
 

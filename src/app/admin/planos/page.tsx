@@ -65,6 +65,7 @@ export default async function AdminPlansPage() {
             <div className="flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked /> Ativo</label>
               <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" /> Destacar como popular</label>
+              <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" /> Aprofundar materiais (IA)</label>
             </div>
             <SubmitButton>Criar plano</SubmitButton>
           </form>
@@ -113,6 +114,7 @@ export default async function AdminPlansPage() {
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo</label>
                   <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" defaultChecked={plan.isHighlighted} /> Destacado</label>
+                  <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" defaultChecked={plan.materialExpandEnabled} /> Aprofundar materiais (IA)</label>
                 </div>
                 <SubmitButton className="w-full">Salvar plano</SubmitButton>
               </form>

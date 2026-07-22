@@ -102,6 +102,32 @@ export async function setPreferredStatesQuickAction(ufs: string[]) {
   revalidatePath("/perfil");
 }
 
+/** Preferências de constância: meta diária e e-mails (checkbox marcado = quer receber). */
+export async function updateNotificationPrefsAction(
+  _: ProfileActionState,
+  formData: FormData
+): Promise<ProfileActionState> {
+  const user = await requireUser();
+
+  const goalRaw = String(formData.get("dailyQuestionGoal") ?? "").trim();
+  const goal = goalRaw ? Number(goalRaw) : null;
+  if (goal !== null && (!Number.isInteger(goal) || goal < 1 || goal > 500)) {
+    return { error: "Meta diária inválida — use um número entre 1 e 500 (ou deixe em branco)." };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      dailyQuestionGoal: goal,
+      reviewReminderOptOut: formData.get("reviewReminder") !== "on",
+      weeklySummaryOptOut: formData.get("weeklySummary") !== "on"
+    }
+  });
+  revalidatePath("/perfil");
+  revalidatePath("/desempenho");
+  return { ok: true };
+}
+
 export type RedeemCodeState = { ok?: boolean; error?: string; message?: string } | null;
 
 /** Resgata um código de convite de empresa (plano teams) e ativa o acesso premium. */

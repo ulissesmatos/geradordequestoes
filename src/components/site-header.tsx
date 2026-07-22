@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Menu } from "lucide-react";
+import { Menu, User } from "lucide-react";
+import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -17,8 +18,11 @@ const navLinks = (showPlans: boolean) => [
   { href: "/contato", label: "Contato" }
 ];
 
-/** Header público reutilizável (landing, pricing, contato). */
-export function SiteHeader({ logoUrl, appName, showPlans = true, sticky = true }: Props) {
+/** Header público reutilizável (landing, pricing, contato). Esconde Entrar/Criar conta
+ *  quando já há sessão — nesse caso mostra um atalho direto para a plataforma. */
+export async function SiteHeader({ logoUrl, appName, showPlans = true, sticky = true }: Props) {
+  const session = await auth();
+  const isLoggedIn = Boolean(session?.user?.id);
   const links = navLinks(showPlans);
   return (
     <header
@@ -48,12 +52,21 @@ export function SiteHeader({ logoUrl, appName, showPlans = true, sticky = true }
                 {l.label}
               </Link>
             ))}
-            <Link href="/login" className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
-              Entrar
-            </Link>
-            <Link href="/register" className="mt-1 block rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">
-              Criar conta
-            </Link>
+            {isLoggedIn ? (
+              <Link href="/ai" className="mt-1 flex items-center gap-2 rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">
+                <User className="h-4 w-4" />
+                Acessar minha conta
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
+                  Entrar
+                </Link>
+                <Link href="/register" className="mt-1 block rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">
+                  Criar conta
+                </Link>
+              </>
+            )}
           </nav>
         </details>
 
@@ -64,12 +77,23 @@ export function SiteHeader({ logoUrl, appName, showPlans = true, sticky = true }
               <Link href={l.href}>{l.label}</Link>
             </Button>
           ))}
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/login">Entrar</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/register">Criar conta</Link>
-          </Button>
+          {isLoggedIn ? (
+            <Button asChild size="sm">
+              <Link href="/ai">
+                <User className="h-4 w-4" />
+                Acessar minha conta
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/login">Entrar</Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/register">Criar conta</Link>
+              </Button>
+            </>
+          )}
         </nav>
       </div>
     </header>

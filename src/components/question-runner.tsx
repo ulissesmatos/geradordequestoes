@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Check, X } from "lucide-react";
+import { BadgeCheck, Check, Lock, RotateCcw, Trophy, X } from "lucide-react";
 import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ReportQuestionButton } from "@/components/report-question-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type RunnerOption = {
   id: string;
@@ -26,6 +28,8 @@ type RunnerQuestion = {
   topic: { name: string };
   options?: RunnerOption[];
   isFavorited?: boolean;
+  /** Selo de confiança (ex.: "Baseada em prova real · Prova PC-MA 2023"). */
+  sourceBadge?: string;
 };
 
 type SelectedAnswer = {
@@ -48,7 +52,17 @@ export function QuestionRunner({
   const [startedAt, setStartedAt] = useState(Date.now());
   const [isPending, startTransition] = useTransition();
   const [finished, setFinished] = useState(initialAnswers != null && Object.keys(initialAnswers).length > 0);
+  const [answerError, setAnswerError] = useState<{ message: string; limitReached: boolean } | null>(null);
   const current = questions[index];
+
+  // Recomeça o bloco do zero (as tentativas anteriores continuam no histórico do servidor).
+  function restart() {
+    setAnswers({});
+    setIndex(0);
+    setFinished(false);
+    setAnswerError(null);
+    setStartedAt(Date.now());
+  }
 
   const score = useMemo(
     () => questions.filter((question) => answers[question.id]?.isCorrect).length,
@@ -60,34 +74,83 @@ export function QuestionRunner({
   }
 
   if (finished) {
+    const answeredCount = questions.filter((question) => answers[question.id]).length;
+    const wrong = answeredCount - score;
+    const percent = Math.round((score / questions.length) * 100);
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Resultado: {score} de {questions.length} ({Math.round((score / questions.length) * 100)}%)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {questions.map((question, questionIndex) => {
-            const selected = answers[question.id];
-            const correct = getCorrectLabel(question);
-            return (
-              <div key={question.id} className="rounded-md border border-[var(--border)] p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
-                  <div className="flex items-center gap-1">
-                    <ReportQuestionButton questionId={question.id} />
-                    <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
-                  </div>
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)]">
+                  <Trophy className="h-7 w-7 text-[var(--primary)]" />
                 </div>
-                <p className="mt-1">{question.statement}</p>
-                <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
-                  {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
-                </p>
-                <p className="mt-2 text-sm text-[var(--muted-foreground)]">{question.explanation}</p>
+                <div>
+                  <p className="text-2xl font-bold">{percent}% de aproveitamento</p>
+                  <p className="text-sm text-[var(--muted-foreground)]">
+                    Você respondeu {answeredCount} de {questions.length} {questions.length === 1 ? "questão" : "questões"}.
+                  </p>
+                </div>
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              <Button onClick={restart}>
+                <RotateCcw className="h-4 w-4" />
+                Responder novamente
+              </Button>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:max-w-xs">
+              <div className="rounded-[var(--radius)] border border-emerald-200 bg-emerald-50 p-3 text-center">
+                <p className="text-2xl font-bold text-emerald-700">{score}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{score === 1 ? "Acerto" : "Acertos"}</p>
+              </div>
+              <div className="rounded-[var(--radius)] border border-rose-200 bg-rose-50 p-3 text-center">
+                <p className="text-2xl font-bold text-rose-700">{wrong}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">{wrong === 1 ? "Erro" : "Erros"}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Correção questão a questão</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {questions.map((question, questionIndex) => {
+              const selected = answers[question.id];
+              const correct = getCorrectLabel(question);
+              return (
+                <div
+                  key={question.id}
+                  className={cn(
+                    "rounded-md border p-4",
+                    selected?.isCorrect ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/40"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
+                    <div className="flex items-center gap-1">
+                      <ReportQuestionButton questionId={question.id} />
+                      <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
+                    </div>
+                  </div>
+                  <p className="mt-1">{question.statement}</p>
+                  <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
+                    {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">{question.explanation}</p>
+                  {question.sourceBadge && (
+                    <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                      <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+                      {question.sourceBadge}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -97,18 +160,28 @@ export function QuestionRunner({
 
   function submit(payload: { label: string; value: string; isCorrect: boolean; userAnswer?: "CERTO" | "ERRADO"; optionId?: string }) {
     const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    const questionId = current.id;
     setAnswers((previous) => ({
       ...previous,
-      [current.id]: { label: payload.label, value: payload.value, isCorrect: payload.isCorrect }
+      [questionId]: { label: payload.label, value: payload.value, isCorrect: payload.isCorrect }
     }));
     startTransition(async () => {
       const formData = new FormData();
-      formData.set("questionId", current.id);
+      formData.set("questionId", questionId);
       if (payload.userAnswer) formData.set("userAnswer", payload.userAnswer);
       if (payload.optionId) formData.set("selectedOptionId", payload.optionId);
       formData.set("userAnswerText", payload.label);
       formData.set("timeSpentSeconds", String(elapsed));
-      await answerQuestionAction(formData);
+      const result = await answerQuestionAction(formData);
+      if (!result.ok) {
+        // Desfaz a resposta otimista — ela não foi registrada no servidor.
+        setAnswers((previous) => {
+          const next = { ...previous };
+          delete next[questionId];
+          return next;
+        });
+        setAnswerError({ message: result.error, limitReached: result.limitReached ?? false });
+      }
     });
   }
 
@@ -140,11 +213,32 @@ export function QuestionRunner({
       </CardHeader>
       <CardContent className="space-y-5">
         <p className="text-base leading-7 md:text-lg md:leading-8">{current.statement}</p>
+        {answerError && (
+          <div
+            className={cn(
+              "rounded-md border p-4",
+              answerError.limitReached
+                ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]"
+                : "border-rose-200 bg-rose-50 text-rose-900"
+            )}
+          >
+            <p className="flex items-center gap-2 font-semibold">
+              {answerError.limitReached && <Lock className="h-4 w-4" />}
+              {answerError.limitReached ? "Limite diário do teste gratuito atingido" : "Não foi possível registrar a resposta"}
+            </p>
+            <p className="mt-1 text-sm">{answerError.message}</p>
+            {answerError.limitReached && (
+              <Button asChild size="sm" className="mt-3">
+                <Link href="/pricing">Ver planos →</Link>
+              </Button>
+            )}
+          </div>
+        )}
         <div className="grid gap-3">
           {options.map((option) => (
             <Button
               key={option.key}
-              disabled={Boolean(selected) || isPending}
+              disabled={Boolean(selected) || isPending || answerError?.limitReached}
               size="lg"
               variant="outline"
               aria-pressed={selected?.label === option.label}
@@ -163,6 +257,12 @@ export function QuestionRunner({
           <div className={selected.isCorrect ? "rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-900" : "rounded-md border border-rose-200 bg-rose-50 p-4 text-rose-900"}>
             <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
             <p className="mt-2 text-sm">{current.explanation}</p>
+            {current.sourceBadge && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs font-medium opacity-80">
+                <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+                {current.sourceBadge}
+              </p>
+            )}
           </div>
         )}
         {selected && (

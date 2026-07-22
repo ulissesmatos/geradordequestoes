@@ -265,6 +265,7 @@ export async function createPlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
+      materialExpandEnabled: formData.get("materialExpandEnabled") === "on",
       isActive: formData.get("isActive") === "on"
     }
   });
@@ -296,6 +297,7 @@ export async function updatePlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
+      materialExpandEnabled: formData.get("materialExpandEnabled") === "on",
       isActive: formData.get("isActive") === "on"
     }
   });
@@ -344,7 +346,8 @@ export async function updateAppSettingsAction(formData: FormData) {
     privacyUrl: String(formData.get("privacyUrl") || "") || null,
     termsContent: String(formData.get("termsContent") || "") || null,
     privacyContent: String(formData.get("privacyContent") || "") || null,
-    trialGenerationsLimit: Math.max(0, Number(formData.get("trialGenerationsLimit") ?? 10) || 0)
+    trialGenerationsLimit: Math.max(0, Number(formData.get("trialGenerationsLimit") ?? 10) || 0),
+    bankDailyAnswersLimitTrial: Math.max(0, Number(formData.get("bankDailyAnswersLimitTrial") ?? 10) || 0)
   };
   await prisma.appSetting.upsert({
     where: { id: "default" },

@@ -4,6 +4,7 @@ import { AuthError } from "next-auth";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { auth, signIn, signOut } from "@/auth";
+import { claimAffiliateReferralFromCookie } from "@/lib/affiliates";
 import { prisma } from "@/lib/prisma";
 import { confirmEmailVerificationCode, issueEmailVerificationCode } from "@/lib/verification";
 import { confirmPasswordReset, issuePasswordResetCode } from "@/lib/password-reset";
@@ -53,6 +54,9 @@ export async function registerAction(_: unknown, formData: FormData) {
       passwordHash: await bcrypt.hash(parsed.data.password, 12)
     }
   });
+
+  // Atribuição de afiliado via cookie (best-effort, nunca quebra o cadastro).
+  await claimAffiliateReferralFromCookie(created.id);
 
   // Dispara o código de verificação + boas-vindas antes do signIn (que redireciona).
   // Best-effort: falha de e-mail nunca impede o cadastro.

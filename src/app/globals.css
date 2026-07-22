@@ -126,13 +126,23 @@ html {
     color: inherit;
     text-decoration: none;
   }
-}
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+  /* Desativa o "font boosting" do Chrome mobile, que infla aleatoriamente
+     textos que quebram linha (ex.: rótulos longos de menu). */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Dentro de @layer base de propósito: fora de layer, esta regra venceria as
+     utilities do Tailwind (que vivem em @layer utilities) e roubaria o
+     font-size/weight de QUALQUER <button> com text-xs/text-sm etc. */
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 }
 
 @keyframes text-shimmer {

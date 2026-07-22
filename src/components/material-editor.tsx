@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { marked } from "marked";
@@ -18,16 +19,18 @@ import {
   List,
   ListOrdered,
   Loader2,
+  Lock,
   Minus,
   Pencil,
   Redo2,
+  Sparkles,
   Strikethrough,
   TextQuote,
   Undo2,
   X
 } from "lucide-react";
-import { updateStudyMaterialAction } from "@/app/(app)/actions/material-actions";
-import { MarkdownContent } from "@/components/markdown-content";
+import { expandMaterialSectionAction, updateStudyMaterialAction } from "@/app/(app)/actions/material-actions";
+import { MarkdownContent, type HeadingInfo } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -46,11 +49,24 @@ function createTurndown() {
   return service;
 }
 
-export function MaterialEditor({ materialId, initialContent }: { materialId: string; initialContent: string }) {
+export function MaterialEditor({
+  materialId,
+  initialContent,
+  expandAllowed = false
+}: {
+  materialId: string;
+  initialContent: string;
+  /** Plano do usuário permite o "Aprofundar" com IA (re-checado no servidor). */
+  expandAllowed?: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState(initialContent);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [expanding, setExpanding] = useState<HeadingInfo | null>(null);
+  const [expandError, setExpandError] = useState<string | null>(null);
+  const [expandUpgrade, setExpandUpgrade] = useState(false);
+  const [expandFlash, setExpandFlash] = useState(false);
 
   const handleSaved = useCallback(
     (markdown: string) => {
@@ -61,6 +77,35 @@ export function MaterialEditor({ materialId, initialContent }: { materialId: str
       router.refresh();
     },
     [router]
+  );
+
+  const handleExpand = useCallback(
+    async (info: HeadingInfo) => {
+      if (expanding) return;
+      setExpandError(null);
+      setExpandUpgrade(false);
+      if (!expandAllowed) {
+        setExpandUpgrade(true);
+        return;
+      }
+      setExpanding(info);
+      try {
+        const result = await expandMaterialSectionAction({ materialId, heading: info });
+        if (result.ok) {
+          setContent(result.content);
+          setExpandFlash(true);
+          setTimeout(() => setExpandFlash(false), 2500);
+          router.refresh();
+        } else if (result.upgrade) {
+          setExpandUpgrade(true);
+        } else {
+          setExpandError(result.error);
+        }
+      } finally {
+        setExpanding(null);
+      }
+    },
+    [expanding, expandAllowed, materialId, router]
   );
 
   if (editing) {
@@ -87,6 +132,12 @@ export function MaterialEditor({ materialId, initialContent }: { materialId: str
               Alterações salvas
             </span>
           )}
+          {expandFlash && (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 animate-fade-in">
+              <Check className="h-3.5 w-3.5" />
+              Seção aprofundada
+            </span>
+          )}
           <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
             <Pencil className="h-4 w-4" />
             Editar
@@ -94,9 +145,75 @@ export function MaterialEditor({ materialId, initialContent }: { materialId: str
         </div>
       </div>
       <div className="px-6 py-7 md:px-9 md:py-8">
-        <MarkdownContent content={content} />
+        {expandError && (
+          <p className="mb-4 rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">
+            {expandError}
+          </p>
+        )}
+        {expandUpgrade && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-3 text-sm text-[var(--primary-soft-foreground)]">
+            <span>O aprofundamento de seções com IA está disponível nos planos superiores.</span>
+            <Link href="/pricing" className="font-semibold text-[var(--primary)] hover:underline">
+              Ver planos →
+            </Link>
+          </div>
+        )}
+        <MarkdownContent
+          content={content}
+          headingAccessory={(info) => (
+            <ExpandButton
+              info={info}
+              allowed={expandAllowed}
+              expanding={expanding}
+              onExpand={handleExpand}
+            />
+          )}
+        />
       </div>
     </div>
+  );
+}
+
+function ExpandButton({
+  info,
+  allowed,
+  expanding,
+  onExpand
+}: {
+  info: HeadingInfo;
+  allowed: boolean;
+  expanding: HeadingInfo | null;
+  onExpand: (info: HeadingInfo) => void;
+}) {
+  const isActive =
+    expanding?.level === info.level &&
+    expanding?.text === info.text &&
+    expanding?.occurrence === info.occurrence;
+  const busy = expanding !== null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onExpand(info)}
+      disabled={busy}
+      title={allowed ? "Aprofundar esta seção com IA" : "Disponível nos planos superiores"}
+      className={cn(
+        "inline-flex shrink-0 select-none items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs font-medium",
+        "text-[var(--muted-foreground)] transition-all hover:bg-[var(--surface-subtle)] hover:text-[var(--primary)]",
+        "md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100",
+        isActive && "text-[var(--primary)] md:opacity-100",
+        busy && !isActive && "cursor-not-allowed opacity-40 md:group-hover:opacity-40"
+      )}
+    >
+      {isActive ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : allowed ? (
+        <Sparkles className="h-3.5 w-3.5" />
+      ) : (
+        <Lock className="h-3.5 w-3.5" />
+      )}
+      Aprofundar
+    </button>
   );
 }
 

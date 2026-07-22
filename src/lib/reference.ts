@@ -135,7 +135,9 @@ export async function searchReferenceQuestions(input: {
 }): Promise<ReferenceQuestionHit[]> {
   const query = (input.query ?? "").trim();
   if (!query) return [];
-  const limit = Math.min(Math.max(input.limit ?? 5, 1), 12);
+  // Teto mais alto que o de searchReferenceChunks: o modo "variação fiel" pode pedir
+  // até uma questão de referência por item do lote (self-serve e simulados admin).
+  const limit = Math.min(Math.max(input.limit ?? 5, 1), 30);
 
   const filters: Prisma.Sql[] = [
     Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ plainto_tsquery('portuguese', ${query})`

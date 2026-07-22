@@ -151,6 +151,13 @@ model User {
   stripeCustomerId  String?
   trialGenerationsUsed Int             @default(0)
   preferredStates   String[]           @default([])
+  // Revisão espaçada: opt-out do lembrete diário e idempotência do cron de envio.
+  reviewReminderOptOut Boolean         @default(false)
+  reviewReminderSentAt DateTime?
+  // Constância: meta diária de questões (null = sem meta) e resumo semanal por e-mail.
+  dailyQuestionGoal    Int?
+  weeklySummaryOptOut  Boolean         @default(false)
+  weeklySummarySentAt  DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   createdQuestions  Question[]         @relation("CreatedQuestions")
@@ -171,6 +178,9 @@ model User {
   questionFeedbacks  QuestionFeedback[]
   mockExamSessions   MockExamSession[]
   createdMockExams   MockExam[]         @relation("CreatedMockExams")
+  reviewStates       QuestionReviewState[]
+  affiliateProfile   AffiliateProfile?
+  referredBy         AffiliateReferral?
 }
 
 model EmailVerificationCode {
@@ -262,6 +272,8 @@ model Question {
   aiModel       String?
   createdById   String?
   reviewedById  String?
+  // Questão real de referência da qual esta foi gerada como variação próxima (modo "baseado em provas reais").
+  sourceReferenceQuestionId String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   subject       Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
@@ -269,11 +281,17 @@ model Question {
   questionSet   QuestionSet?       @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
   createdBy     User?              @relation("CreatedQuestions", fields: [createdById], references: [id], onDelete: SetNull)
   reviewedBy    User?              @relation("ReviewedQuestions", fields: [reviewedById], references: [id], onDelete: SetNull)
+  sourceReferenceQuestion ReferenceQuestion? @relation(fields: [sourceReferenceQuestionId], references: [id], onDelete: SetNull)
   options       QuestionOption[]
   attempts      QuestionAttempt[]
   favorites     FavoriteQuestion[]
   feedbacks     QuestionFeedback[]
   mockExamAnswers MockExamAnswer[]
+  reviewStates  QuestionReviewState[]
+
+  @@index([sourceReferenceQuestionId])
+  @@index([status, subjectId, topicId])
+  @@index([status, createdAt])
 }
 
 model QuestionOption {
@@ -304,6 +322,30 @@ model QuestionAttempt {
   question          Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
   selectedOption    QuestionOption?  @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
   mockExamSession   MockExamSession? @relation(fields: [mockExamSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([userId, questionId])
+  @@index([questionId])
+}
+
+// Revisão espaçada: uma linha por usuário+questão com a próxima data de revisão.
+// Intervalos determinísticos (sem IA) — ver src/lib/review.ts.
+model QuestionReviewState {
+  id            String   @id @default(cuid())
+  userId        String
+  questionId    String
+  correctStreak Int      @default(0)
+  lapses        Int      @default(0)
+  lastIsCorrect Boolean
+  lastAttemptAt DateTime
+  dueAt         DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, dueAt])
 }
 
 model FavoriteQuestion {
@@ -528,6 +570,8 @@ model SubscriptionPlan {
   mercadoPagoReference String?
   priceCents          Int
   aiGenerationsPerDay Int
+  // Habilita o "Aprofundar" de materiais de estudo com IA — diferencial dos planos superiores.
+  materialExpandEnabled Boolean          @default(false)
   isActive            Boolean            @default(true)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -593,6 +637,8 @@ model AppSetting {
   termsContent      String?
   privacyContent    String?
   trialGenerationsLimit Int  @default(10)
+  // Banco público de questões: respostas/dia para quem está no trial (sem assinatura).
+  bankDailyAnswersLimitTrial Int @default(10)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -796,6 +842,7 @@ model ReferenceQuestion {
   ordinal          Int
   createdAt        DateTime          @default(now())
   document         ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  generatedQuestions Question[]
 
   @@index([documentId])
   @@index([subjectId])
@@ -855,8 +902,76 @@ model PaymentTransaction {
   user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan              SubscriptionPlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
   checkoutSession   PaymentCheckoutSession?  @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+  affiliateCommission AffiliateCommission?
 
   @@unique([provider, externalId])
+}
+
+// ── Programa de afiliados ─────────────────────────────────────────────────
+// Contas selecionadas a dedo pelo admin ganham um link (/r/<code>); quem se
+// cadastra por ele fica atribuído ao afiliado (cookie de 30 dias) e cada
+// pagamento aprovado gera comissão pelo % vigente. Saques via Pix, aprovados
+// manualmente pelo admin.
+
+enum AffiliateWithdrawalStatus {
+  REQUESTED
+  PAID
+  REJECTED
+}
+
+model AffiliateProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  code              String   @unique
+  commissionPercent Int      @default(20)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals   AffiliateReferral[]
+  commissions AffiliateCommission[]
+  withdrawals AffiliateWithdrawal[]
+}
+
+model AffiliateReferral {
+  id             String   @id @default(cuid())
+  affiliateId    String
+  referredUserId String   @unique
+  createdAt      DateTime @default(now())
+  affiliate    AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  referredUser User             @relation(fields: [referredUserId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId])
+}
+
+model AffiliateCommission {
+  id                   String   @id @default(cuid())
+  affiliateId          String
+  referredUserId       String
+  paymentTransactionId String   @unique
+  baseAmountCents      Int
+  percent              Int
+  amountCents          Int
+  createdAt            DateTime @default(now())
+  affiliate          AffiliateProfile   @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, createdAt])
+}
+
+model AffiliateWithdrawal {
+  id          String                    @id @default(cuid())
+  affiliateId String
+  amountCents Int
+  pixKey      String
+  status      AffiliateWithdrawalStatus @default(REQUESTED)
+  note        String?
+  createdAt   DateTime                  @default(now())
+  processedAt DateTime?
+  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, createdAt])
+  @@index([status])
 }
 
 model SubscriptionEvent {

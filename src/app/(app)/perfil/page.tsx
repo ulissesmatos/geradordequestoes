@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { BadgeCheck, Building2, CreditCard, IdCard, MapPin, ShieldCheck, Sparkles, User } from "lucide-react";
+import { BadgeCheck, Building2, CreditCard, Handshake, IdCard, MapPin, ShieldCheck, Sparkles, User } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { NotificationPreferencesForm } from "@/components/notification-preferences-form";
 import { ProfilePersonalForm } from "@/components/profile-personal-form";
 import { StudyPreferencesForm } from "@/components/study-preferences-form";
 import { TeamCodeRedeem } from "@/components/team-code-redeem";
@@ -27,7 +28,7 @@ export default async function ProfilePage({
   const { upgrade } = await searchParams;
   const showUpgradeSuccess = upgrade === "success";
 
-  const [subscription, usage, transactions] = await Promise.all([
+  const [subscription, usage, transactions, affiliateProfile] = await Promise.all([
     getActiveSubscription(user.id),
     getAiUsageStatus(user),
     prisma.paymentTransaction.findMany({
@@ -35,6 +36,10 @@ export default async function ProfilePage({
       include: { plan: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
       take: 8
+    }),
+    prisma.affiliateProfile.findUnique({
+      where: { userId: user.id },
+      select: { isActive: true, commissionPercent: true }
     })
   ]);
 
@@ -125,8 +130,15 @@ export default async function ProfilePage({
             exemplos, legislação estadual, órgãos e editais à sua região.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <StudyPreferencesForm selected={user.preferredStates} />
+          <div className="border-t border-[var(--border)] pt-5">
+            <NotificationPreferencesForm
+              reviewReminderEnabled={!user.reviewReminderOptOut}
+              weeklySummaryEnabled={!user.weeklySummaryOptOut}
+              dailyQuestionGoal={user.dailyQuestionGoal}
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -229,6 +241,27 @@ export default async function ProfilePage({
         </CardContent>
       </Card>
 
+      {/* ── Programa de afiliados (só para contas convidadas) ── */}
+      {affiliateProfile?.isActive && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Handshake className="h-5 w-5 text-[var(--primary)]" />
+              Programa de afiliados
+            </CardTitle>
+            <CardDescription>
+              Sua conta participa do programa: você ganha {affiliateProfile.commissionPercent}% de cada
+              pagamento dos alunos que indicar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild size="sm">
+              <Link href="/afiliado">Abrir painel de afiliado →</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Código da empresa (plano teams) ── */}
       {!isAdmin && (
         <Card>
@@ -277,12 +310,22 @@ export default async function ProfilePage({
                       <td className="py-3 font-medium">{tx.plan.name}</td>
                       <td>{tx.provider === "STRIPE" ? "Cartão" : "Pix"}</td>
                       <td>
-                        <span className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-semibold",
-                          tx.status === "APPROVED" ? "bg-emerald-100 text-emerald-800" : tx.status === "PENDING" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
-                        )}>
-                          {tx.status === "APPROVED" ? "Pago" : tx.status === "PENDING" ? "Pendente" : tx.status}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-semibold",
+                            tx.status === "APPROVED" ? "bg-emerald-100 text-emerald-800" : tx.status === "PENDING" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
+                          )}>
+                            {tx.status === "APPROVED" ? "Pago" : tx.status === "PENDING" ? "Pendente" : tx.status}
+                          </span>
+                          {tx.status === "PENDING" && tx.provider === "MERCADO_PAGO" && tx.checkoutSessionId && (
+                            <Link
+                              href={`/checkout/pix/${tx.checkoutSessionId}`}
+                              className="text-xs font-semibold text-[var(--primary)] hover:underline"
+                            >
+                              Ver QR Code →
+                            </Link>
+                          )}
+                        </div>
                       </td>
                       <td>{formatMoney(tx.amountCents)}</td>
                       <td className="text-[var(--muted-foreground)]">{tx.paidAt ? formatDate(tx.paidAt) : formatDate(tx.createdAt)}</td>

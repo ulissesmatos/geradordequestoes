@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
+import { recordAffiliateCommission } from "@/lib/affiliates";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
 
@@ -77,40 +78,43 @@ export async function recordPaymentTransaction(input: {
   paidAt?: Date | null;
   payload?: unknown;
 }) {
-  if (input.externalId) {
-    return prisma.paymentTransaction.upsert({
-      where: { provider_externalId: { provider: input.provider, externalId: input.externalId } },
-      update: {
-        status: input.status,
-        paidAt: input.paidAt,
-        rawPayload: toJson(input.payload)
-      },
-      create: {
-        userId: input.userId,
-        planId: input.planId,
-        checkoutSessionId: input.checkoutSessionId,
-        provider: input.provider,
-        externalId: input.externalId,
-        status: input.status,
-        amountCents: input.amountCents,
-        paidAt: input.paidAt,
-        rawPayload: toJson(input.payload)
-      }
-    });
-  }
+  const transaction = input.externalId
+    ? await prisma.paymentTransaction.upsert({
+        where: { provider_externalId: { provider: input.provider, externalId: input.externalId } },
+        update: {
+          status: input.status,
+          paidAt: input.paidAt,
+          rawPayload: toJson(input.payload)
+        },
+        create: {
+          userId: input.userId,
+          planId: input.planId,
+          checkoutSessionId: input.checkoutSessionId,
+          provider: input.provider,
+          externalId: input.externalId,
+          status: input.status,
+          amountCents: input.amountCents,
+          paidAt: input.paidAt,
+          rawPayload: toJson(input.payload)
+        }
+      })
+    : await prisma.paymentTransaction.create({
+        data: {
+          userId: input.userId,
+          planId: input.planId,
+          checkoutSessionId: input.checkoutSessionId,
+          provider: input.provider,
+          status: input.status,
+          amountCents: input.amountCents,
+          paidAt: input.paidAt,
+          rawPayload: toJson(input.payload)
+        }
+      });
 
-  return prisma.paymentTransaction.create({
-    data: {
-      userId: input.userId,
-      planId: input.planId,
-      checkoutSessionId: input.checkoutSessionId,
-      provider: input.provider,
-      status: input.status,
-      amountCents: input.amountCents,
-      paidAt: input.paidAt,
-      rawPayload: toJson(input.payload)
-    }
-  });
+  // Comissão de afiliado em pagamento aprovado (idempotente e best-effort).
+  await recordAffiliateCommission(transaction);
+
+  return transaction;
 }
 
 export function pixAccessEndsAt(from = new Date()) {

@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcrypt";
 import { z } from "zod";
+import { claimAffiliateReferralFromCookie } from "@/lib/affiliates";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
@@ -96,8 +97,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = dbUser.role;
         token.isBlocked = dbUser.isBlocked;
 
-        // Boas-vindas apenas para contas recém-criadas via Google (best-effort).
+        // Boas-vindas + atribuição de afiliado apenas para contas recém-criadas
+        // via Google (ambos best-effort).
         if (!existing) {
+          await claimAffiliateReferralFromCookie(dbUser.id);
           try {
             const appSettings = await getAppSettings();
             const tpl = welcomeEmailTemplate(name, appSettings.appName);

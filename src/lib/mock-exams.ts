@@ -1,5 +1,6 @@
 import { TeamSeatStatus, type MockExam, type MockExamSession } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { applyAttemptsToReviewStates } from "@/lib/review";
 
 /** Estado da janela de disponibilidade de um simulado. */
 export type ExamWindowState = "futuro" | "aberto" | "encerrado";
@@ -115,6 +116,13 @@ export async function finalizeMockExamSession(sessionId: string): Promise<void> 
     // Espelha nas tentativas do aluno: alimenta estatísticas e a personalização da IA.
     ...(attemptsData.length ? [prisma.questionAttempt.createMany({ data: attemptsData })] : [])
   ]);
+
+  // Alimenta a agenda de revisão espaçada (best-effort, fora da transação de correção).
+  await applyAttemptsToReviewStates(
+    session.userId,
+    attemptsData.map((a) => ({ questionId: a.questionId, isCorrect: a.isCorrect })),
+    now
+  );
 }
 
 /** Lazy auto-finish: expira a sessão no servidor em qualquer leitura/gravação (dispensa cron). */

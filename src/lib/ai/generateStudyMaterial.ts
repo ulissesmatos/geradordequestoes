@@ -38,6 +38,92 @@ export async function generateStudyMaterial(input: {
   return generateWithOpenAI(settings, system, userContent);
 }
 
+/**
+ * Aprofunda UMA seção de um material existente (botão "Aprofundar" na página do
+ * material). Retorna só o corpo em markdown a ser inserido no fim da seção —
+ * sem repetir o título e sem headings, para não quebrar a estrutura de seções
+ * em expansões futuras (MarkdownContent também não renderiza ####).
+ */
+export async function expandStudyMaterialSection(input: {
+  materialTitle: string;
+  materialContent: string;
+  headingText: string;
+  sectionContent?: string;
+  subjectName?: string;
+  topicName?: string;
+}) {
+  const settings = await getAiSettings();
+  if (!settings.apiKey) {
+    throw new Error(`Configure a chave da ${providerLabel(settings.provider)} no painel admin.`);
+  }
+
+  const system = [
+    "Você aprofunda uma seção específica de um material de estudo para concursos públicos, em português do Brasil.",
+    "Regras obrigatórias:",
+    "- Aprofunde APENAS a seção indicada; não escreva sobre o conteúdo das outras seções do material.",
+    "- NÃO repita o que a seção já diz; acrescente profundidade: fundamentos, detalhes, exceções, exemplos práticos e pegadinhas típicas de prova (estilo Cebraspe).",
+    "- Retorne SOMENTE o corpo em Markdown a ser acrescentado ao FINAL da seção.",
+    "- NÃO repita o título da seção e NÃO crie nenhum título com # (nem ##, ###, ####); para subestruturas use parágrafos iniciados com **negrito**, listas ou tabelas.",
+    '- Não escreva introduções ("Nesta seção...") nem conclusões genéricas; vá direto ao conteúdo.',
+    "- Extensão alvo: 3 a 6 blocos (parágrafos, listas ou tabelas)."
+  ].join("\n");
+
+  const sectionBody = input.sectionContent?.trim();
+  const header = [
+    `Material: "${input.materialTitle}"`,
+    input.subjectName ? `Disciplina: ${input.subjectName}` : "",
+    input.topicName ? `Tópico: ${input.topicName}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const userContent = [
+    header,
+    `Conteúdo completo do material (apenas contexto, não reescreva):\n${input.materialContent.slice(0, 24_000)}`,
+    `Seção a aprofundar: "${input.headingText}"`,
+    sectionBody ? `Conteúdo atual da seção (não repita estas informações):\n${sectionBody.slice(0, 6_000)}` : ""
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const generated =
+    settings.provider === AiProvider.CLAUDE
+      ? await generateWithClaude(settings, system, userContent)
+      : settings.provider === AiProvider.OPENROUTER
+        ? await generateWithOpenRouter(settings, system, userContent)
+        : await generateWithOpenAI(settings, system, userContent);
+
+  const cleaned = demoteHeadingsToBold(stripLeadingHeadingEcho(generated.content, input.headingText));
+  if (!cleaned.trim()) throw new Error("A IA não retornou um material.");
+  return { content: cleaned, model: generated.model };
+}
+
+/** Remove a 1ª linha se for eco do próprio título da seção (com ou sem #s / **). */
+function stripLeadingHeadingEcho(content: string, headingText: string): string {
+  const lines = content.split("\n");
+  const firstIdx = lines.findIndex((line) => line.trim() !== "");
+  if (firstIdx === -1) return content;
+  const first = lines[firstIdx]
+    .trim()
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^\*\*(.*)\*\*$/, "$1")
+    .trim();
+  if (first.toLowerCase() === headingText.trim().toLowerCase()) {
+    return lines.slice(firstIdx + 1).join("\n").trim();
+  }
+  return content;
+}
+
+/** Rebaixa headings desobedientes a parágrafos em negrito — não podem quebrar a estrutura de seções. */
+function demoteHeadingsToBold(content: string): string {
+  return content
+    .split("\n")
+    .map((line) => {
+      const match = line.match(/^\s*#{1,6}\s+(.+)$/);
+      return match ? `**${match[1].trim()}**` : line;
+    })
+    .join("\n");
+}
+
 async function generateWithOpenAI(settings: Awaited<ReturnType<typeof getAiSettings>>, system: string, userContent: string) {
   const openai = new OpenAI({
     apiKey: settings.apiKey,

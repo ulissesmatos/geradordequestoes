@@ -3,7 +3,6 @@ import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } fr
 import { QuestionSetMode, QuestionSetStatus } from "@prisma/client";
 import { FavoriteDetailGrid } from "@/components/favorite-detail-grid";
 import { QuestionRunner } from "@/components/question-runner";
-import { QuestionSetModePicker } from "@/components/question-set-mode-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
@@ -131,17 +130,9 @@ export default async function LibraryPage({
     const total = selectedSet.questions.length;
     const isDone = total > 0 && answered >= total;
 
-    // 100% done and no mode selected → ask user what they want
-    if (isDone && !openMode) {
-      return (
-        <div className="space-y-4">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/biblioteca">Voltar para biblioteca</Link>
-          </Button>
-          <QuestionSetModePicker setId={selectedSet.id} />
-        </div>
-      );
-    }
+    // Bloco 100% respondido abre direto no resultado (acertos/erros + correção);
+    // "retry" recomeça do zero.
+    const effectiveMode = openMode ?? (isDone ? "review" : undefined);
 
     const questionsWithMeta = selectedSet.questions.map((q) => ({
       ...q,
@@ -150,7 +141,7 @@ export default async function LibraryPage({
 
     // review mode: pass previous answers as initialAnswers
     const initialAnswers =
-      openMode === "review"
+      effectiveMode === "review"
         ? Object.fromEntries(
             [...latestAttemptPerQuestion.entries()].map(([qId, attempt]) => [
               qId,

@@ -5,19 +5,24 @@ import { MaterialEditor } from "@/components/material-editor";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { requireActiveSubscription } from "@/lib/subscriptions";
+import { getActiveSubscription, requireActiveSubscription } from "@/lib/subscriptions";
 
 export default async function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   await requireActiveSubscription(user);
   const { id } = await params;
-  const material = await prisma.studyMaterial.findFirst({
-    where: { id, userId: user.id },
-    include: { subject: true, topic: true }
-  });
+  const [material, subscription] = await Promise.all([
+    prisma.studyMaterial.findFirst({
+      where: { id, userId: user.id },
+      include: { subject: true, topic: true }
+    }),
+    getActiveSubscription(user.id)
+  ]);
   if (!material) {
     return <p className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4">Material não encontrado.</p>;
   }
+
+  const expandAllowed = user.role === "ADMIN" || Boolean(subscription?.plan.materialExpandEnabled);
 
   const createdAt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(material.createdAt);
 
@@ -73,7 +78,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
         </div>
       </header>
 
-      <MaterialEditor materialId={material.id} initialContent={material.content} />
+      <MaterialEditor materialId={material.id} initialContent={material.content} expandAllowed={expandAllowed} />
     </div>
   );
 }

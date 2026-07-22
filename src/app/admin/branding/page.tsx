@@ -40,13 +40,22 @@ export default async function AdminBrandingPage() {
             </div>
             <Textarea name="institutionalText" defaultValue={settings.institutionalText} placeholder="Texto institucional curto" />
             <Textarea name="adminEmails" defaultValue={settings.adminEmails} placeholder="E-mails administrativos, um por linha ou separados por vírgula" />
-            <label className="grid max-w-xs gap-1 text-sm font-semibold">
-              Gerações gratuitas (trial)
-              <Input name="trialGenerationsLimit" type="number" min={0} defaultValue={settings.trialGenerationsLimit} />
-              <span className="text-xs font-normal text-[var(--muted-foreground)]">
-                Quantas gerações de IA um usuário sem assinatura pode fazer no total.
-              </span>
-            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-1 text-sm font-semibold">
+                Gerações gratuitas (trial)
+                <Input name="trialGenerationsLimit" type="number" min={0} defaultValue={settings.trialGenerationsLimit} />
+                <span className="text-xs font-normal text-[var(--muted-foreground)]">
+                  Quantas gerações de IA um usuário sem assinatura pode fazer no total.
+                </span>
+              </label>
+              <label className="grid gap-1 text-sm font-semibold">
+                Respostas/dia no banco (trial)
+                <Input name="bankDailyAnswersLimitTrial" type="number" min={0} defaultValue={settings.bankDailyAnswersLimitTrial} />
+                <span className="text-xs font-normal text-[var(--muted-foreground)]">
+                  Quantas questões do banco público um usuário sem assinatura pode responder por dia.
+                </span>
+              </label>
+            </div>
             <SubmitButton>Salvar branding</SubmitButton>
           </form>
         </CardContent>
@@ -76,6 +85,7 @@ export default async function AdminBrandingPage() {
             <input type="hidden" name="termsUrl" value={settings.termsUrl ?? ""} />
             <input type="hidden" name="privacyUrl" value={settings.privacyUrl ?? ""} />
             <input type="hidden" name="trialGenerationsLimit" value={settings.trialGenerationsLimit} />
+            <input type="hidden" name="bankDailyAnswersLimitTrial" value={settings.bankDailyAnswersLimitTrial} />
 
             <label className="grid gap-1 text-sm font-semibold">
               Termos de Uso (Markdown)

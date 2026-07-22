@@ -1,33 +1,48 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { deleteUserAction } from "@/app/admin/admin-actions";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function DeleteUserButton({ userId, userName }: { userId: string; userName: string }) {
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const confirmed = window.confirm(
-      `Excluir "${userName}"?\n\nIsso irá:\n• Cancelar assinaturas ativas\n• Apagar logs de IA e histórico de chat\n• Remover todas as questões, tentativas e dados do usuário\n\nOs logs de auditoria serão mantidos.\n\nEsta ação é irreversível.`
-    );
-    if (!confirmed) return;
+  function handleConfirm() {
     startTransition(async () => {
-      const formData = new FormData(event.currentTarget);
+      const formData = new FormData();
+      formData.set("userId", userId);
       await deleteUserAction(formData);
+      setOpen(false);
     });
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <input type="hidden" name="userId" value={userId} />
+    <>
       <button
-        type="submit"
-        disabled={pending}
-        className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
       >
-        {pending ? "Excluindo…" : "Excluir usuário"}
+        Excluir usuário
       </button>
-    </form>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Excluir "${userName}"?`}
+        confirmLabel="Excluir usuário"
+        onConfirm={handleConfirm}
+        pending={pending}
+      >
+        <p>Isso irá:</p>
+        <ul className="mt-1.5 list-disc space-y-1 pl-5">
+          <li>Cancelar assinaturas ativas</li>
+          <li>Apagar logs de IA e histórico de chat</li>
+          <li>Remover todas as questões, tentativas e dados do usuário</li>
+        </ul>
+        <p className="mt-3">Os logs de auditoria serão mantidos.</p>
+        <p className="mt-2 font-semibold text-[var(--destructive)]">Esta ação é irreversível.</p>
+      </ConfirmDialog>
+    </>
   );
 }

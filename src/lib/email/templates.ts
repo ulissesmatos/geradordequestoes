@@ -143,6 +143,77 @@ export function subscriptionExpiringTemplate(input: {
   return { subject, html: layout(input.appName, body), text };
 }
 
+export function reviewReminderTemplate(input: {
+  appName: string;
+  firstName: string | null;
+  dueCount: number;
+  reviewUrl: string;
+}): EmailTemplate {
+  const greeting = input.firstName ? `Olá, ${escapeHtml(input.firstName)}!` : "Olá!";
+  const countLabel =
+    input.dueCount === 1 ? "1 questão esperando revisão" : `${input.dueCount} questões esperando revisão`;
+  const subject = `Você tem ${input.dueCount === 1 ? "1 questão" : `${input.dueCount} questões`} para revisar hoje · ${input.appName}`;
+  const body = `
+    <p style="margin:0 0 12px;">${greeting}</p>
+    <p style="margin:0 0 16px;">Sua agenda de revisão espaçada tem <strong>${countLabel}</strong>. Revisar no momento certo é o que fixa o conteúdo para a prova.</p>
+    <p style="margin:0 0 16px;">
+      <a href="${input.reviewUrl}" style="display:inline-block;background:#0a6268;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Revisar agora</a>
+    </p>
+    <p style="margin:0;color:#64748b;font-size:13px;">Não quer mais receber este lembrete? Desative em Perfil → Preferências.</p>
+  `;
+  const text = `${greeting} Você tem ${countLabel} no ${input.appName}. Revise em: ${input.reviewUrl}\nPara parar de receber este lembrete, desative em Perfil → Preferências.`;
+  return { subject, html: layout(input.appName, body), text };
+}
+
+export function weeklySummaryTemplate(input: {
+  appName: string;
+  firstName: string | null;
+  weekTotal: number;
+  weekAccuracy: number;
+  bestSubject: { name: string; accuracy: number } | null;
+  streakDays: number;
+  dueReviews: number;
+  reviewUrl: string;
+  performanceUrl: string;
+}): EmailTemplate {
+  const greeting = input.firstName ? `Olá, ${escapeHtml(input.firstName)}!` : "Olá!";
+  const subject = `Seu resumo da semana: ${input.weekTotal} ${input.weekTotal === 1 ? "questão" : "questões"} · ${input.weekAccuracy}% de acerto · ${input.appName}`;
+  const rows = [
+    `<tr><td style="padding:6px 0;color:#64748b;width:180px;">Questões na semana</td><td style="padding:6px 0;"><strong>${input.weekTotal}</strong></td></tr>`,
+    `<tr><td style="padding:6px 0;color:#64748b;">Taxa de acerto</td><td style="padding:6px 0;"><strong>${input.weekAccuracy}%</strong></td></tr>`,
+    input.bestSubject
+      ? `<tr><td style="padding:6px 0;color:#64748b;">Melhor matéria</td><td style="padding:6px 0;">${escapeHtml(input.bestSubject.name)} (${input.bestSubject.accuracy}%)</td></tr>`
+      : "",
+    `<tr><td style="padding:6px 0;color:#64748b;">Sequência de dias</td><td style="padding:6px 0;">${input.streakDays} ${input.streakDays === 1 ? "dia" : "dias"}</td></tr>`,
+    input.dueReviews > 0
+      ? `<tr><td style="padding:6px 0;color:#64748b;">Revisões pendentes</td><td style="padding:6px 0;"><strong>${input.dueReviews}</strong></td></tr>`
+      : ""
+  ]
+    .filter(Boolean)
+    .join("");
+  const cta = input.dueReviews > 0
+    ? `<a href="${input.reviewUrl}" style="display:inline-block;background:#0a6268;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Revisar ${input.dueReviews} ${input.dueReviews === 1 ? "questão" : "questões"}</a>`
+    : `<a href="${input.performanceUrl}" style="display:inline-block;background:#0a6268;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Ver meu desempenho</a>`;
+  const body = `
+    <p style="margin:0 0 12px;">${greeting} Aqui está o resumo da sua semana de estudos:</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px;border-collapse:collapse;">${rows}</table>
+    <p style="margin:16px 0;">${cta}</p>
+    <p style="margin:0;color:#64748b;font-size:13px;">Não quer mais receber o resumo semanal? Desative em Perfil → Preferências.</p>
+  `;
+  const text = [
+    `${greeting} Resumo da semana no ${input.appName}:`,
+    `- Questões respondidas: ${input.weekTotal}`,
+    `- Taxa de acerto: ${input.weekAccuracy}%`,
+    input.bestSubject ? `- Melhor matéria: ${input.bestSubject.name} (${input.bestSubject.accuracy}%)` : "",
+    `- Sequência de dias: ${input.streakDays}`,
+    input.dueReviews > 0 ? `- Revisões pendentes: ${input.dueReviews} (${input.reviewUrl})` : "",
+    `Desempenho completo: ${input.performanceUrl}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { subject, html: layout(input.appName, body), text };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

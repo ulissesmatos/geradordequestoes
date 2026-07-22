@@ -25,7 +25,8 @@ const createSchema = z.object({
   opensAt: z.string().optional(),
   closesAt: z.string().optional(),
   teamAccountId: z.string().optional(),
-  model: z.string().optional()
+  model: z.string().optional(),
+  closeVariant: z.string().optional()
 });
 
 export async function createMockExamAction(_: MockExamActionState, formData: FormData): Promise<MockExamActionState> {
@@ -43,7 +44,8 @@ export async function createMockExamAction(_: MockExamActionState, formData: For
     opensAt: formData.get("opensAt") || undefined,
     closesAt: formData.get("closesAt") || undefined,
     teamAccountId: formData.get("teamAccountId") || undefined,
-    model: formData.get("model") || undefined
+    model: formData.get("model") || undefined,
+    closeVariant: formData.get("closeVariant") || undefined
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -73,7 +75,8 @@ export async function createMockExamAction(_: MockExamActionState, formData: For
       mode: QuestionSetMode.SIMULADO,
       title: data.title,
       prompt: data.prompt || `Simulado oficial: ${data.title}`,
-      modelOverride
+      modelOverride,
+      closeVariant: data.closeVariant === "on"
     });
 
     const exam = await prisma.mockExam.create({
@@ -90,11 +93,17 @@ export async function createMockExamAction(_: MockExamActionState, formData: For
     });
     examId = exam.id;
 
+    const variantNote =
+      data.closeVariant === "on"
+        ? questionSet.closeVariantFallback
+          ? " — variação fiel pedida, mas sem questões reais cadastradas para o assunto: gerado no modo padrão"
+          : ` — variação fiel de ${questionSet.closeVariantCount} questão(ões) real(is)`
+        : "";
     await logAdminAction(admin, {
       action: "create",
       entity: "MockExam",
       entityId: exam.id,
-      summary: `Simulado "${data.title}" (${data.quantity} questões, ${data.durationMinutes} min${modelOverride ? `, modelo ${modelOverride}` : ""})`
+      summary: `Simulado "${data.title}" (${data.quantity} questões, ${data.durationMinutes} min${modelOverride ? `, modelo ${modelOverride}` : ""})${variantNote}`
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Erro ao gerar o simulado." };

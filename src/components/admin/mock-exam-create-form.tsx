@@ -153,6 +153,11 @@ export function MockExamCreateForm({
             />
           </div>
 
+          <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm font-medium">
+            <input type="checkbox" name="closeVariant" className="h-4 w-4" />
+            Basear-se em provas reais (variação fiel: uma questão nova bem próxima de cada questão real do acervo, em vez de só imitar o estilo)
+          </label>
+
           {state?.error && <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
 
           <SubmitButton>Gerar simulado (rascunho)</SubmitButton>

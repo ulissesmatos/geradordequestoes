@@ -1,8 +1,18 @@
-import { AiProvider, type Difficulty, type QuestionFormat, type QuestionSetMode } from "@prisma/client";
+import { AiProvider, type Difficulty, type QuestionAnswer, type QuestionFormat, type QuestionSetMode } from "@prisma/client";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
+
+/** Questão real usada como base 1:1 no modo "variação fiel" (perto do enunciado original). */
+export type ReferenceVariantSource = {
+  id: string;
+  statement: string;
+  answer: QuestionAnswer | null;
+  answerText: string | null;
+  explanation: string | null;
+  trickNote: string | null;
+};
 
 const generatedQuestionSchema = z.object({
   questions: z.array(
@@ -12,6 +22,8 @@ const generatedQuestionSchema = z.object({
       answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
       explanation: z.string().min(10),
       difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]),
+      // Só preenchido no modo "variação fiel": índice (1-based) da questão de referência usada como base.
+      sourceIndex: z.number().int().min(1).optional(),
       options: z.array(
         z.object({
           label: z.string().min(1).max(24),
@@ -43,6 +55,7 @@ const questionsJsonSchema = {
           answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
           explanation: { type: "string", minLength: 10 },
           difficulty: { type: "string", enum: ["FACIL", "MEDIO", "DIFICIL"] },
+          sourceIndex: { type: "integer", minimum: 1 },
           options: {
             type: "array",
             minItems: 2,
@@ -77,6 +90,12 @@ export async function generateQuestions(input: {
   context?: string;
   /** Questões reais de prova para servir de âncora de estilo — bloco proeminente separado do contexto do aluno. */
   referenceContext?: string;
+  /**
+   * Modo "variação fiel": uma questão real por item, nesta ordem — a IA reaproveita boa parte do
+   * enunciado original ajustando detalhes, em vez de só se inspirar no estilo. Quando presente,
+   * substitui `quantity`/`referenceContext`: gera exatamente uma variação por item da lista.
+   */
+  referenceQuestions?: ReferenceVariantSource[];
   /** Modelo alternativo (mesma API key do provedor configurado). Vazio = modelo padrão. */
   modelOverride?: string;
 }) {
@@ -90,7 +109,10 @@ export async function generateQuestions(input: {
 
   const format = input.format ?? "CERTO_ERRADO";
   const alternativesCount = clampAlternatives(input.alternativesCount ?? 4);
-  const prompt = buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
+  const prompt =
+    input.referenceQuestions && input.referenceQuestions.length > 0
+      ? buildVariantPrompt({ ...input, format, alternativesCount, referenceQuestions: input.referenceQuestions })
+      : buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
 
   if (settings.provider === AiProvider.CLAUDE) {
     return generateWithClaude(settings, prompt);
@@ -138,6 +160,68 @@ function buildPrompt(input: {
     "Não copie verbatim; inspire-se no estilo e nas pegadinhas das provas reais para criar itens inéditos.",
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
+    "Evite temas polêmicos ou desatualizados sem contexto."
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Prompt do modo "variação fiel": uma variação bem próxima por questão real, na ordem dada.
+ * Diferente de buildPrompt (que só usa a referência como âncora de estilo), aqui a IA pode
+ * reaproveitar boa parte do enunciado original — mas precisa reconferir o gabarito do zero,
+ * porque pequenos ajustes de texto podem inverter a resposta correta.
+ */
+function buildVariantPrompt(input: {
+  subject: string;
+  topic: string;
+  difficulty: Difficulty;
+  format: QuestionFormat;
+  alternativesCount: number;
+  mode?: QuestionSetMode;
+  prompt?: string;
+  extraInstructions?: string;
+  context?: string;
+  referenceQuestions: ReferenceVariantSource[];
+}) {
+  const formatInstruction =
+    input.format === "CERTO_ERRADO"
+      ? "Formato: Certo/Errado. Cada questão deve ter exatamente duas opções: C) Certo e E) Errado. Use answer como CERTO ou ERRADO."
+      : `Formato: múltipla escolha. Cada questão deve ter exatamente ${input.alternativesCount} alternativas, labels sequenciais começando em A, e apenas uma alternativa correta. Use answer como null. Como a questão original não tem alternativas registradas, crie alternativas novas e plausíveis para o tema.`;
+
+  const referenceBlock = input.referenceQuestions
+    .map((q, i) => {
+      const gabaritoOriginal = q.answer ?? q.answerText ?? "não informado";
+      return [
+        `[Questão de referência ${i + 1}] (gabarito original: ${gabaritoOriginal})`,
+        q.statement,
+        q.explanation ? `Justificativa original: ${q.explanation}` : "",
+        q.trickNote ? `Pegadinha original: ${q.trickNote}` : ""
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+
+  return [
+    `Matéria: ${input.subject}`,
+    `Assunto: ${input.topic}`,
+    `Dificuldade: ${input.difficulty}`,
+    `Modo: ${input.mode ?? "ESTUDO"}`,
+    formatInstruction,
+    `MODO VARIAÇÃO FIEL: gere exatamente ${input.referenceQuestions.length} questão(ões) — uma variação bem próxima para CADA questão de referência abaixo, respeitando a ordem.`,
+    "QUESTÕES DE REFERÊNCIA (reais, extraídas de provas anteriores):",
+    referenceBlock,
+    "Regras para cada variação:",
+    "- Reaproveite a estrutura, o tema e boa parte do texto da questão de referência correspondente; pode manter grande parte do enunciado original, ajustando nomes, números, datas, órgãos, ordem dos itens ou pequenos detalhes de contexto.",
+    "- Mantenha o mesmo nível de dificuldade e o mesmo tipo de pegadinha da questão original.",
+    "- CRÍTICO: NÃO copie o gabarito original cegamente. Releia SOMENTE o enunciado que você reescreveu, do zero, e determine se ele é CERTO ou ERRADO (ou qual alternativa é correta) com base apenas no texto novo. Pequenas mudanças de palavra (ex.: trocar \"todos\" por \"alguns\", negar uma condição, trocar um verbo, inverter uma ordem) podem inverter o gabarito — se isso acontecer, ajuste a resposta e a justificativa para refletir o NOVO enunciado, não o original.",
+    `- Preencha "sourceIndex" com o número (1 a ${input.referenceQuestions.length}) da questão de referência que serviu de base, na mesma ordem em que apareceram acima.`,
+    input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
+    input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
+    input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",
+    "Use linguagem clara, objetiva e adequada a concurso.",
+    "A justificativa deve explicar de forma didática por que a resposta correta está correta, considerando o enunciado que você reescreveu.",
     "Evite temas polêmicos ou desatualizados sem contexto."
   ]
     .filter(Boolean)

@@ -87,7 +87,16 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
             name="prompt"
             placeholder="Ex.: focar em crase; usar questões sobre Windows; considerar Constituição Estadual; evitar cálculo longo"
           />
+          <label className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm font-medium">
+            <input type="checkbox" name="closeVariant" className="h-4 w-4" />
+            Basear-se em provas reais (variações bem próximas das questões do acervo)
+          </label>
           {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
+          {state?.ok && state.closeVariantFallback && (
+            <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              Ainda não há questões reais cadastradas para esse assunto — geramos no modo padrão (inspirado no estilo da banca).
+            </p>
+          )}
           {state?.ok && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--success-soft)] p-3 text-sm text-[var(--success-soft-foreground)]">
               <span>Questões geradas. Você já pode responder o bloco.</span>

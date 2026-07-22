@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
-import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo } from "react";
+import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
@@ -731,6 +732,45 @@ function DrawerNavLink({
   );
 }
 
+function DeleteChatButton({ sessionId, isActive }: { sessionId: string; isActive: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  function handleConfirm() {
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("sessionId", sessionId);
+      formData.set("isActive", isActive ? "true" : "false");
+      await deleteChatSessionAction(formData);
+      setOpen(false);
+    });
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        title="Excluir chat"
+        className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+        onClick={() => setOpen(true)}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Excluir chat"
+        description="Os blocos e questões gerados serão mantidos no histórico."
+        confirmLabel="Excluir"
+        onConfirm={handleConfirm}
+        pending={pending}
+      />
+    </>
+  );
+}
+
 function SessionList({
   sessions,
   activeSessionId,
@@ -775,20 +815,7 @@ function SessionList({
                 <Button size="sm" className="mt-2 w-full">Salvar</Button>
               </form>
             </details>
-            <form
-              action={deleteChatSessionAction}
-              onSubmit={(event) => {
-                if (!window.confirm("Excluir este chat? Os blocos e questões gerados serão mantidos no histórico.")) {
-                  event.preventDefault();
-                }
-              }}
-            >
-              <input type="hidden" name="sessionId" value={session.id} />
-              <input type="hidden" name="isActive" value={activeSessionId === session.id ? "true" : "false"} />
-              <Button type="submit" variant="ghost" size="icon" title="Excluir chat" className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]">
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </form>
+            <DeleteChatButton sessionId={session.id} isActive={activeSessionId === session.id} />
           </div>
         </div>
       ))}

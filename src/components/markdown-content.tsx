@@ -1,8 +1,33 @@
 import type { ReactNode } from "react";
 
-export function MarkdownContent({ content, compact = false }: { content: string; compact?: boolean }) {
+export type HeadingInfo = {
+  level: 2 | 3;
+  /** Texto cru do título (antes do parse de **negrito**) — igual ao que o servidor compara. */
+  text: string;
+  /** 0-based, contado por par (level, texto) na ordem do documento. */
+  occurrence: number;
+};
+
+export function MarkdownContent({
+  content,
+  compact = false,
+  headingAccessory
+}: {
+  content: string;
+  compact?: boolean;
+  /** Renderiza um acessório (ex.: botão "Aprofundar") ao lado de títulos ## e ###. */
+  headingAccessory?: (info: HeadingInfo) => ReactNode;
+}) {
   const lines = normalizeContent(content).split("\n");
   const blocks: ReactNode[] = [];
+  const headingCounts = new Map<string, number>();
+
+  function nextHeadingInfo(level: 2 | 3, rawText: string): HeadingInfo {
+    const key = `${level}:${rawText}`;
+    const occurrence = headingCounts.get(key) ?? 0;
+    headingCounts.set(key, occurrence + 1);
+    return { level, text: rawText, occurrence };
+  }
   let bulletItems: string[] = [];
   let numberedItems: Array<{ number: number; text: string }> = [];
   let tableRows: string[][] = [];
@@ -107,12 +132,32 @@ export function MarkdownContent({ content, compact = false }: { content: string;
     }
     if (line.startsWith("### ")) {
       flushLists();
-      blocks.push(<h3 key={`h3-${blocks.length}`} className="text-lg font-semibold">{renderInline(line.slice(4))}</h3>);
+      const info = nextHeadingInfo(3, line.slice(4).trim());
+      blocks.push(
+        headingAccessory ? (
+          <h3 key={`h3-${blocks.length}`} className="group flex items-center gap-2 text-lg font-semibold">
+            <span>{renderInline(line.slice(4))}</span>
+            {headingAccessory(info)}
+          </h3>
+        ) : (
+          <h3 key={`h3-${blocks.length}`} className="text-lg font-semibold">{renderInline(line.slice(4))}</h3>
+        )
+      );
       continue;
     }
     if (line.startsWith("## ")) {
       flushLists();
-      blocks.push(<h2 key={`h2-${blocks.length}`} className="pt-2 text-2xl font-semibold">{renderInline(line.slice(3))}</h2>);
+      const info = nextHeadingInfo(2, line.slice(3).trim());
+      blocks.push(
+        headingAccessory ? (
+          <h2 key={`h2-${blocks.length}`} className="group flex items-center gap-2 pt-2 text-2xl font-semibold">
+            <span>{renderInline(line.slice(3))}</span>
+            {headingAccessory(info)}
+          </h2>
+        ) : (
+          <h2 key={`h2-${blocks.length}`} className="pt-2 text-2xl font-semibold">{renderInline(line.slice(3))}</h2>
+        )
+      );
       continue;
     }
     if (line.startsWith("# ")) {

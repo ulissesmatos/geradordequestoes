@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
+import { getTrialBankStatus } from "@/lib/question-bank";
 import { generateAndSaveQuestionSet } from "@/lib/question-sets";
+import { applyAttemptToReviewState } from "@/lib/review";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 const attemptSchema = z.object({
@@ -16,7 +18,11 @@ const attemptSchema = z.object({
   timeSpentSeconds: z.coerce.number().int().min(0).max(36000).default(0)
 });
 
-export async function answerQuestionAction(formData: FormData) {
+export type AnswerQuestionResult =
+  | { ok: true }
+  | { ok: false; error: string; limitReached?: boolean };
+
+export async function answerQuestionAction(formData: FormData): Promise<AnswerQuestionResult> {
   const user = await requireUser();
   const parsed = attemptSchema.parse({
     questionId: formData.get("questionId"),
@@ -33,7 +39,20 @@ export async function answerQuestionAction(formData: FormData) {
     },
     include: { options: true }
   });
-  if (!question) throw new Error("Questão não encontrada ou indisponível.");
+  if (!question) return { ok: false, error: "Questão não encontrada ou indisponível." };
+
+  // Limite diário do trial no banco público: só para questões da plataforma
+  // (as próprias já são limitadas pelo trial de geração de IA).
+  if (question.createdById !== user.id) {
+    const bankStatus = await getTrialBankStatus(user);
+    if (bankStatus.isTrial && bankStatus.remaining !== null && bankStatus.remaining <= 0) {
+      return {
+        ok: false,
+        limitReached: true,
+        error: `Você usou as ${bankStatus.limit} respostas gratuitas de hoje no banco de questões. Assine um plano para responder sem limite.`
+      };
+    }
+  }
 
   const selectedOption = parsed.selectedOptionId
     ? question.options.find((option) => option.id === parsed.selectedOptionId)
@@ -56,11 +75,15 @@ export async function answerQuestionAction(formData: FormData) {
     }
   });
 
+  // Alimenta a agenda de revisão espaçada (best-effort, nunca lança).
+  await applyAttemptToReviewState({ userId: user.id, questionId: question.id, isCorrect });
+
   revalidatePath("/ai");
+  return { ok: true };
 }
 
 export async function generateUserQuestionsAction(
-  _: { ok?: boolean; questionSetId?: string; error?: string } | null,
+  _: { ok?: boolean; questionSetId?: string; error?: string; closeVariantFallback?: boolean } | null,
   formData: FormData
 ) {
   const user = await requireUser();
@@ -74,6 +97,7 @@ export async function generateUserQuestionsAction(
   const prompt = String(formData.get("prompt") || formData.get("extraInstructions") || "");
   const title = String(formData.get("title") || "");
   const context = String(formData.get("context") || "");
+  const closeVariant = formData.get("closeVariant") === "on";
 
   try {
     await assertCanGenerateWithAi(user);
@@ -88,12 +112,17 @@ export async function generateUserQuestionsAction(
       mode,
       prompt,
       title: title || undefined,
-      context: context || undefined
+      context: context || undefined,
+      closeVariant
     });
     revalidatePath("/questoes/gerar");
     revalidatePath("/biblioteca");
     revalidatePath("/ai");
-    return { ok: true, questionSetId: questionSet.id };
+    return {
+      ok: true,
+      questionSetId: questionSet.id,
+      closeVariantFallback: closeVariant && questionSet.closeVariantFallback
+    };
   } catch (error) {
     await prisma.aiGenerationLog
       .create({

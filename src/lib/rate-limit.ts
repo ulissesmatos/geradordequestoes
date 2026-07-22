@@ -46,5 +46,7 @@ export const RATE_LIMITS = {
   /** Mensagens de chat IA por usuário: 10 por minuto. */
   aiChat: { limit: 10, windowMs: 60_000 },
   /** Uploads de anexos por usuário: 20 a cada 5 minutos. */
-  uploads: { limit: 20, windowMs: 5 * 60_000 }
+  uploads: { limit: 20, windowMs: 5 * 60_000 },
+  /** "Aprofundar" seção de material por usuário: 6 por minuto (multi-abas/duplo clique). */
+  materialExpand: { limit: 6, windowMs: 60_000 }
 } as const;
