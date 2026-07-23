@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { activateUserSubscriptionAction, cancelUserSubscriptionAction, updateUserAction } from "@/app/admin/admin-actions";
+import { AdminPasswordTools } from "@/components/admin/admin-password-tools";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
@@ -135,6 +136,17 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Gerenciar senha ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Gerenciar senha</CardTitle>
+          <CardDescription>Defina uma senha manualmente, gere uma aleatória, ou envie um código de redefinição por e-mail.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AdminPasswordTools userId={user.id} hasPassword={Boolean(user.passwordHash)} />
+        </CardContent>
+      </Card>
 
       {/* ── Gerenciar assinatura ── */}
       <Card>

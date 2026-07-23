@@ -37,6 +37,14 @@ const generatedQuestionSchema = z.object({
 
 export type GeneratedQuestion = z.infer<typeof generatedQuestionSchema>["questions"][number];
 
+/**
+ * O front-end renderiza fórmulas com KaTeX a partir destes delimitadores (ver src/components/math-text.tsx).
+ * Usa \( \) / \[ \] em vez de $ $ / $$ $$ porque textos de concurso citam valores em reais (ex.: "R$ 1.000,00"),
+ * e um "$" solto quebraria o parser de fórmulas.
+ */
+const MATH_FORMATTING_INSTRUCTION =
+  "Notação matemática: sempre que o enunciado, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, matrizes, números complexos, somatórios, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) para fórmulas dentro do texto ou \\[ ... \\] para fórmulas em bloco/destaque. Nunca use apenas $ ou $$ como delimitador (pode ser confundido com valores em reais, ex. \"R$ 10,00\"). Fora desses casos, mantenha texto normal em português.";
+
 const questionsJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -160,7 +168,8 @@ function buildPrompt(input: {
     "Não copie verbatim; inspire-se no estilo e nas pegadinhas das provas reais para criar itens inéditos.",
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
-    "Evite temas polêmicos ou desatualizados sem contexto."
+    "Evite temas polêmicos ou desatualizados sem contexto.",
+    MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
     .join("\n");
@@ -222,7 +231,8 @@ function buildVariantPrompt(input: {
     input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta, considerando o enunciado que você reescreveu.",
-    "Evite temas polêmicos ou desatualizados sem contexto."
+    "Evite temas polêmicos ou desatualizados sem contexto.",
+    MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
     .join("\n");

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BadgeCheck, ChevronLeft, ChevronRight, ListChecks, Lock, Play, Search } from "lucide-react";
+import { MathText } from "@/components/math-text";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -142,7 +143,7 @@ export default async function QuestionBankPage({
                     {difficultyLabel(question.difficulty)} · {questionFormatLabel(question.format)}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-3 text-sm leading-6">{question.statement}</p>
+                <p className="mt-2 line-clamp-3 text-sm leading-6"><MathText text={question.statement} /></p>
                 {badge && (
                   <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700">
                     <BadgeCheck className="h-3.5 w-3.5 shrink-0" />

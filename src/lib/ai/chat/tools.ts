@@ -49,11 +49,13 @@ export const chatTools = {
   },
   search_reference_material: {
     description:
-      "Busca em materiais REAIS cadastrados no acervo interno (provas, gabaritos, editais, leis, resumos, apostilas, guias) por palavra-chave. Use tanto para fundamentar explicações e CONFERIR o gabarito antes de afirmar, quanto para responder perguntas administrativas sobre concursos (datas, vagas, cargos, requisitos, cronograma) quando houver edital ou material cadastrado. Prefira esta ferramenta a web_search quando o assunto já estiver no acervo interno. Cite a fonte ao usuário quando usar.",
+      "Busca em materiais REAIS cadastrados no acervo interno (provas, gabaritos, editais, leis, resumos, apostilas, guias) por palavra-chave. Use tanto para fundamentar explicações e CONFERIR o gabarito antes de afirmar, quanto para responder perguntas administrativas sobre concursos (datas, vagas, cargos, requisitos, cronograma) quando houver edital ou material cadastrado. Prefira esta ferramenta a web_search quando o assunto já estiver no acervo interno. Cite a fonte ao usuário quando usar. Quando o usuário se referir a um material específico já listado no catálogo (ex.: 'o edital', 'esse material'), ou pedir uma visão geral/completa dele, preencha documentTitle com o título exato do catálogo para restringir a busca a esse documento — evita que um material curto e específico (ex.: uma nota de atualização) 'ofusque' um documento grande (ex.: o edital completo) numa busca genérica no acervo todo.",
     schema: z.object({
-      query: z.string().describe("Termos de busca, ex.: 'crase antes de pronomes' ou 'art. 37 CF princípios'."),
+      query: z.string().describe("Termos de busca, ex.: 'crase antes de pronomes' ou 'art. 37 CF princípios'. Pode deixar mais genérico (ex.: 'objeto vagas cronograma') quando documentTitle já restringe a um material."),
       subjectName: z.string().optional().describe("Filtra por matéria cadastrada, se aplicável."),
       topicName: z.string().optional().describe("Filtra por assunto cadastrado, se aplicável."),
+      documentTitle: z.string().optional().describe("Título exato (ou quase) de um material do catálogo listado no prompt, para restringir a busca só a ele — use ao falar sobre um material específico já cadastrado, especialmente para pedidos de visão geral/'como um todo'."),
+      offset: z.number().int().min(0).optional().describe("Só com documentTitle: pula os N primeiros trechos do documento, para continuar uma leitura sequencial em pedidos de 'me conte mais'."),
       limit: z.number().int().min(1).max(8).optional()
     })
   },

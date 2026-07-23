@@ -47,6 +47,20 @@ export function passwordResetEmailTemplate(code: string, appName: string): Email
   return { subject, html: layout(appName, body), text };
 }
 
+export function adminPasswordChangedTemplate(password: string, appName: string): EmailTemplate {
+  const subject = `Sua senha foi alterada · ${appName}`;
+  const body = `
+    <p style="margin:0 0 16px;">Um administrador alterou a senha da sua conta em ${escapeHtml(appName)}. Sua nova senha é:</p>
+    <p style="margin:0 0 16px;text-align:center;">
+      <span style="display:inline-block;font-size:22px;font-weight:700;letter-spacing:2px;padding:14px 20px;background:#e7f1f1;color:#0a6268;border-radius:10px;">${escapeHtml(password)}</span>
+    </p>
+    <p style="margin:0 0 12px;">Recomendamos entrar e trocar essa senha por uma de sua escolha assim que possível.</p>
+    <p style="margin:0;color:#64748b;font-size:13px;">Se você não esperava esta alteração, entre em contato com o suporte imediatamente.</p>
+  `;
+  const text = `Um administrador alterou a senha da sua conta em ${appName}. Nova senha: ${password}. Recomendamos trocá-la após entrar. Se não foi você que solicitou, contate o suporte.`;
+  return { subject, html: layout(appName, body), text };
+}
+
 export function testEmailTemplate(appName: string): EmailTemplate {
   const subject = `Teste de e-mail · ${appName}`;
   const body = `

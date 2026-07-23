@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { FavoriteButton } from "@/components/favorite-button";
+import { MathText } from "@/components/math-text";
 
 type FavoriteItem = {
   id: string;
@@ -47,7 +48,7 @@ export function FavoriteDetailGrid({ favorites }: { favorites: FavoriteItem[] })
               className="flex items-start justify-between gap-2 p-4 text-left"
             >
               <div className="flex-1">
-                <p className="line-clamp-3 text-sm">{fav.question.statement}</p>
+                <p className="line-clamp-3 text-sm"><MathText text={fav.question.statement} /></p>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                   {fav.question.subject.name} / {fav.question.topic.name}
                 </p>
@@ -69,7 +70,7 @@ export function FavoriteDetailGrid({ favorites }: { favorites: FavoriteItem[] })
                           key={opt.label}
                           className={`text-sm rounded px-2 py-1 ${opt.isCorrect ? "bg-emerald-50 font-semibold text-emerald-800 border border-emerald-200" : "text-[var(--foreground)]"}`}
                         >
-                          <span className="font-bold">{opt.label})</span> {opt.text}
+                          <span className="font-bold">{opt.label})</span> <MathText text={opt.text} />
                           {opt.isCorrect && <span className="ml-2 text-xs">✓ correto</span>}
                         </p>
                       ))}
@@ -77,7 +78,7 @@ export function FavoriteDetailGrid({ favorites }: { favorites: FavoriteItem[] })
                 ) : (
                   <p className="text-sm font-semibold text-emerald-800">Gabarito: {correctText}</p>
                 )}
-                <p className="text-xs text-[var(--muted-foreground)] leading-5">{fav.question.explanation}</p>
+                <p className="text-xs text-[var(--muted-foreground)] leading-5"><MathText text={fav.question.explanation} /></p>
                 <div className="flex justify-end">
                   <FavoriteButton questionId={fav.question.id} initialFavorited={true} />
                 </div>

@@ -10,7 +10,7 @@ export function defaultTermsContent(appName: string): string {
 
 _Última atualização: ${new Date().toLocaleDateString("pt-BR")}_
 
-Bem-vindo(a) ao **${appName}**, plataforma operada por **[RAZÃO SOCIAL]**, inscrita no CNPJ sob o nº **[CNPJ]**, com sede em **[ENDEREÇO COMPLETO]** ("nós", "Plataforma"). Ao criar uma conta e utilizar a plataforma, você ("Usuário") declara que leu, compreendeu e concorda com estes Termos de Uso. Se não concordar, não utilize o serviço.
+Bem-vindo(a) ao **${appName}** ("nós", "Plataforma"). Ao criar uma conta e utilizar a plataforma, você ("Usuário") declara que leu, compreendeu e concorda com estes Termos de Uso. Se não concordar, não utilize o serviço.
 
 ## 1. O serviço
 O ${appName} é uma plataforma online de estudos para concursos públicos que oferece geração de questões, simulados, revisões personalizadas e materiais de estudo com auxílio de inteligência artificial, além de chat com assistente de IA, biblioteca de questões e acompanhamento de desempenho.
@@ -65,7 +65,7 @@ O serviço é prestado "no estado em que se encontra", podendo ser aprimorado, a
 A violação destas regras pode resultar em advertência, suspensão ou exclusão da conta, sem prejuízo das medidas legais cabíveis.
 
 ## 7. Propriedade intelectual
-7.1. A marca, o software, o design, o banco de questões e demais elementos da plataforma pertencem a [RAZÃO SOCIAL] ou a seus licenciantes e são protegidos pela legislação de propriedade intelectual.
+7.1. A marca, o software, o design, o banco de questões e demais elementos da plataforma pertencem ao ${appName} ou a seus licenciantes e são protegidos pela legislação de propriedade intelectual.
 
 7.2. Estes Termos não transferem ao Usuário qualquer direito de propriedade intelectual sobre a plataforma.
 
@@ -90,10 +90,10 @@ Empregamos esforços razoáveis para manter a plataforma disponível, mas não g
 Estes Termos podem ser atualizados periodicamente. Mudanças relevantes serão comunicadas pelos canais oficiais (e-mail cadastrado ou aviso na plataforma) com antecedência razoável. O uso continuado após a vigência das alterações constitui concordância.
 
 ## 12. Legislação aplicável e foro
-Estes Termos são regidos pelas leis da República Federativa do Brasil. Fica eleito o foro da comarca de **[CIDADE/UF]** para dirimir controvérsias, ressalvada a competência do foro do domicílio do consumidor, nos termos do Código de Defesa do Consumidor.
+Estes Termos são regidos pelas leis da República Federativa do Brasil. Fica eleito o foro da comarca de **Codó/MA** para dirimir controvérsias, ressalvada a competência do foro do domicílio do consumidor, nos termos do Código de Defesa do Consumidor.
 
 ## 13. Contato
-Dúvidas sobre estes Termos podem ser enviadas para **[E-MAIL DE CONTATO]** ou pela página de contato da plataforma.`;
+Dúvidas sobre estes Termos podem ser enviadas para **contato@geradordequestoes.com** ou pela página de contato da plataforma.`;
 }
 
 export function defaultPrivacyContent(appName: string): string {
@@ -101,7 +101,7 @@ export function defaultPrivacyContent(appName: string): string {
 
 _Última atualização: ${new Date().toLocaleDateString("pt-BR")}_
 
-Esta Política de Privacidade descreve como o **${appName}**, operado por **[RAZÃO SOCIAL]** (CNPJ **[CNPJ]**, com sede em **[ENDEREÇO COMPLETO]**), na qualidade de **controladora de dados**, coleta, utiliza, armazena e protege seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD) e o Marco Civil da Internet (Lei nº 12.965/2014).
+Esta Política de Privacidade descreve como o **${appName}**, na qualidade de **controladora de dados**, coleta, utiliza, armazena e protege seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD) e o Marco Civil da Internet (Lei nº 12.965/2014).
 
 ## 1. Dados que coletamos
 

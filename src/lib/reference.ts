@@ -12,6 +12,25 @@ export type ReferenceHit = {
   source: string | null;
 };
 
+/**
+ * Reescreve a query como OR entre os termos (em vez do AND padrão de plainto_tsquery).
+ * plainto_tsquery exige que um único trecho contenha TODOS os termos da busca — em
+ * documentos grandes fatiados em muitos chunks (ex.: um edital de 265 trechos), o
+ * conteúdo relevante fica espalhado e nenhum trecho isolado bate com todos os termos
+ * de uma pergunta ampla ("fale sobre o edital 2026 do cebraspe do maranhão"), fazendo
+ * a busca AND retornar vazio mesmo com o material cadastrado. websearch_to_tsquery
+ * reconhece a palavra literal "or" como operador OR (independente do idioma do texto
+ * indexado), então unir os termos com " or " produz uma query OR mantendo o stemming
+ * em português normal de cada termo.
+ */
+function widenQueryToOr(query: string): string {
+  return query
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean)
+    .join(" or ");
+}
+
 /** Quebra um texto longo em trechos (~1000 chars) com leve sobreposição, respeitando parágrafos. */
 export function chunkText(raw: string): string[] {
   const text = (raw ?? "").replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -90,21 +109,88 @@ export async function searchReferenceChunks(input: {
   if (!query) return [];
   const limit = Math.min(Math.max(input.limit ?? 5, 1), 12);
 
-  const filters: Prisma.Sql[] = [
-    Prisma.sql`to_tsvector('portuguese', c.content) @@ plainto_tsquery('portuguese', ${query})`
-  ];
-  if (input.subjectId) filters.push(Prisma.sql`c."subjectId" = ${input.subjectId}`);
-  if (input.topicId) filters.push(Prisma.sql`c."topicId" = ${input.topicId}`);
-  const where = Prisma.join(filters, " AND ");
+  const runQuery = (tsQuerySql: Prisma.Sql) => {
+    const filters: Prisma.Sql[] = [Prisma.sql`to_tsvector('portuguese', c.content) @@ ${tsQuerySql}`];
+    if (input.subjectId) filters.push(Prisma.sql`c."subjectId" = ${input.subjectId}`);
+    if (input.topicId) filters.push(Prisma.sql`c."topicId" = ${input.topicId}`);
+    const where = Prisma.join(filters, " AND ");
+    return prisma.$queryRaw<ReferenceHit[]>(Prisma.sql`
+      SELECT c.id, c."documentId", c.content, d.title, d.source
+      FROM "ReferenceChunk" c
+      JOIN "ReferenceDocument" d ON d.id = c."documentId"
+      WHERE ${where}
+      ORDER BY ts_rank(to_tsvector('portuguese', c.content), ${tsQuerySql}) DESC
+      LIMIT ${limit}
+    `);
+  };
 
-  return prisma.$queryRaw<ReferenceHit[]>(Prisma.sql`
-    SELECT c.id, c."documentId", c.content, d.title, d.source
-    FROM "ReferenceChunk" c
-    JOIN "ReferenceDocument" d ON d.id = c."documentId"
-    WHERE ${where}
-    ORDER BY ts_rank(to_tsvector('portuguese', c.content), plainto_tsquery('portuguese', ${query})) DESC
-    LIMIT ${limit}
-  `);
+  const strict = await runQuery(Prisma.sql`plainto_tsquery('portuguese', ${query})`);
+  if (strict.length > 0) return strict;
+
+  // Busca ampla (AND) veio vazia: alarga para OR entre os termos — cobre perguntas
+  // genéricas sobre documentos grandes cujo conteúdo relevante está espalhado em vários chunks.
+  const orQuery = widenQueryToOr(query);
+  if (!orQuery) return [];
+  return runQuery(Prisma.sql`websearch_to_tsquery('portuguese', ${orQuery})`);
+}
+
+/**
+ * Busca trechos DENTRO de um único documento já identificado (ex.: o usuário citou
+ * um material pelo nome do catálogo). Só precisamos de OR aqui: já restringimos ao
+ * documento certo, então não corremos o risco de trazer ruído de outros materiais.
+ * Se nada bater por palavra-chave (query vazia ou genérica, ex. "me conte sobre esse
+ * edital como um todo"), cai para os primeiros trechos em ordem — que em editais
+ * normalmente trazem objeto/vagas/cronograma logo no início — em vez de retornar vazio.
+ */
+export async function searchWithinDocument(input: {
+  documentId: string;
+  query?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ hits: ReferenceHit[]; totalChunks: number }> {
+  const limit = Math.min(Math.max(input.limit ?? 6, 1), 12);
+  const query = (input.query ?? "").trim();
+
+  if (query) {
+    const orQuery = widenQueryToOr(query);
+    if (orQuery) {
+      const hits = await prisma.$queryRaw<ReferenceHit[]>(Prisma.sql`
+        SELECT c.id, c."documentId", c.content, d.title, d.source
+        FROM "ReferenceChunk" c
+        JOIN "ReferenceDocument" d ON d.id = c."documentId"
+        WHERE c."documentId" = ${input.documentId}
+          AND to_tsvector('portuguese', c.content) @@ websearch_to_tsquery('portuguese', ${orQuery})
+        ORDER BY ts_rank(to_tsvector('portuguese', c.content), websearch_to_tsquery('portuguese', ${orQuery})) DESC
+        LIMIT ${limit}
+      `);
+      if (hits.length > 0) {
+        const totalChunks = await prisma.referenceChunk.count({ where: { documentId: input.documentId } });
+        return { hits, totalChunks };
+      }
+    }
+  }
+
+  const offset = Math.max(input.offset ?? 0, 0);
+  const [chunks, totalChunks] = await Promise.all([
+    prisma.referenceChunk.findMany({
+      where: { documentId: input.documentId },
+      orderBy: { ordinal: "asc" },
+      skip: offset,
+      take: limit,
+      include: { document: { select: { title: true, source: true } } }
+    }),
+    prisma.referenceChunk.count({ where: { documentId: input.documentId } })
+  ]);
+  return {
+    hits: chunks.map((c) => ({
+      id: c.id,
+      documentId: c.documentId,
+      content: c.content,
+      title: c.document.title,
+      source: c.document.source
+    })),
+    totalChunks
+  };
 }
 
 export type ReferenceQuestionHit = {
@@ -139,26 +225,34 @@ export async function searchReferenceQuestions(input: {
   // até uma questão de referência por item do lote (self-serve e simulados admin).
   const limit = Math.min(Math.max(input.limit ?? 5, 1), 30);
 
-  const filters: Prisma.Sql[] = [
-    Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ plainto_tsquery('portuguese', ${query})`
-  ];
-  if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
-  if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
-  const where = Prisma.join(filters, " AND ");
+  const runQuery = (tsQuerySql: Prisma.Sql) => {
+    const filters: Prisma.Sql[] = [
+      Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ ${tsQuerySql}`
+    ];
+    if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
+    if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
+    const where = Prisma.join(filters, " AND ");
+    return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
+      SELECT q.id, q."documentId", q.statement, q.answer, q."answerText", q.explanation,
+             q."trickNote", q."hasImage", q."imageDescription", q."topicHint",
+             d.title, d.source
+      FROM "ReferenceQuestion" q
+      JOIN "ReferenceDocument" d ON d.id = q."documentId"
+      WHERE ${where}
+      ORDER BY ts_rank(
+        to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '')),
+        ${tsQuerySql}
+      ) DESC
+      LIMIT ${limit}
+    `);
+  };
 
-  return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
-    SELECT q.id, q."documentId", q.statement, q.answer, q."answerText", q.explanation,
-           q."trickNote", q."hasImage", q."imageDescription", q."topicHint",
-           d.title, d.source
-    FROM "ReferenceQuestion" q
-    JOIN "ReferenceDocument" d ON d.id = q."documentId"
-    WHERE ${where}
-    ORDER BY ts_rank(
-      to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '')),
-      plainto_tsquery('portuguese', ${query})
-    ) DESC
-    LIMIT ${limit}
-  `);
+  const strict = await runQuery(Prisma.sql`plainto_tsquery('portuguese', ${query})`);
+  if (strict.length > 0) return strict;
+
+  const orQuery = widenQueryToOr(query);
+  if (!orQuery) return [];
+  return runQuery(Prisma.sql`websearch_to_tsquery('portuguese', ${orQuery})`);
 }
 
 /**

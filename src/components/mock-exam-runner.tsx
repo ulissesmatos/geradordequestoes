@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Flag, Loader2, Timer, X } from "lucide-react";
 import { finishMockExamAction, saveMockExamAnswerAction } from "@/app/(app)/simulados/actions";
+import { MathText } from "@/components/math-text";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -127,7 +128,7 @@ export function MockExamRunner({
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
           Questão {index + 1} de {questions.length}
         </p>
-        <p className="whitespace-pre-wrap leading-7">{current.statement}</p>
+        <p className="whitespace-pre-wrap leading-7"><MathText text={current.statement} /></p>
 
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <AnswerButton

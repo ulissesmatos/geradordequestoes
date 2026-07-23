@@ -16,7 +16,7 @@ import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/questio
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
-import { searchReferenceChunks, searchReferenceQuestions } from "@/lib/reference";
+import { searchReferenceChunks, searchReferenceQuestions, searchWithinDocument } from "@/lib/reference";
 import { webSearch } from "@/lib/ai/web-search";
 
 export type ToolSource = { title: string; url: string };
@@ -330,6 +330,44 @@ async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult
   }
 
   const limit = args.limit ?? 5;
+
+  // Material citado por nome (do catálogo): restringe a busca só a ele, para não
+  // deixar um material curto "ofuscar" um documento grande numa busca livre no acervo todo.
+  if (args.documentTitle) {
+    const documents = await prisma.referenceDocument.findMany({ select: { id: true, title: true } });
+    const target = matchByName(
+      documents.map((d) => ({ ...d, name: d.title })),
+      args.documentTitle
+    );
+    if (target) {
+      const { hits, totalChunks } = await searchWithinDocument({
+        documentId: target.id,
+        query: args.query,
+        limit,
+        offset: args.offset
+      });
+      if (hits.length === 0) {
+        return {
+          resultForModel: JSON.stringify({
+            ok: true,
+            results: [],
+            note: `Não encontrei trechos de "${target.title}" para esses termos. Responda com seu conhecimento, deixando claro que não achou essa parte específica no material interno.`
+          })
+        };
+      }
+      return {
+        resultForModel: JSON.stringify({
+          ok: true,
+          results: hits.map((h) => ({ title: h.title, source: h.source, excerpt: h.content.slice(0, 900) })),
+          totalChunksInDocument: totalChunks,
+          note:
+            totalChunks > hits.length
+              ? `Recorte de "${target.title}" (${totalChunks} trechos no total nesse material). Se faltar algo que o usuário pediu, chame a ferramenta de novo com documentTitle="${target.title}" e um offset maior, ou uma busca mais específica. Cite a fonte ao usuário.`
+              : `Trechos completos de "${target.title}". Cite a fonte ao usuário.`
+        })
+      };
+    }
+  }
 
   // 1) Banco estruturado: questões extraídas por IA (gabarito/pegadinha já mapeados).
   // Filtro de matéria/assunto é PREFERÊNCIA: se não casar (ex.: material sem

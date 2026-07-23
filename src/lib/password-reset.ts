@@ -17,22 +17,28 @@ function generateCode(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
+export type IssueResetCodeResult =
+  | { sent: true }
+  | { sent: false; reason: "no_account" | "no_password" | "cooldown" | "email_failed" };
+
 /**
- * Emite um código de redefinição de senha. **Sempre retorna sucesso genérico**
- * para não revelar se o e-mail existe (anti-enumeração). Só envia de fato quando
- * a conta existe e tem senha (contas só-Google não têm o que redefinir).
- * Best-effort no envio: falha de e-mail não vaza informação.
+ * Emite um código de redefinição de senha. Retorna um resultado detalhado, mas o
+ * fluxo PÚBLICO (requestPasswordResetAction) ignora esse retorno e sempre responde
+ * com sucesso genérico — é o admin (adminSendPasswordResetCodeAction) que usa o
+ * detalhe, já que ali não há risco de enumeração (o admin já sabe quem é o usuário).
+ * Só envia de fato quando a conta existe e tem senha (contas só-Google não têm o
+ * que redefinir). Best-effort no envio: falha de e-mail não derruba o fluxo público.
  */
-export async function issuePasswordResetCode(emailRaw: string): Promise<void> {
+export async function issuePasswordResetCode(emailRaw: string): Promise<IssueResetCodeResult> {
   const email = (emailRaw ?? "").trim().toLowerCase();
-  if (!email) return;
+  if (!email) return { sent: false, reason: "no_account" };
 
   const user = await prisma.user.findUnique({
     where: { email },
     select: { id: true, email: true, passwordHash: true }
   });
-  // Sem conta, ou conta só-Google (sem senha): não faz nada (resposta genérica no caller).
-  if (!user || !user.passwordHash) return;
+  if (!user) return { sent: false, reason: "no_account" };
+  if (!user.passwordHash) return { sent: false, reason: "no_password" };
 
   // Cooldown anti-spam.
   const last = await prisma.passwordResetCode.findFirst({
@@ -40,7 +46,9 @@ export async function issuePasswordResetCode(emailRaw: string): Promise<void> {
     orderBy: { createdAt: "desc" },
     select: { createdAt: true }
   });
-  if (last && Date.now() - last.createdAt.getTime() < RESEND_COOLDOWN_MS) return;
+  if (last && Date.now() - last.createdAt.getTime() < RESEND_COOLDOWN_MS) {
+    return { sent: false, reason: "cooldown" };
+  }
 
   const code = generateCode();
   await prisma.passwordResetCode.updateMany({
@@ -54,10 +62,23 @@ export async function issuePasswordResetCode(emailRaw: string): Promise<void> {
   try {
     const appSettings = await getAppSettings();
     const template = passwordResetEmailTemplate(code, appSettings.appName);
-    await sendEmail({ to: user.email, subject: template.subject, html: template.html, text: template.text });
+    const result = await sendEmail({ to: user.email, subject: template.subject, html: template.html, text: template.text });
+    if (!result.ok) return { sent: false, reason: "email_failed" };
+    return { sent: true };
   } catch {
-    // ignora — anti-enumeração: o caller sempre responde "se existir, enviamos"
+    return { sent: false, reason: "email_failed" };
   }
+}
+
+/** Gera uma senha legível (sem caracteres ambíguos como 0/O, 1/l/I) para uso administrativo. */
+export function generateReadablePassword(length = 12): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  return Array.from({ length }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
+}
+
+/** Define a senha de um usuário diretamente (uso administrativo) — mesmo hash (bcrypt, 12 rounds) do resto do app. */
+export async function setUserPassword(userId: string, password: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: await bcrypt.hash(password, 12) } });
 }
 
 export type ConfirmResetResult =

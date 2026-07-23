@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { BadgeCheck, Check, Lock, RotateCcw, Trophy, X } from "lucide-react";
 import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
+import { MathText } from "@/components/math-text";
 import { ReportQuestionButton } from "@/components/report-question-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -134,11 +135,11 @@ export function QuestionRunner({
                       <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
                     </div>
                   </div>
-                  <p className="mt-1">{question.statement}</p>
+                  <p className="mt-1"><MathText text={question.statement} /></p>
                   <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
                     {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
                   </p>
-                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">{question.explanation}</p>
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]"><MathText text={question.explanation} /></p>
                   {question.sourceBadge && (
                     <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
                       <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
@@ -212,7 +213,7 @@ export function QuestionRunner({
         )}
       </CardHeader>
       <CardContent className="space-y-5">
-        <p className="text-base leading-7 md:text-lg md:leading-8">{current.statement}</p>
+        <p className="text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>
         {answerError && (
           <div
             className={cn(
@@ -249,14 +250,14 @@ export function QuestionRunner({
             >
               {option.icon}
               <span className="font-bold">{option.label}</span>
-              <span>{option.value}</span>
+              <span><MathText text={option.value} /></span>
             </Button>
           ))}
         </div>
         {showFeedback && (
           <div className={selected.isCorrect ? "rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-900" : "rounded-md border border-rose-200 bg-rose-50 p-4 text-rose-900"}>
             <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
-            <p className="mt-2 text-sm">{current.explanation}</p>
+            <p className="mt-2 text-sm"><MathText text={current.explanation} /></p>
             {current.sourceBadge && (
               <p className="mt-2 flex items-center gap-1.5 text-xs font-medium opacity-80">
                 <BadgeCheck className="h-3.5 w-3.5 shrink-0" />

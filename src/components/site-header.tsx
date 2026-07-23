@@ -42,27 +42,33 @@ export async function SiteHeader({ logoUrl, appName, showPlans = true, sticky = 
 
         {/* Mobile */}
         <details className="group md:hidden">
-          <summary className="flex h-10 w-10 list-none items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm marker:hidden">
+          <summary className="flex h-10 w-10 list-none items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm marker:hidden">
             <Menu className="h-5 w-5" />
             <span className="sr-only">Abrir menu</span>
           </summary>
           <nav className="absolute left-3 right-3 top-[calc(100%+8px)] z-40 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
             {links.map((l) => (
-              <Link key={l.href} href={l.href} className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
+              <Link key={l.href} href={l.href} className="block rounded-lg px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
                 {l.label}
               </Link>
             ))}
             {isLoggedIn ? (
-              <Link href="/ai" className="mt-1 flex items-center gap-2 rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">
+              <Link
+                href="/ai"
+                className="mt-1 flex items-center gap-2 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[#14a89a] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:opacity-90"
+              >
                 <User className="h-4 w-4" />
                 Acessar minha conta
               </Link>
             ) : (
               <>
-                <Link href="/login" className="block rounded-md px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
+                <Link href="/login" className="block rounded-lg px-3 py-3 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
                   Entrar
                 </Link>
-                <Link href="/register" className="mt-1 block rounded-md bg-[var(--primary)] px-3 py-3 text-sm font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]">
+                <Link
+                  href="/register"
+                  className="mt-1 block rounded-lg bg-gradient-to-br from-[var(--primary)] to-[#14a89a] px-3 py-3 text-sm font-semibold text-white hover:opacity-90"
+                >
                   Criar conta
                 </Link>
               </>

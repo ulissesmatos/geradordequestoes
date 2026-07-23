@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Check, Clock, Minus, TrendingUp, Trophy, Users, X } from "lucide-react";
+import { MathText } from "@/components/math-text";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
 import { formatExamDuration, getMockExamComparatives } from "@/lib/mock-exams";
@@ -143,7 +144,7 @@ export default async function MockExamResultPage({ params }: { params: Promise<{
                   {isBlank ? "Em branco" : isCorrect ? "Acertou (+1)" : "Errou (−1)"}
                 </span>
               </div>
-              <p className="whitespace-pre-wrap leading-7">{question.statement}</p>
+              <p className="whitespace-pre-wrap leading-7"><MathText text={question.statement} /></p>
               <div className="mt-3 grid gap-1 text-sm">
                 <p>
                   <span className="font-semibold">Gabarito:</span>{" "}
@@ -156,7 +157,7 @@ export default async function MockExamResultPage({ params }: { params: Promise<{
                 </p>
                 {question.explanation && (
                   <p className="mt-1 rounded-[var(--radius)] bg-[var(--surface-subtle)] p-3 leading-6 text-[var(--muted-foreground)]">
-                    {question.explanation}
+                    <MathText text={question.explanation} />
                   </p>
                 )}
               </div>

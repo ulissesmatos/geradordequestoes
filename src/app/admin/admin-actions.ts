@@ -9,8 +9,9 @@ import { logAdminAction } from "@/lib/audit";
 import { resolveSecretUpdate } from "@/lib/crypto";
 import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
-import { testEmailTemplate } from "@/lib/email/templates";
+import { adminPasswordChangedTemplate, testEmailTemplate } from "@/lib/email/templates";
 import { requireAdmin } from "@/lib/guards";
+import { generateReadablePassword, issuePasswordResetCode, setUserPassword } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
 
@@ -160,6 +161,103 @@ export async function updateUserAction(formData: FormData) {
   await logAdminAction(admin, { action: "update", entity: "User", entityId: userId, summary: `role=${nextRole} bloqueado=${nextIsBlocked}` });
   revalidatePath("/admin/usuarios");
   revalidatePath("/admin/usuarios/[id]", "page");
+}
+
+/** Notifica o usuário por e-mail com a nova senha; best-effort — nunca lança. */
+async function notifyPasswordChanged(user: { email: string }, password: string): Promise<boolean> {
+  try {
+    const appSettings = await getAppSettings();
+    const template = adminPasswordChangedTemplate(password, appSettings.appName);
+    const result = await sendEmail({ to: user.email, subject: template.subject, html: template.html, text: template.text });
+    return result.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Define a senha de um usuário diretamente. Usado quando o admin já tem a senha em mãos (ex.: ditada por telefone). */
+export async function adminSetUserPasswordAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (password.length < 8) {
+    return { ok: false, message: "A senha precisa ter pelo menos 8 caracteres." };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+  if (!user) throw new Error("Usuário não encontrado.");
+
+  await setUserPassword(userId, password);
+  const emailed = await notifyPasswordChanged(user, password);
+
+  await logAdminAction(admin, {
+    action: "set_password",
+    entity: "User",
+    entityId: userId,
+    summary: `senha definida manualmente${emailed ? " e enviada por e-mail" : " (e-mail não enviado)"}`
+  });
+  revalidatePath("/admin/usuarios/[id]", "page");
+
+  return {
+    ok: true,
+    message: emailed ? "Senha definida e enviada por e-mail ao usuário." : "Senha definida. Não foi possível enviar por e-mail — avise o usuário por outro canal."
+  };
+}
+
+/** Gera uma senha aleatória, salva e tenta enviar por e-mail; devolve a senha em texto para o admin repassar se preciso. */
+export async function adminGenerateRandomPasswordAction(formData: FormData): Promise<{ ok: boolean; password?: string; message: string }> {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+  if (!user) throw new Error("Usuário não encontrado.");
+
+  const password = generateReadablePassword();
+  await setUserPassword(userId, password);
+  const emailed = await notifyPasswordChanged(user, password);
+
+  await logAdminAction(admin, {
+    action: "generate_random_password",
+    entity: "User",
+    entityId: userId,
+    summary: `senha aleatória gerada${emailed ? " e enviada por e-mail" : " (e-mail não enviado)"}`
+  });
+  revalidatePath("/admin/usuarios/[id]", "page");
+
+  return {
+    ok: true,
+    password,
+    message: emailed ? "Senha gerada e enviada por e-mail ao usuário." : "Senha gerada. Não foi possível enviar por e-mail — copie e envie manualmente."
+  };
+}
+
+/** Reaproveita o fluxo de autoatendimento: envia o código de redefinição de 6 dígitos por e-mail. */
+export async function adminSendPasswordResetCodeAction(formData: FormData): Promise<{ ok: boolean; message: string }> {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+  if (!user) throw new Error("Usuário não encontrado.");
+
+  const result = await issuePasswordResetCode(user.email);
+  await logAdminAction(admin, {
+    action: "send_password_reset_code",
+    entity: "User",
+    entityId: userId,
+    summary: result.sent ? "código de redefinição enviado" : `não enviado (${result.reason})`
+  });
+
+  if (result.sent) {
+    return { ok: true, message: "Código de redefinição enviado por e-mail ao usuário." };
+  }
+  const reasonMessage: Record<typeof result.reason, string> = {
+    no_account: "Usuário não encontrado.",
+    no_password: "Este usuário ainda não tem senha cadastrada (login só via Google) — defina ou gere uma senha primeiro.",
+    cooldown: "Um código já foi enviado há menos de 1 minuto. Aguarde um pouco antes de reenviar.",
+    email_failed: "Falha ao enviar o e-mail — confira a configuração de e-mail em Admin > E-mail."
+  };
+  return { ok: false, message: reasonMessage[result.reason] };
 }
 
 export async function activateUserSubscriptionAction(formData: FormData) {

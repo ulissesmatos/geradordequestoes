@@ -104,7 +104,7 @@ export function PricingCards({
                     <div className="flex items-center justify-between gap-3">
                       <CardTitle className="text-xl font-semibold">{plan.name}</CardTitle>
                       {highlighted && (
-                        <Badge>
+                        <Badge className="border-transparent bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-white">
                           <Sparkles className="mr-1 h-3 w-3" />
                           Popular
                         </Badge>

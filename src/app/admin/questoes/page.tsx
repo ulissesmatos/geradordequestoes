@@ -2,6 +2,7 @@ import { deleteQuestionAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { ManualQuestionForm } from "@/components/admin/manual-question-form";
+import { MathText } from "@/components/math-text";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,19 +72,19 @@ export default async function AdminQuestionsPage({
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p>{question.statement}</p>
+              <p><MathText text={question.statement} /></p>
               {question.options.length > 0 ? (
                 <div className="grid gap-2">
                   {question.options.map((option) => (
                     <p key={option.id} className={option.isCorrect ? "text-sm font-semibold text-[var(--success)]" : "text-sm"}>
-                      {option.label}) {option.text}
+                      {option.label}) <MathText text={option.text} />
                     </p>
                   ))}
                 </div>
               ) : (
                 <p className="text-sm font-semibold">Gabarito: {question.answer}</p>
               )}
-              <p className="text-sm text-[var(--muted-foreground)]">{question.explanation}</p>
+              <p className="text-sm text-[var(--muted-foreground)]"><MathText text={question.explanation} /></p>
             </CardContent>
           </Card>
         ))}

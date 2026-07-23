@@ -9,11 +9,13 @@ import {
   History,
   Layers3,
   MessageSquareText,
+  Play,
   ShieldCheck,
   Sparkles,
   Target
 } from "lucide-react";
 import { auth } from "@/auth";
+import { BotAvatar } from "@/components/bot-avatar";
 import { PricingCards } from "@/components/pricing-cards";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -37,7 +39,7 @@ const features = [
   {
     icon: Bot,
     title: "Chat AI-first",
-    text: "O aluno escreve do jeito dele e a IA organiza matéria, formato, dificuldade e quantidade."
+    text: "Escreva do seu jeito e a IA organiza matéria, formato, dificuldade e quantidade."
   },
   {
     icon: ClipboardCheck,
@@ -99,7 +101,7 @@ export default async function HomePage() {
         <div>
           <Badge variant="secondary" className="mb-5 gap-2">
             <Sparkles className="h-3.5 w-3.5" />
-            SaaS AI-first para concursos públicos
+            A melhor forma de estudar para seu concurso
           </Badge>
           <h1 className="max-w-4xl text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
             Gere questões, simulados e revisões com IA em poucos segundos.
@@ -108,9 +110,9 @@ export default async function HomePage() {
             Uma plataforma para transformar prompts em blocos salvos de estudo, acompanhar desempenho e criar um banco de questões revisável com o tempo.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg">
+            <Button asChild size="lg" className="px-7">
               <Link href="/register">
-                Criar conta <ArrowRight className="h-4 w-4" />
+                Criar conta grátis <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg">
@@ -197,13 +199,26 @@ export default async function HomePage() {
                 Chat IA
               </div>
               <div className="space-y-4">
-                <div className="ml-auto max-w-[82%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm shadow-sm">
+                <div className="ml-auto max-w-[82%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm text-[var(--primary-soft-foreground)] shadow-sm">
                   Gere uma revisão dos meus erros em informática básica.
                 </div>
-                <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
-                  Boa. Gerei um bloco de revisão com foco nos temas em que você mais errou. O treino já ficou salvo no seu histórico.
-                  <div className="mt-3 inline-flex rounded-md bg-[var(--primary)] px-3 py-2 text-xs font-semibold text-white">
-                    Responder agora
+                <div className="flex items-start gap-2.5">
+                  <BotAvatar />
+                  <div className="flex min-w-0 max-w-[88%] flex-1 flex-col gap-2">
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-sm">
+                      Boa. Gerei um bloco de revisão com foco nos temas em que você mais errou. O treino já ficou salvo no seu histórico.
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-l-4 border-[var(--border)] border-l-[var(--accent)] bg-[var(--surface)] p-3.5 shadow-sm">
+                      <div className="flex items-center gap-2.5 text-sm font-semibold text-[var(--foreground)]">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[var(--accent-foreground)]">
+                          <Play className="h-3.5 w-3.5" />
+                        </span>
+                        Questões geradas
+                      </div>
+                      <span className="inline-flex h-8 shrink-0 items-center rounded-full bg-[var(--primary)] px-3.5 text-xs font-semibold text-white">
+                        Responder agora
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
+import { BotAvatar } from "@/components/bot-avatar";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
@@ -561,40 +562,28 @@ export function AiChatDashboard({
                 <ChatBubble key={chatMessage.id} message={chatMessage} />
               ))}
               {typedResponse && (
-                <div className="max-w-[88%] rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
-                  <MarkdownContent content={typedResponse} compact />
-                  <SourceLinks sources={typedSources} />
-                  {(typedSetId || typedMaterialId) && typedMessageId && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {typedSetId && (
-                        <Button asChild size="sm">
-                          <Link href={`/biblioteca?setId=${typedSetId}`}>
-                            <Play className="h-4 w-4" />
-                            Responder agora
-                          </Link>
-                        </Button>
-                      )}
-                      {typedMaterialId && (
-                        <Button asChild size="sm">
-                          <Link href={`/materiais/${typedMaterialId}`}>
-                            <FileText className="h-4 w-4" />
-                            Abrir material
-                          </Link>
-                        </Button>
-                      )}
+                <div className="flex animate-fade-in items-start justify-start gap-2.5">
+                  <BotAvatar />
+                  <div className="flex min-w-0 max-w-[88%] flex-1 flex-col gap-2">
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-[var(--shadow-sm)]">
+                      <MarkdownContent content={typedResponse} compact />
+                      <SourceLinks sources={typedSources} />
                     </div>
-                  )}
+                    {typedMessageId && <ResultCard questionSetId={typedSetId} studyMaterialId={typedMaterialId} />}
+                  </div>
                 </div>
               )}
               {isSubmitting && (
-                <div className="flex justify-start">
-                  <div className="flex max-w-[88%] items-center gap-3 rounded-lg bg-[var(--primary-soft)] p-4 text-sm leading-6 text-[var(--primary-soft-foreground)]">
+                <div className="flex items-start justify-start gap-2.5">
+                  <BotAvatar />
+                  <div className="flex max-w-[88%] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-[var(--shadow-sm)]">
                     <ShiningText text={toolStatus ?? loadingText} />
                   </div>
                 </div>
               )}
               {streamError && !isSubmitting && (
-                <div className="flex justify-start">
+                <div className="flex items-start justify-start gap-2.5">
+                  <BotAvatar />
                   <div className="max-w-[88%] rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-sm leading-6 text-[var(--danger-soft-foreground)]">
                     {streamError}
                   </div>
@@ -869,7 +858,7 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
         </span>
         <Link
           href="/pricing"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-foreground)] hover:bg-[var(--primary-hover)]"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-br from-[var(--primary)] to-[#14a89a] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_6px_16px_-6px_rgba(10,98,104,0.5)] hover:opacity-90"
         >
           <Sparkles className="h-3.5 w-3.5" />
           {isTrial ? "Assinar agora" : "Fazer upgrade"}
@@ -935,57 +924,102 @@ function SourceLinks({ sources }: { sources?: ChatSource[] }) {
   );
 }
 
+/** Cartão de entrega (bloco/material gerado) — separado do texto de confirmação, com destaque âmbar. */
+function ResultCard({
+  questionSetId,
+  studyMaterialId
+}: {
+  questionSetId?: string | null;
+  studyMaterialId?: string | null;
+}) {
+  if (!questionSetId && !studyMaterialId) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-l-4 border-[var(--border)] border-l-[#fbe8ba] bg-[var(--surface)] p-3.5 shadow-[var(--shadow-sm)]">
+      {questionSetId && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 text-sm font-semibold text-[var(--foreground)]">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[var(--accent-foreground)]">
+              <Play className="h-3.5 w-3.5" />
+            </span>
+            Questões geradas
+          </div>
+          <Button asChild size="sm">
+            <Link href={`/biblioteca?setId=${questionSetId}`}>Responder agora</Link>
+          </Button>
+        </div>
+      )}
+      {studyMaterialId && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 text-sm font-semibold text-[var(--foreground)]">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[var(--accent-foreground)]">
+              <FileText className="h-3.5 w-3.5" />
+            </span>
+            Material gerado
+          </div>
+          <Button asChild size="sm">
+            <Link href={`/materiais/${studyMaterialId}`}>Abrir material</Link>
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "USER";
+
+  const textBubble = (
+    <div
+      className={cn(
+        "rounded-lg p-4 text-sm leading-6 shadow-[var(--shadow-sm)]",
+        isUser
+          ? "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]"
+          : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+      )}
+    >
+      {message.attachments && message.attachments.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {message.attachments.map((attachment) => {
+            const proxied = blobProxyUrl(attachment.url);
+            return attachment.kind === "IMAGE" ? (
+              <a key={attachment.id} href={proxied} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={proxied} alt={attachment.name} className="h-28 w-28 rounded-md border border-[var(--border)] object-cover" />
+              </a>
+            ) : (
+              <a
+                key={attachment.id}
+                href={proxied}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--primary)]"
+              >
+                <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                <span className="max-w-[160px] truncate">{attachment.name}</span>
+              </a>
+            );
+          })}
+        </div>
+      )}
+      <MarkdownContent content={message.content} compact />
+      {!isUser && <SourceLinks sources={message.sources} />}
+    </div>
+  );
+
+  if (isUser) {
+    return (
+      <div className="flex animate-fade-in justify-end">
+        <div className="max-w-[88%]">{textBubble}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className={cn("flex animate-fade-in", isUser ? "justify-end" : "justify-start")}>
-      <div className={cn("max-w-[88%] rounded-lg p-4 text-sm leading-6", isUser ? "bg-[var(--surface)] text-[var(--foreground)] shadow-[var(--shadow-sm)]" : "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]")}>
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {message.attachments.map((attachment) => {
-              const proxied = blobProxyUrl(attachment.url);
-              return attachment.kind === "IMAGE" ? (
-                <a key={attachment.id} href={proxied} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={proxied} alt={attachment.name} className="h-28 w-28 rounded-md border border-[var(--border)] object-cover" />
-                </a>
-              ) : (
-                <a
-                  key={attachment.id}
-                  href={proxied}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--primary)]"
-                >
-                  <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-                  <span className="max-w-[160px] truncate">{attachment.name}</span>
-                </a>
-              );
-            })}
-          </div>
-        )}
-        <MarkdownContent content={message.content} compact />
-        {(message.questionSetId || message.studyMaterialId) && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {message.questionSetId && (
-              <Button asChild size="sm">
-                <Link href={`/biblioteca?setId=${message.questionSetId}`}>
-                  <Play className="h-4 w-4" />
-                  Responder agora
-                </Link>
-              </Button>
-            )}
-            {message.studyMaterialId && (
-              <Button asChild size="sm">
-                <Link href={`/materiais/${message.studyMaterialId}`}>
-                  <FileText className="h-4 w-4" />
-                  Abrir material
-                </Link>
-              </Button>
-            )}
-          </div>
-        )}
-        {!isUser && <SourceLinks sources={message.sources} />}
+    <div className="flex animate-fade-in items-start justify-start gap-2.5">
+      <BotAvatar />
+      <div className="flex min-w-0 max-w-[88%] flex-1 flex-col gap-2">
+        {textBubble}
+        <ResultCard questionSetId={message.questionSetId} studyMaterialId={message.studyMaterialId} />
       </div>
     </div>
   );
