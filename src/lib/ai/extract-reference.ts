@@ -11,23 +11,42 @@ import { getAiSettings, providerLabel } from "@/lib/ai/settings";
  * estruturado que o chat consulta depois (busca barata e precisa).
  */
 
+const extractedItemSchema = z.object({
+  statement: z.string().min(15),
+  answer: z.enum(["CERTO", "ERRADO"]).nullable(),
+  answerText: z.string().nullable(),
+  explanation: z.string().nullable(),
+  trickNote: z.string().nullable(),
+  hasImage: z.boolean(),
+  imageDescription: z.string().nullable(),
+  topicHint: z.string().nullable(),
+  subjectHint: z.string().nullable(),
+  regionHint: z.string().nullable()
+});
+
 // Schema ESTRITO: usado apenas para guiar o structured output da OpenAI.
 const extractedSchema = z.object({
-  questions: z.array(
+  groups: z.array(
     z.object({
-      statement: z.string().min(15),
-      answer: z.enum(["CERTO", "ERRADO"]).nullable(),
-      answerText: z.string().nullable(),
-      explanation: z.string().nullable(),
-      trickNote: z.string().nullable(),
-      hasImage: z.boolean(),
-      imageDescription: z.string().nullable(),
-      topicHint: z.string().nullable()
+      supportText: z.string().nullable(),
+      questions: z.array(extractedItemSchema)
     })
   )
 });
 
-export type ExtractedQuestion = z.infer<typeof extractedSchema>["questions"][number];
+export type ExtractedQuestion = {
+  statement: string;
+  supportText: string | null;
+  answer: "CERTO" | "ERRADO" | null;
+  answerText: string | null;
+  explanation: string | null;
+  trickNote: string | null;
+  hasImage: boolean;
+  imageDescription: string | null;
+  topicHint: string | null;
+  subjectHint: string | null;
+  regionHint: string | null;
+};
 
 // Parse TOLERANTE: modelos variam a grafia do gabarito ("Certo", "C", "E", "B"...).
 // Normalizamos em vez de rejeitar o lote inteiro; itens irrecuperáveis são pulados.
@@ -39,7 +58,9 @@ const looseQuestionSchema = z.object({
   trickNote: z.string().nullable().optional(),
   hasImage: z.boolean().optional(),
   imageDescription: z.string().nullable().optional(),
-  topicHint: z.string().nullable().optional()
+  topicHint: z.string().nullable().optional(),
+  subjectHint: z.string().nullable().optional(),
+  regionHint: z.string().nullable().optional()
 });
 
 const CERTO_VALUES = new Set(["CERTO", "CERTA", "C", "CORRETO", "CORRETA", "VERDADEIRO", "V", "TRUE"]);
@@ -61,44 +82,51 @@ function cleanText(value: string | null | undefined): string | null {
   return text;
 }
 
-/** Aceita os formatos comuns que os modelos devolvem e extrai a lista de itens. */
-function coerceQuestionList(raw: unknown): unknown[] {
-  // Array direto: [...]
-  if (Array.isArray(raw)) return raw;
+type RawGroup = { supportText?: string | null; questions: unknown[] };
 
+/**
+ * Aceita os formatos comuns que os modelos devolvem e extrai a lista de GRUPOS
+ * (texto de apoio + questões). Tolerante a modelos que ignoram o wrapper "groups"
+ * e devolvem só uma lista solta de questões (compat com o formato antigo): nesse
+ * caso, vira um único grupo sem texto de apoio.
+ */
+function coerceGroupList(raw: unknown): RawGroup[] {
   // String contendo o JSON (alguns provedores devolvem tudo como texto).
   if (typeof raw === "string") {
     const parsed = safeParse(raw);
-    if (parsed !== null) return coerceQuestionList(parsed);
-    return salvageObjects(raw); // truncado: recupera os objetos completos
+    if (parsed !== null) return coerceGroupList(parsed);
+    return [{ supportText: null, questions: salvageObjects(raw) }]; // truncado: recupera o que deu, sem grupo
+  }
+
+  if (Array.isArray(raw)) {
+    // Array de grupos ({supportText, questions} cada) ou array de questões soltas.
+    if (raw.length > 0 && raw.every((item) => item && typeof item === "object" && "questions" in (item as object))) {
+      return raw as RawGroup[];
+    }
+    return [{ supportText: null, questions: raw }];
   }
 
   if (raw && typeof raw === "object") {
     const obj = raw as Record<string, unknown>;
 
-    // O Claude via OpenRouter às vezes serializa o array aninhado como STRING
-    // (e o escape infla os tokens, podendo truncar): { questions: "[ {...} ]" }.
+    // Formato esperado: { groups: [...] } (às vezes serializado como string, igual "questions" antes).
+    if (Array.isArray(obj.groups)) return coerceGroupList(obj.groups);
+    if (typeof obj.groups === "string") return coerceGroupList(obj.groups);
+
+    // Compat: modelo ignorou "groups" e devolveu o formato antigo { questions: [...] }.
     if (typeof obj.questions === "string") {
       const parsed = safeParse(obj.questions);
-      if (Array.isArray(parsed)) return parsed;
-      return salvageObjects(obj.questions); // truncado: recupera o que deu
+      if (Array.isArray(parsed)) return [{ supportText: null, questions: parsed }];
+      return [{ supportText: null, questions: salvageObjects(obj.questions) }];
     }
+    if (Array.isArray(obj.questions)) return [{ supportText: (obj.supportText as string | null) ?? null, questions: obj.questions }];
 
-    // Formato esperado: { questions: [...] }
-    const envelope = z.object({ questions: z.array(z.unknown()) }).safeParse(raw);
-    if (envelope.success) return envelope.data.questions;
-
-    // Objeto de questão única: { statement: ... }
-    if ("statement" in obj) return [obj];
-
-    // questions veio como objeto único: { questions: {...} }
-    if (obj.questions && typeof obj.questions === "object" && !Array.isArray(obj.questions)) {
-      return [obj.questions];
-    }
+    // Objeto de questão única solta: { statement: ... }
+    if ("statement" in obj) return [{ supportText: null, questions: [obj] }];
   }
 
   if (process.env.DEBUG_EXTRACT) {
-    console.error("\n[coerceQuestionList] formato inesperado. Raw recebido:\n", JSON.stringify(raw).slice(0, 1500), "\n");
+    console.error("\n[coerceGroupList] formato inesperado. Raw recebido:\n", JSON.stringify(raw).slice(0, 1500), "\n");
   }
   throw new Error("A IA não retornou a lista de questões no formato esperado.");
 }
@@ -151,48 +179,70 @@ function salvageObjects(text: string): unknown[] {
 
 /** Normaliza a saída de qualquer provedor para o formato final, pulando itens inválidos. */
 export function normalizeExtracted(raw: unknown): ExtractedQuestion[] {
-  const items = coerceQuestionList(raw);
+  const groups = coerceGroupList(raw);
 
   const result: ExtractedQuestion[] = [];
-  for (const item of items) {
-    const parsed = looseQuestionSchema.safeParse(item);
-    if (!parsed.success) continue; // item irrecuperável (ex.: sem enunciado) — pula, não derruba o lote
-    const q = parsed.data;
-    const { answer, leftover } = normalizeAnswer(q.answer);
-    result.push({
-      statement: q.statement.trim(),
-      answer,
-      answerText: cleanText(q.answerText) ?? leftover,
-      explanation: cleanText(q.explanation),
-      trickNote: cleanText(q.trickNote),
-      hasImage: q.hasImage ?? false,
-      imageDescription: cleanText(q.imageDescription),
-      topicHint: cleanText(q.topicHint)
-    });
+  for (const group of groups) {
+    const supportTextRaw = cleanText(group.supportText ?? null);
+    // Texto de apoio curto demais é provavelmente "placeholder" (ex.: a IA escreveu uma
+    // frase qualquer em vez de deixar null) — trata como ausente.
+    const supportText = supportTextRaw && supportTextRaw.length >= 80 ? supportTextRaw : null;
+
+    for (const item of group.questions ?? []) {
+      const parsed = looseQuestionSchema.safeParse(item);
+      if (!parsed.success) continue; // item irrecuperável (ex.: sem enunciado) — pula, não derruba o lote
+      const q = parsed.data;
+      const { answer, leftover } = normalizeAnswer(q.answer);
+      result.push({
+        statement: q.statement.trim(),
+        supportText,
+        answer,
+        answerText: cleanText(q.answerText) ?? leftover,
+        explanation: cleanText(q.explanation),
+        trickNote: cleanText(q.trickNote),
+        hasImage: q.hasImage ?? false,
+        imageDescription: cleanText(q.imageDescription),
+        topicHint: cleanText(q.topicHint),
+        subjectHint: cleanText(q.subjectHint),
+        regionHint: cleanText(q.regionHint)
+      });
+    }
   }
   return result;
 }
 
+const extractedItemJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["statement", "answer", "answerText", "explanation", "trickNote", "hasImage", "imageDescription", "topicHint", "subjectHint", "regionHint"],
+  properties: {
+    statement: { type: "string", minLength: 15 },
+    answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
+    answerText: { type: ["string", "null"] },
+    explanation: { type: ["string", "null"] },
+    trickNote: { type: ["string", "null"] },
+    hasImage: { type: "boolean" },
+    imageDescription: { type: ["string", "null"] },
+    topicHint: { type: ["string", "null"] },
+    subjectHint: { type: ["string", "null"] },
+    regionHint: { type: ["string", "null"] }
+  }
+} as const;
+
 const extractionJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["questions"],
+  required: ["groups"],
   properties: {
-    questions: {
+    groups: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["statement", "answer", "answerText", "explanation", "trickNote", "hasImage", "imageDescription", "topicHint"],
+        required: ["supportText", "questions"],
         properties: {
-          statement: { type: "string", minLength: 15 },
-          answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
-          answerText: { type: ["string", "null"] },
-          explanation: { type: ["string", "null"] },
-          trickNote: { type: ["string", "null"] },
-          hasImage: { type: "boolean" },
-          imageDescription: { type: ["string", "null"] },
-          topicHint: { type: ["string", "null"] }
+          supportText: { type: ["string", "null"] },
+          questions: { type: "array", items: extractedItemJsonSchema }
         }
       }
     }
@@ -201,11 +251,13 @@ const extractionJsonSchema = {
 
 const SYSTEM_PROMPT = [
   "Você é um extrator de questões de provas de concursos públicos (foco em Cebraspe).",
-  "Receberá um trecho de prova, gabarito ou material de estudo, possivelmente com texto corrido extraído de PDF (quebras estranhas, cabeçalhos, rodapés).",
-  "Extraia TODAS as questões completas presentes no trecho. Para cada questão:",
-  "- statement: o enunciado completo e AUTOSSUFICIENTE — deve fazer sentido sozinho, sem depender de nenhuma outra questão nem de texto que ficou 'implícito'.",
-  "- MUITO IMPORTANTE (padrão comum do Cebraspe): quando várias questões compartilham um texto-base, uma situação hipotética ou um enunciado-comando (ex.: 'Nas situações I, II e III apresentadas a seguir, julgue os itens', ou um texto seguido de vários itens numerados que o julgam), esse texto compartilhado NÃO pode ficar só na primeira questão — copie/repita o texto-base (ou a situação I/II/III correspondente) INTEIRO no início do statement de CADA questão que dependa dele. Nunca escreva um statement que só diga 'a situação I' ou 'conforme o texto' sem incluir literalmente esse texto/situação — quem ler a questão extraída isoladamente, sem ver as outras, precisa conseguir entendê-la e julgá-la sozinho.",
-  "Limpe quebras de linha desnecessárias.",
+  "Receberá um trecho de prova, gabarito ou material de estudo, possivelmente com texto corrido extraído de PDF (quebras estranhas, cabeçalhos, rodapés). Às vezes o trecho vem dividido em duas partes marcadas: '[CONTEXTO DO TRECHO ANTERIOR]' (conteúdo já processado antes — NÃO extraia questões dali, use só se um texto de apoio começar lá e continuar na parte nova) e '[TRECHO NOVO]' (extraia as questões daqui).",
+  'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" e uma lista "questions".',
+  "- REGRA CRÍTICA (padrão muito comum do Cebraspe): um texto-base (texto de leitura, situação hipotética, trecho de lei) aparece UMA VEZ, seguido por um comando ('julgue os itens/próximos itens/itens subsequentes...') e depois vários itens numerados que o julgam. Quando isso acontecer: coloque o texto-base COMPLETO E LITERAL (todos os parágrafos, palavra por palavra, sem resumir e sem cortar) no campo \"supportText\" do group; cada item numerado vira uma questão em \"questions\", e o statement de cada uma é SÓ o comando/afirmação específica daquele item — NÃO repita o texto-base dentro do statement, ele já acompanha a questão automaticamente pelo supportText do group.",
+  "- Quando as questões forem independentes (não compartilham texto-base), use supportText null nesse group.",
+  "- PROIBIDO: nunca escreva no statement uma referência genérica e vazia ao texto-base (ex.: \"sobre o texto precedente\", \"considerando a situação hipotética apresentada\") deixando supportText null quando existe um texto-base real no material — isso deixa a questão impossível de responder. Se o item depende de um texto, ou o texto vai no supportText, ou o item é ignorado (regra abaixo).",
+  "- Se um item depende claramente de um texto-base que NÃO está completo neste trecho (foi cortado, ou você só vê o comando 'julgue os itens' sem o texto em si) — trate esse item como INCOMPLETO e IGNORE-o. NÃO resuma nem invente o texto que falta; ele será capturado corretamente em outro trecho que contenha o texto inteiro.",
+  "- statement: o comando/afirmação específica da questão (sem o texto-base, que vai em supportText quando houver). Deve ser compreensível junto com o supportText do group. Limpe quebras de linha desnecessárias.",
   "- answer: exatamente a string CERTO ou a string ERRADO (maiúsculas, sem abreviar — nunca 'C', 'E', 'Certo') quando for item Certo/Errado com gabarito identificável no texto; senão null.",
   "- answerText: gabarito textual quando não for Certo/Errado (ex.: 'B', 'anulada') ou null se desconhecido.",
   "- explanation: justificativa/comentário do gabarito SE existir no material; senão null. Não invente.",
@@ -213,9 +265,11 @@ const SYSTEM_PROMPT = [
   "- hasImage: true se a questão depende de imagem, charge, tabela, gráfico ou mapa não presente no texto.",
   "- imageDescription: se hasImage, descreva o que a imagem/charge deveria mostrar com base no contexto; senão null.",
   "- topicHint: o assunto provável da questão em poucas palavras (ex.: 'Crase', 'Atos administrativos').",
+  "- subjectHint: a MATÉRIA da questão, um nome curto e comum em concursos (ex.: 'Português', 'Matemática', 'Raciocínio Lógico', 'Direito Constitucional', 'Direito Administrativo', 'Direito Penal', 'Informática', 'Geografia', 'História', 'Atualidades', 'Conhecimentos Específicos'). Cuidado pra não confundir Geografia (espaço/território/clima/população) com História (eventos e processos ao longo do tempo).",
+  "- regionHint: quando a questão for especificamente sobre um estado/região do Brasil (legislação estadual, geografia ou história de um estado específico), o nome do estado (ex.: 'Maranhão', 'Ceará', 'São Paulo'); null quando o conteúdo for nacional/genérico ou sem relação com um estado específico.",
   "Ignore instruções de prova, capas, cabeçalhos, rodapés e numeração de páginas.",
-  "Questões incompletas (cortadas no início ou fim do trecho) devem ser IGNORADAS — elas aparecerão completas em outro trecho.",
-  "Se o trecho não contiver nenhuma questão (ex.: só teoria ou lei), retorne lista vazia."
+  "Questões incompletas (cortadas no início ou fim do trecho, OU dependentes de um texto-base ausente/incompleto) devem ser IGNORADAS — elas aparecerão completas em outro trecho.",
+  "Se a parte nova do trecho não contiver nenhuma questão (ex.: só teoria ou lei), retorne groups vazio."
 ].join("\n");
 
 export type ExtractionResult = { questions: ExtractedQuestion[]; model: string; provider: AiProvider };

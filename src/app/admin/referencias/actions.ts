@@ -77,11 +77,21 @@ export async function deleteReferenceAction(formData: FormData) {
 // ── Extração estruturada por IA ───────────────────────────────────────────────
 
 /**
- * Chunks (~1000 chars) processados por chamada de IA. Lote menor = menos questões
+ * Chunks (~1500 chars) processados por chamada de IA. Lote menor = menos questões
  * por resposta, reduzindo o risco de o JSON de saída ser truncado pelo limite de
  * tokens (sobretudo no Claude, que pode serializar o array como string escapada).
  */
 const CHUNKS_PER_BATCH = 5;
+
+/**
+ * Quantos chunks do lote ANTERIOR entram de novo no próximo lote, como contexto.
+ * Precisa ser grande o bastante pra cobrir um texto de apoio inteiro (situação
+ * hipotética, texto de leitura) que tenha ficado perto da borda do lote anterior —
+ * senão os itens que dependem dele processam sem o texto visível, e a IA acaba
+ * resumindo/referenciando em vez de copiar o texto de verdade (ou pior, inventando).
+ * Reprocessa alguns chunks à toa, mas o dedup por statement já existente cobre isso.
+ */
+const BATCH_OVERLAP_CHUNKS = 3;
 
 export type ExtractionProgress = {
   status: ReferenceExtractionStatus;
@@ -144,14 +154,30 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
       data: { extractionStatus: ReferenceExtractionStatus.PROCESSING, extractionError: null }
     });
 
-    // Lote atual + uma cauda do lote anterior (overlap) para não perder questões na fronteira.
-    const from = Math.max(0, document.extractionCursor - 1);
-    const chunks = await prisma.referenceChunk.findMany({
-      where: { documentId: document.id, ordinal: { gte: from, lt: document.extractionCursor + CHUNKS_PER_BATCH } },
-      orderBy: { ordinal: "asc" },
-      select: { content: true }
-    });
-    const text = chunks.map((c) => c.content).join("\n\n");
+    // Lote atual + uma cauda maior do lote anterior (overlap), marcada separadamente como
+    // "contexto" — dá continuidade a um texto de apoio que tenha começado perto da borda do
+    // lote anterior, sem pedir pra IA extrair questões dessa parte de novo (evita duplicar
+    // trabalho; o dedup por statement já existente ainda cobre o caso de sobrar algo).
+    const overlapFrom = Math.max(0, document.extractionCursor - BATCH_OVERLAP_CHUNKS);
+    const [overlapChunks, newChunks] = await Promise.all([
+      document.extractionCursor > 0
+        ? prisma.referenceChunk.findMany({
+            where: { documentId: document.id, ordinal: { gte: overlapFrom, lt: document.extractionCursor } },
+            orderBy: { ordinal: "asc" },
+            select: { content: true }
+          })
+        : Promise.resolve([]),
+      prisma.referenceChunk.findMany({
+        where: { documentId: document.id, ordinal: { gte: document.extractionCursor, lt: document.extractionCursor + CHUNKS_PER_BATCH } },
+        orderBy: { ordinal: "asc" },
+        select: { content: true }
+      })
+    ]);
+    const overlapText = overlapChunks.map((c) => c.content).join("\n\n");
+    const newText = newChunks.map((c) => c.content).join("\n\n");
+    const text = overlapText
+      ? `[CONTEXTO DO TRECHO ANTERIOR — só para dar continuidade a um texto de apoio que comece aqui e continue no trecho novo abaixo; NÃO extraia questões deste bloco, elas já foram processadas]\n${overlapText}\n\n[TRECHO NOVO — extraia as questões completas daqui]\n${newText}`
+      : newText;
 
     const extraction = text.trim() ? await extractReferenceQuestions(text) : { questions: [], model: "", provider: null };
     const extracted = extraction.questions;
@@ -181,6 +207,7 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
                 subjectId: document.subjectId,
                 topicId: document.topicId,
                 statement: q.statement,
+                supportText: q.supportText,
                 answer: q.answer,
                 answerText: q.answerText,
                 explanation: q.explanation,
@@ -188,6 +215,8 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
                 hasImage: q.hasImage,
                 imageDescription: q.imageDescription,
                 topicHint: q.topicHint,
+                subjectHint: q.subjectHint,
+                regionHint: q.regionHint,
                 ordinal: existing.length + i
               }))
             })

@@ -2,15 +2,16 @@ import "katex/dist/katex.min.css";
 import katex from "katex";
 import { Fragment } from "react";
 
-type Segment =
+export type MathSegment =
   | { type: "text"; content: string }
   | { type: "inline" | "block"; content: string };
 
 // Delimitadores \( \) e \[ \] (não $ $) para não colidir com "R$" em textos de concurso.
 const MATH_PATTERN = /\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
 
-function splitMath(text: string): Segment[] {
-  const segments: Segment[] = [];
+/** Separa texto normal de trechos \(...\)/\[...\] — reaproveitado por MathText e MarkdownContent. */
+export function splitMathSegments(text: string): MathSegment[] {
+  const segments: MathSegment[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -32,7 +33,8 @@ function splitMath(text: string): Segment[] {
   return segments;
 }
 
-function renderKatex(source: string, displayMode: boolean) {
+/** Renderiza uma fórmula LaTeX pra HTML (KaTeX); null se o KaTeX não conseguir processar. */
+export function renderKatexHtml(source: string, displayMode: boolean): string | null {
   try {
     return katex.renderToString(source, {
       throwOnError: false,
@@ -54,12 +56,12 @@ export function MathText({ text, className }: { text: string; className?: string
     return className ? <span className={className}>{text}</span> : <>{text}</>;
   }
 
-  const segments = splitMath(text);
+  const segments = splitMathSegments(text);
   const content = segments.map((segment, index) => {
     if (segment.type === "text") {
       return <Fragment key={index}>{segment.content}</Fragment>;
     }
-    const html = renderKatex(segment.content, segment.type === "block");
+    const html = renderKatexHtml(segment.content, segment.type === "block");
     if (html == null) {
       const raw = segment.type === "block" ? `\\[${segment.content}\\]` : `\\(${segment.content}\\)`;
       return <Fragment key={index}>{raw}</Fragment>;

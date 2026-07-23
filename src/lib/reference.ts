@@ -1,8 +1,11 @@
 import { Prisma, type QuestionAnswer, type ReferenceKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-const CHUNK_TARGET = 1000;
-const CHUNK_OVERLAP = 150;
+// Alvo maior que o "padrão de livro" de propósito: textos de apoio do Cebraspe (situação
+// hipotética, texto de leitura) costumam ter 800-1500 caracteres — um chunk pequeno demais
+// aumenta a chance de o texto-base cair separado dos itens que dependem dele.
+const CHUNK_TARGET = 1500;
+const CHUNK_OVERLAP = 200;
 
 export type ReferenceHit = {
   id: string;
@@ -197,6 +200,7 @@ export type ReferenceQuestionHit = {
   id: string;
   documentId: string;
   statement: string;
+  supportText: string | null;
   answer: QuestionAnswer | null;
   answerText: string | null;
   explanation: string | null;
@@ -227,20 +231,20 @@ export async function searchReferenceQuestions(input: {
 
   const runQuery = (tsQuerySql: Prisma.Sql) => {
     const filters: Prisma.Sql[] = [
-      Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ ${tsQuerySql}`
+      Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q."supportText", '') || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ ${tsQuerySql}`
     ];
     if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
     if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
     const where = Prisma.join(filters, " AND ");
     return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
-      SELECT q.id, q."documentId", q.statement, q.answer, q."answerText", q.explanation,
+      SELECT q.id, q."documentId", q.statement, q."supportText", q.answer, q."answerText", q.explanation,
              q."trickNote", q."hasImage", q."imageDescription", q."topicHint",
              d.title, d.source
       FROM "ReferenceQuestion" q
       JOIN "ReferenceDocument" d ON d.id = q."documentId"
       WHERE ${where}
       ORDER BY ts_rank(
-        to_tsvector('portuguese', q.statement || ' ' || coalesce(q.explanation, '')),
+        to_tsvector('portuguese', q.statement || ' ' || coalesce(q."supportText", '') || ' ' || coalesce(q.explanation, '')),
         ${tsQuerySql}
       ) DESC
       LIMIT ${limit}
@@ -285,6 +289,7 @@ export function formatReferenceQuestion(question: ReferenceQuestionHit): string 
   const gabarito = question.answer ?? question.answerText ?? "desconhecido";
   return [
     `Questão real (${question.title}${question.source ? ` — ${question.source}` : ""}) [gabarito: ${gabarito}]`,
+    question.supportText ? `Texto de apoio:\n${question.supportText}\n` : "",
     question.statement,
     question.explanation ? `Justificativa: ${question.explanation}` : "",
     question.trickNote ? `Pegadinha: ${question.trickNote}` : "",

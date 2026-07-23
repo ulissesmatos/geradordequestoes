@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { BadgeCheck, Check, Lock, RotateCcw, Timer, Trophy, X } from "lucide-react";
+import { BadgeCheck, Check, ChevronDown, ChevronUp, Lock, RotateCcw, Timer, Trophy, X } from "lucide-react";
 import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { MathText } from "@/components/math-text";
@@ -57,12 +57,14 @@ export function QuestionRunner({
   const [finished, setFinished] = useState(initialAnswers != null && Object.keys(initialAnswers).length > 0);
   const [answerError, setAnswerError] = useState<{ message: string; limitReached: boolean } | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showSupport, setShowSupport] = useState(true);
   const current = questions[index];
   const selected = current ? answers[current.id] : undefined;
 
-  // Zera o cronômetro só ao trocar de questão (não quando ela é respondida).
+  // Zera o cronômetro e reabre o texto de apoio só ao trocar de questão.
   useEffect(() => {
     setElapsedSeconds(0);
+    setShowSupport(true);
   }, [current?.id]);
 
   // Congela o cronômetro assim que a questão é respondida.
@@ -247,9 +249,23 @@ export function QuestionRunner({
       </CardHeader>
       <CardContent className="space-y-5">
         {current.supportText && (
-          <div className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Texto de apoio</p>
-            <p className="whitespace-pre-line text-sm leading-6 text-[var(--foreground)]"><MathText text={current.supportText} /></p>
+          <div className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)]">
+            <button
+              type="button"
+              onClick={() => setShowSupport((value) => !value)}
+              className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Texto de apoio</span>
+              <span className="flex items-center gap-1 text-xs font-medium text-[var(--primary)]">
+                {showSupport ? "Ocultar" : "Mostrar"}
+                {showSupport ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </span>
+            </button>
+            {showSupport && (
+              <p className="whitespace-pre-line px-4 pb-4 text-sm leading-6 text-[var(--foreground)]">
+                <MathText text={current.supportText} />
+              </p>
+            )}
           </div>
         )}
         <p className="text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>

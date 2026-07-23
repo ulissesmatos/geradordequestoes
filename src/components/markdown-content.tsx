@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
+import { renderKatexHtml, splitMathSegments } from "@/components/math-text";
 
 export type HeadingInfo = {
   level: 2 | 3;
@@ -201,11 +202,36 @@ function normalizeContent(content: string) {
   return text.replace(/\n{3,}/g, "\n\n");
 }
 
-function renderInline(text: string) {
+function renderBold(text: string, keyPrefix: string): ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>;
+      return <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong>;
     }
-    return part;
+    return <Fragment key={`${keyPrefix}-${index}`}>{part}</Fragment>;
+  });
+}
+
+/** Texto inline com **negrito** e fórmulas LaTeX \(...\)/\[...\] (ver src/components/math-text.tsx). */
+function renderInline(text: string): ReactNode[] {
+  if (!text.includes("\\(") && !text.includes("\\[")) {
+    return renderBold(text, "b");
+  }
+
+  return splitMathSegments(text).flatMap((segment, segIndex): ReactNode[] => {
+    if (segment.type === "text") {
+      return renderBold(segment.content, `s${segIndex}`);
+    }
+    const html = renderKatexHtml(segment.content, segment.type === "block");
+    if (html == null) {
+      const raw = segment.type === "block" ? `\\[${segment.content}\\]` : `\\(${segment.content}\\)`;
+      return [<Fragment key={`m${segIndex}`}>{raw}</Fragment>];
+    }
+    return [
+      segment.type === "block" ? (
+        <span key={`m${segIndex}`} className="my-1 block overflow-x-auto" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <span key={`m${segIndex}`} dangerouslySetInnerHTML={{ __html: html }} />
+      )
+    ];
   });
 }

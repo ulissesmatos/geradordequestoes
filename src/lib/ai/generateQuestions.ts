@@ -8,6 +8,8 @@ import { getAiSettings, providerLabel } from "@/lib/ai/settings";
 export type ReferenceVariantSource = {
   id: string;
   statement: string;
+  /** Texto de apoio compartilhado do qual a questão original dependia, se houver. */
+  supportText: string | null;
   answer: QuestionAnswer | null;
   answerText: string | null;
   explanation: string | null;
@@ -243,6 +245,7 @@ function buildVariantPrompt(input: {
       const gabaritoOriginal = q.answer ?? q.answerText ?? "não informado";
       return [
         `[Questão de referência ${i + 1}] (gabarito original: ${gabaritoOriginal})`,
+        q.supportText ? `Texto de apoio original:\n${q.supportText}\n` : "",
         q.statement,
         q.explanation ? `Justificativa original: ${q.explanation}` : "",
         q.trickNote ? `Pegadinha original: ${q.trickNote}` : ""
@@ -263,6 +266,7 @@ function buildVariantPrompt(input: {
     referenceBlock,
     "Regras para cada variação:",
     "- Reaproveite a estrutura, o tema e boa parte do texto da questão de referência correspondente; pode manter grande parte do enunciado original, ajustando nomes, números, datas, órgãos, ordem dos itens ou pequenos detalhes de contexto.",
+    "- Se a questão de referência tinha um \"Texto de apoio original\", sua variação também deve ter um texto de apoio (adaptado do original, com os mesmos ajustes de nomes/números/datas) — coloque-o no supportText do group dessa questão, não deixe null. Se a referência NÃO tinha texto de apoio, use supportText null.",
     "- Mantenha o mesmo nível de dificuldade e o mesmo tipo de pegadinha da questão original.",
     "- CRÍTICO: NÃO copie o gabarito original cegamente. Releia SOMENTE o enunciado que você reescreveu, do zero, e determine se ele é CERTO ou ERRADO (ou qual alternativa é correta) com base apenas no texto novo. Pequenas mudanças de palavra (ex.: trocar \"todos\" por \"alguns\", negar uma condição, trocar um verbo, inverter uma ordem) podem inverter o gabarito — se isso acontecer, ajuste a resposta e a justificativa para refletir o NOVO enunciado, não o original.",
     `- Preencha "sourceIndex" com o número (1 a ${input.referenceQuestions.length}) da questão de referência que serviu de base, na mesma ordem em que apareceram acima.`,
@@ -272,7 +276,7 @@ function buildVariantPrompt(input: {
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta, considerando o enunciado que você reescreveu.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
-    'Estrutura da resposta: agrupe as questões em "groups" (cada group tem "supportText" e "questions"). Nesse modo cada variação é independente da questão de referência das outras — use supportText null em todos os groups.',
+    'Estrutura da resposta: agrupe as questões em "groups" (cada group tem "supportText" e "questions"), um group por variação (supportText conforme a regra acima).',
     MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)

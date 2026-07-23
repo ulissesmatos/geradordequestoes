@@ -61,6 +61,7 @@ export async function generateAndSaveQuestionSet(input: {
       variantSources = variantHits.map((hit) => ({
         id: hit.id,
         statement: hit.statement,
+        supportText: hit.supportText,
         answer: hit.answer,
         answerText: hit.answerText,
         explanation: hit.explanation,

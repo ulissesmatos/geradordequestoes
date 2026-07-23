@@ -836,6 +836,10 @@ model ReferenceQuestion {
   subjectId        String?
   topicId          String?
   statement        String
+  // Texto de apoio compartilhado (texto de leitura, situação hipotética) do qual esta questão
+  // depende — separado do statement (que fica só com o comando/julgamento específico do item),
+  // pra permitir agrupar no admin as questões que compartilham o mesmo texto ("bloco").
+  supportText      String?
   answer           QuestionAnswer?
   answerText       String?
   explanation      String?
@@ -843,6 +847,10 @@ model ReferenceQuestion {
   hasImage         Boolean           @default(false)
   imageDescription String?
   topicHint        String?
+  // Sugestões da IA pra reorganização futura em categorias reais — não vinculadas a
+  // Subject/Topic ainda, só texto livre pra um admin revisar e mapear depois.
+  subjectHint      String?
+  regionHint       String?
   ordinal          Int
   createdAt        DateTime          @default(now())
   document         ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
