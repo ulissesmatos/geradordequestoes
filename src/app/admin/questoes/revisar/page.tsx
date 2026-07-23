@@ -30,6 +30,12 @@ export default async function ReviewQuestionsPage() {
           <CardContent>
             <form key={question.updatedAt.getTime()} action={reviewQuestionAction} className="grid gap-3">
               <input type="hidden" name="questionId" value={question.id} />
+              {question.supportText != null && (
+                <label className="block space-y-1 text-xs font-medium text-[var(--muted-foreground)]">
+                  Texto de apoio
+                  <Textarea name="supportText" defaultValue={question.supportText} rows={4} />
+                </label>
+              )}
               <Textarea name="statement" defaultValue={question.statement} />
               {question.options.length > 0 && (
                 <div className="rounded-md border border-[var(--border)] p-3">

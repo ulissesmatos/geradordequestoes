@@ -14,28 +14,45 @@ export type ReferenceVariantSource = {
   trickNote: string | null;
 };
 
-const generatedQuestionSchema = z.object({
-  questions: z.array(
+const generatedItemSchema = z.object({
+  statement: z.string().min(20),
+  format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]),
+  answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
+  explanation: z.string().min(10),
+  difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]),
+  // Só preenchido no modo "variação fiel": índice (1-based) da questão de referência usada como base.
+  sourceIndex: z.number().int().min(1).optional(),
+  options: z.array(
     z.object({
-      statement: z.string().min(20),
-      format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]),
-      answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
-      explanation: z.string().min(10),
-      difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]),
-      // Só preenchido no modo "variação fiel": índice (1-based) da questão de referência usada como base.
-      sourceIndex: z.number().int().min(1).optional(),
-      options: z.array(
-        z.object({
-          label: z.string().min(1).max(24),
-          text: z.string().min(1),
-          isCorrect: z.boolean()
-        })
-      )
+      label: z.string().min(1).max(24),
+      text: z.string().min(1),
+      isCorrect: z.boolean()
     })
   )
 });
 
-export type GeneratedQuestion = z.infer<typeof generatedQuestionSchema>["questions"][number];
+/**
+ * Estrutura em grupos: a maioria dos grupos tem 1 questão independente (supportText null),
+ * mas — sobretudo em nível difícil — um grupo pode reunir várias questões que julgam o MESMO
+ * texto de apoio (situação hipotética, trecho de lei, texto informativo), no estilo real do
+ * Cebraspe. Achatado em questões individuais logo depois de receber a resposta da IA (ver
+ * normalizeGenerated); o resto do app sempre trabalha com a lista achatada.
+ */
+const generatedQuestionSchema = z.object({
+  groups: z.array(
+    z.object({
+      supportText: z
+        .string()
+        .min(80)
+        .nullable()
+        .optional()
+        .describe("Texto de apoio compartilhado pelas questões deste grupo; null quando as questões forem independentes."),
+      questions: z.array(generatedItemSchema).min(1)
+    })
+  )
+});
+
+export type GeneratedQuestion = z.infer<typeof generatedItemSchema> & { supportText: string | null };
 
 /**
  * O front-end renderiza fórmulas com KaTeX a partir destes delimitadores (ver src/components/math-text.tsx).
@@ -45,40 +62,61 @@ export type GeneratedQuestion = z.infer<typeof generatedQuestionSchema>["questio
 const MATH_FORMATTING_INSTRUCTION =
   "Notação matemática: sempre que o enunciado, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, matrizes, números complexos, somatórios, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) para fórmulas dentro do texto ou \\[ ... \\] para fórmulas em bloco/destaque. Nunca use apenas $ ou $$ como delimitador (pode ser confundido com valores em reais, ex. \"R$ 10,00\"). Fora desses casos, mantenha texto normal em português.";
 
+const GROUP_STRUCTURE_INSTRUCTION =
+  'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" (texto de apoio compartilhado) e uma lista "questions". Na maioria dos casos as questões são independentes entre si: use supportText null e distribua as questões em um ou mais groups sem texto compartilhado. A soma de todas as questões em todos os groups deve ser exatamente a quantidade pedida.';
+
+/**
+ * Só entra no prompt quando difficulty === "DIFICIL" — replica o padrão real do Cebraspe de
+ * blocos "texto de apoio + vários itens Certo/Errado que o julgam", em vez de questões sempre
+ * independentes.
+ */
+const SUPPORT_TEXT_INSTRUCTION =
+  "Nível DIFÍCIL — texto de apoio: quando o assunto se prestar a isso (interpretação de texto, direito, legislação, história, temas com uma situação hipotética ou trecho normativo plausível — NÃO force em assuntos que não combinam, como pura gramática/ortografia/informática básica), gere um ou mais grupos no estilo real de prova: um supportText de 2 a 4 parágrafos (uma situação hipotética, um texto informativo ou um trecho de lei/norma) seguido de 3 a 6 questões — no formato já definido acima — que o julgam sob ângulos diferentes, assim como um bloco real de prova tem um texto seguido de vários itens numerados. Nem toda questão difícil precisa disso: use julgamento — se o tema não render um texto de apoio natural, gere itens independentes normalmente (supportText null).";
+
+const generatedItemJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["statement", "format", "answer", "explanation", "difficulty", "options"],
+  properties: {
+    statement: { type: "string", minLength: 20 },
+    format: { type: "string", enum: ["CERTO_ERRADO", "MULTIPLA_ESCOLHA"] },
+    answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
+    explanation: { type: "string", minLength: 10 },
+    difficulty: { type: "string", enum: ["FACIL", "MEDIO", "DIFICIL"] },
+    sourceIndex: { type: "integer", minimum: 1 },
+    options: {
+      type: "array",
+      minItems: 2,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "text", "isCorrect"],
+        properties: {
+          label: { type: "string", maxLength: 24 },
+          text: { type: "string" },
+          isCorrect: { type: "boolean" }
+        }
+      }
+    }
+  }
+} as const;
+
 const questionsJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["questions"],
+  required: ["groups"],
   properties: {
-    questions: {
+    groups: {
       type: "array",
       minItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["statement", "format", "answer", "explanation", "difficulty", "options"],
+        required: ["supportText", "questions"],
         properties: {
-          statement: { type: "string", minLength: 20 },
-          format: { type: "string", enum: ["CERTO_ERRADO", "MULTIPLA_ESCOLHA"] },
-          answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
-          explanation: { type: "string", minLength: 10 },
-          difficulty: { type: "string", enum: ["FACIL", "MEDIO", "DIFICIL"] },
-          sourceIndex: { type: "integer", minimum: 1 },
-          options: {
-            type: "array",
-            minItems: 2,
-            maxItems: 5,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["label", "text", "isCorrect"],
-              properties: {
-                label: { type: "string", maxLength: 24 },
-                text: { type: "string" },
-                isCorrect: { type: "boolean" }
-              }
-            }
-          }
+          supportText: { type: ["string", "null"], minLength: 80 },
+          questions: { type: "array", minItems: 1, items: generatedItemJsonSchema }
         }
       }
     }
@@ -169,6 +207,8 @@ function buildPrompt(input: {
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
+    GROUP_STRUCTURE_INSTRUCTION,
+    input.difficulty === "DIFICIL" ? SUPPORT_TEXT_INSTRUCTION : "",
     MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
@@ -232,6 +272,7 @@ function buildVariantPrompt(input: {
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta, considerando o enunciado que você reescreveu.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
+    'Estrutura da resposta: agrupe as questões em "groups" (cada group tem "supportText" e "questions"). Nesse modo cada variação é independente da questão de referência das outras — use supportText null em todos os groups.',
     MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
@@ -267,7 +308,7 @@ async function generateWithOpenAI(settings: Awaited<ReturnType<typeof getAiSetti
     provider: AiProvider.OPENAI,
     model: settings.model,
     prompt,
-    questions: response.output_parsed.questions
+    groups: response.output_parsed.groups
   });
 }
 
@@ -304,7 +345,7 @@ async function generateWithClaude(settings: Awaited<ReturnType<typeof getAiSetti
     provider: AiProvider.CLAUDE,
     model: settings.model,
     prompt,
-    questions: parsed.questions
+    groups: parsed.groups
   });
 }
 
@@ -351,7 +392,7 @@ async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiS
     provider: AiProvider.OPENROUTER,
     model: settings.model,
     prompt,
-    questions: parsed.questions
+    groups: parsed.groups
   });
 }
 
@@ -359,11 +400,20 @@ function normalizeGenerated(result: {
   provider: AiProvider;
   model: string;
   prompt: string;
-  questions: GeneratedQuestion[];
+  groups: { supportText?: string | null; questions: z.infer<typeof generatedItemSchema>[] }[];
 }) {
+  // Achata os grupos em questões individuais, carregando o supportText do grupo em cada uma —
+  // texto null/curto demais (placeholder inútil) vira null em vez de "quase vazio".
+  const flattened: GeneratedQuestion[] = result.groups.flatMap((group) => {
+    const supportText = group.supportText && group.supportText.trim().length >= 80 ? group.supportText.trim() : null;
+    return group.questions.map((question) => ({ ...question, supportText }));
+  });
+
   return {
-    ...result,
-    questions: result.questions.map((question) => {
+    provider: result.provider,
+    model: result.model,
+    prompt: result.prompt,
+    questions: flattened.map((question) => {
       if (question.format === "CERTO_ERRADO") {
         const answer = question.answer === "ERRADO" ? "ERRADO" : "CERTO";
         return {

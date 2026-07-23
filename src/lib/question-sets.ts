@@ -125,6 +125,7 @@ export async function generateAndSaveQuestionSet(input: {
             orderInSet: index + 1,
             format: question.format as QuestionFormat,
             statement: question.statement,
+            supportText: question.supportText ?? null,
             answer: (question.answer ?? null) as QuestionAnswer | null,
             explanation: question.explanation,
             difficulty: question.difficulty as Difficulty,

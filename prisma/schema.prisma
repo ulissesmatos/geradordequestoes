@@ -264,6 +264,10 @@ model Question {
   orderInSet    Int?
   format        QuestionFormat     @default(CERTO_ERRADO)
   statement     String
+  // Texto de apoio compartilhado (situação hipotética, trecho de lei, texto informativo) — usado em
+  // blocos no estilo Cebraspe onde várias questões julgam o mesmo texto. Repetido por questão de
+  // propósito (cada uma fica autossuficiente, sem depender de outras do mesmo bloco).
+  supportText   String?
   answer        QuestionAnswer?
   explanation   String
   difficulty    Difficulty

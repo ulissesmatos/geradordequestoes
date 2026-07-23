@@ -115,6 +115,7 @@ export async function reviewQuestionAction(formData: FormData) {
     where: { id: String(formData.get("questionId")) },
     data: {
       statement: String(formData.get("statement")),
+      supportText: String(formData.get("supportText") ?? "").trim() || null,
       answer: (formData.get("answer") || null) as QuestionAnswer | null,
       explanation: String(formData.get("explanation")),
       difficulty: formData.get("difficulty") as Difficulty,
@@ -730,6 +731,7 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
             orderInSet: index + 1,
             format: question.format,
             statement: question.statement,
+            supportText: question.supportText ?? null,
             answer: question.answer as QuestionAnswer | null,
             explanation: question.explanation,
             difficulty: question.difficulty as Difficulty,

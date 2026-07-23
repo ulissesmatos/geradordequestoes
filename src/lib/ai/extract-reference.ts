@@ -203,7 +203,9 @@ const SYSTEM_PROMPT = [
   "Você é um extrator de questões de provas de concursos públicos (foco em Cebraspe).",
   "Receberá um trecho de prova, gabarito ou material de estudo, possivelmente com texto corrido extraído de PDF (quebras estranhas, cabeçalhos, rodapés).",
   "Extraia TODAS as questões completas presentes no trecho. Para cada questão:",
-  "- statement: o enunciado completo (inclua o texto-base/comando quando fizer parte da questão). Limpe quebras de linha desnecessárias.",
+  "- statement: o enunciado completo e AUTOSSUFICIENTE — deve fazer sentido sozinho, sem depender de nenhuma outra questão nem de texto que ficou 'implícito'.",
+  "- MUITO IMPORTANTE (padrão comum do Cebraspe): quando várias questões compartilham um texto-base, uma situação hipotética ou um enunciado-comando (ex.: 'Nas situações I, II e III apresentadas a seguir, julgue os itens', ou um texto seguido de vários itens numerados que o julgam), esse texto compartilhado NÃO pode ficar só na primeira questão — copie/repita o texto-base (ou a situação I/II/III correspondente) INTEIRO no início do statement de CADA questão que dependa dele. Nunca escreva um statement que só diga 'a situação I' ou 'conforme o texto' sem incluir literalmente esse texto/situação — quem ler a questão extraída isoladamente, sem ver as outras, precisa conseguir entendê-la e julgá-la sozinho.",
+  "Limpe quebras de linha desnecessárias.",
   "- answer: exatamente a string CERTO ou a string ERRADO (maiúsculas, sem abreviar — nunca 'C', 'E', 'Certo') quando for item Certo/Errado com gabarito identificável no texto; senão null.",
   "- answerText: gabarito textual quando não for Certo/Errado (ex.: 'B', 'anulada') ou null se desconhecido.",
   "- explanation: justificativa/comentário do gabarito SE existir no material; senão null. Não invente.",
@@ -216,7 +218,15 @@ const SYSTEM_PROMPT = [
   "Se o trecho não contiver nenhuma questão (ex.: só teoria ou lei), retorne lista vazia."
 ].join("\n");
 
-export async function extractReferenceQuestions(text: string): Promise<ExtractedQuestion[]> {
+export type ExtractionResult = { questions: ExtractedQuestion[]; model: string; provider: AiProvider };
+
+/**
+ * Retorna também `model`/`provider` efetivamente usados (não só as questões) para
+ * que o chamador possa registrar em auditoria qual modelo rodou de fato — a única
+ * forma confiável de confirmar o que foi usado, já que a extração não passa pelo
+ * log de uso de IA (AiUsageEvent) que alimenta /admin/logs-ia.
+ */
+export async function extractReferenceQuestions(text: string): Promise<ExtractionResult> {
   const baseSettings = await getAiSettings();
   if (!baseSettings.apiKey) {
     throw new Error(`Configure a chave da ${providerLabel(baseSettings.provider)} no painel admin.`);
@@ -228,9 +238,14 @@ export async function extractReferenceQuestions(text: string): Promise<Extracted
 
   const userContent = `Trecho do material:\n\n${text}`;
 
-  if (settings.provider === AiProvider.CLAUDE) return extractWithClaude(settings, userContent);
-  if (settings.provider === AiProvider.OPENROUTER) return extractWithOpenRouter(settings, userContent);
-  return extractWithOpenAI(settings, userContent);
+  const questions =
+    settings.provider === AiProvider.CLAUDE
+      ? await extractWithClaude(settings, userContent)
+      : settings.provider === AiProvider.OPENROUTER
+        ? await extractWithOpenRouter(settings, userContent)
+        : await extractWithOpenAI(settings, userContent);
+
+  return { questions, model: settings.model, provider: settings.provider };
 }
 
 type Settings = Awaited<ReturnType<typeof getAiSettings>>;

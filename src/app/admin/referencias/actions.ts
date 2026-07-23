@@ -153,7 +153,8 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
     });
     const text = chunks.map((c) => c.content).join("\n\n");
 
-    const extracted = text.trim() ? await extractReferenceQuestions(text) : [];
+    const extraction = text.trim() ? await extractReferenceQuestions(text) : { questions: [], model: "", provider: null };
+    const extracted = extraction.questions;
 
     // Dedupe contra o que já foi extraído deste documento (overlap entre lotes).
     const existing = await prisma.referenceQuestion.findMany({
@@ -206,7 +207,7 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
         action: "extract",
         entity: "ReferenceDocument",
         entityId: document.id,
-        summary: `${document.title}: ${existing.length + fresh.length} questões extraídas`
+        summary: `${document.title}: ${existing.length + fresh.length} questões extraídas (modelo: ${extraction.model || "padrão"})`
       });
       revalidatePath("/admin/referencias");
     }

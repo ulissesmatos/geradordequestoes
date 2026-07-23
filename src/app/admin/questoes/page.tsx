@@ -72,6 +72,11 @@ export default async function AdminQuestionsPage({
               </p>
             </CardHeader>
             <CardContent className="space-y-3">
+              {question.supportText && (
+                <p className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--muted-foreground)]">
+                  <MathText text={question.supportText} />
+                </p>
+              )}
               <p><MathText text={question.statement} /></p>
               {question.options.length > 0 ? (
                 <div className="grid gap-2">

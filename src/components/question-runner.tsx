@@ -22,6 +22,8 @@ type RunnerOption = {
 type RunnerQuestion = {
   id: string;
   statement: string;
+  /** Texto de apoio compartilhado (situação hipotética, trecho de lei) — algumas questões difíceis têm; a maioria não. */
+  supportText?: string | null;
   format?: "CERTO_ERRADO" | "MULTIPLA_ESCOLHA";
   answer?: "CERTO" | "ERRADO" | null;
   explanation: string;
@@ -149,6 +151,12 @@ export function QuestionRunner({
                       <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
                     </div>
                   </div>
+                  {question.supportText && (
+                    <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Texto de apoio</p>
+                      <p className="whitespace-pre-line text-xs leading-5 text-[var(--foreground)]"><MathText text={question.supportText} /></p>
+                    </div>
+                  )}
                   <p className="mt-1"><MathText text={question.statement} /></p>
                   <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
                     {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
@@ -238,6 +246,12 @@ export function QuestionRunner({
         )}
       </CardHeader>
       <CardContent className="space-y-5">
+        {current.supportText && (
+          <div className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Texto de apoio</p>
+            <p className="whitespace-pre-line text-sm leading-6 text-[var(--foreground)]"><MathText text={current.supportText} /></p>
+          </div>
+        )}
         <p className="text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>
         {answerError && (
           <div
