@@ -69,6 +69,9 @@ export async function executeToolCall(input: {
         return await runWebSearch(rawArgs);
       case "get_question_set_results":
         return await runGetQuestionSetResults(input.user, rawArgs);
+      case "ask_clarifying_question":
+        // Interceptada e resolvida antes em runner.ts (encerra o turno); nunca deveria chegar aqui.
+        return errorResult("ask_clarifying_question deve ser tratada pelo runner, não executada como ferramenta comum.");
     }
   } catch (error) {
     return errorResult(

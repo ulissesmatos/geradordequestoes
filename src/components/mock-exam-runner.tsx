@@ -83,9 +83,9 @@ export function MockExamRunner({
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
-      {/* Barra fixa: título + cronômetro */}
-      <div className="sticky top-[61px] z-20 -mx-4 border-b border-[var(--border)] bg-[var(--surface)]/95 px-4 py-2.5 backdrop-blur md:top-[73px]">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+      {/* Barra fixa: título + cronômetro + progresso */}
+      <div className="sticky top-[61px] z-20 -mx-4 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur md:top-[73px]">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
           <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
           <span
             className={cn(
@@ -96,6 +96,12 @@ export function MockExamRunner({
             <Timer className="h-4 w-4" />
             {formatCountdown(remainingMs)}
           </span>
+        </div>
+        <div className="h-1 w-full bg-[var(--muted)]">
+          <div
+            className="h-full bg-[var(--primary)] transition-all duration-300"
+            style={{ width: `${(answeredCount / questions.length) * 100}%` }}
+          />
         </div>
       </div>
 

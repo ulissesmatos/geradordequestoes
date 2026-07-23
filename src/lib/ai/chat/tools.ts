@@ -78,6 +78,27 @@ export const chatTools = {
       subjectName: z.string().optional().describe("Filtra por matéria, se o usuário citar."),
       topicName: z.string().optional().describe("Filtra por assunto, se o usuário citar.")
     })
+  },
+  ask_clarifying_question: {
+    description:
+      "Pergunta ao usuário quando você tem uma dúvida REAL e relevante antes de agir, em vez de adivinhar — a pergunta aparece com botões clicáveis (e, opcionalmente, um campo de texto livre) na tela do usuário. Use com MODERAÇÃO: não é para toda mensagem nem para todo pedido de questões — só quando a ambiguidade realmente muda o resultado e não dá para inferir um padrão razoável do pedido, do histórico da conversa ou dos padrões já usados antes (ex.: formato Certo/Errado é o padrão do Cebraspe — só pergunte o formato se não houver NENHUMA pista, não pergunte por rotina). Serve para qualquer dúvida genuína, não só formato. Depois de chamar esta ferramenta, PARE: não chame outra ferramenta nem escreva texto adicional neste turno — a resposta do usuário chega na próxima mensagem.",
+    schema: z.object({
+      question: z.string().describe("Pergunta objetiva e curta para o usuário, ex.: 'Prefere questões em Certo/Errado ou múltipla escolha?'"),
+      options: z
+        .array(
+          z.object({
+            label: z.string().max(60).describe("Texto curto do botão, ex.: 'Certo/Errado'."),
+            description: z.string().max(140).optional().describe("Detalhe opcional mostrado abaixo do botão.")
+          })
+        )
+        .min(2)
+        .max(4)
+        .describe("2 a 4 opções entre as quais o usuário escolhe."),
+      allowFreeText: z
+        .boolean()
+        .optional()
+        .describe("Se true (padrão), também mostra um campo para o usuário escrever a própria resposta em vez de escolher uma opção.")
+    })
   }
 } as const;
 

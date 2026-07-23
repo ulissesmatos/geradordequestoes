@@ -11,6 +11,7 @@ import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
 import { adminPasswordChangedTemplate, testEmailTemplate } from "@/lib/email/templates";
 import { requireAdmin } from "@/lib/guards";
+import { cancelLinkedStripeSubscriptions } from "@/lib/payments";
 import { generateReadablePassword, issuePasswordResetCode, setUserPassword } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
 import { slugify } from "@/lib/utils";
@@ -266,6 +267,14 @@ export async function activateUserSubscriptionAction(formData: FormData) {
   const planId = String(formData.get("planId") ?? "");
   const couponId = String(formData.get("couponId") || "") || undefined;
 
+  const previouslyActive = await prisma.userSubscription.findMany({
+    where: { userId, status: SubscriptionStatus.ACTIVE },
+    select: { id: true }
+  });
+  // Cancela no Stripe ANTES de derrubar localmente — senão a assinatura antiga
+  // continua sendo cobrada e a próxima fatura paga reativa a linha local.
+  const { errors: stripeErrors } = await cancelLinkedStripeSubscriptions(previouslyActive.map((s) => s.id));
+
   await prisma.userSubscription.updateMany({
     where: { userId, status: SubscriptionStatus.ACTIVE },
     data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
@@ -280,7 +289,12 @@ export async function activateUserSubscriptionAction(formData: FormData) {
     }
   });
 
-  await logAdminAction(admin, { action: "activate_subscription", entity: "User", entityId: userId, summary: `plano=${planId}` });
+  await logAdminAction(admin, {
+    action: "activate_subscription",
+    entity: "User",
+    entityId: userId,
+    summary: stripeErrors.length ? `plano=${planId}; falha ao cancelar assinatura Stripe anterior: ${stripeErrors.join("; ")}` : `plano=${planId}`
+  });
   revalidatePath("/admin/usuarios");
   revalidatePath("/admin/usuarios/[id]", "page");
 }
@@ -288,11 +302,27 @@ export async function activateUserSubscriptionAction(formData: FormData) {
 export async function cancelUserSubscriptionAction(formData: FormData) {
   const admin = await requireAdmin();
   const userId = String(formData.get("userId") ?? "");
+
+  const activeSubscriptions = await prisma.userSubscription.findMany({
+    where: { userId, status: SubscriptionStatus.ACTIVE },
+    select: { id: true }
+  });
+  // Cancela no Stripe ANTES de marcar como cancelada localmente — senão o Stripe
+  // continua cobrando o cliente e a próxima fatura paga reativa a linha local,
+  // desfazendo o cancelamento sem avisar ninguém.
+  const { errors: stripeErrors } = await cancelLinkedStripeSubscriptions(activeSubscriptions.map((s) => s.id));
+
   await prisma.userSubscription.updateMany({
     where: { userId, status: SubscriptionStatus.ACTIVE },
     data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
   });
-  await logAdminAction(admin, { action: "cancel_subscription", entity: "User", entityId: userId });
+
+  await logAdminAction(admin, {
+    action: "cancel_subscription",
+    entity: "User",
+    entityId: userId,
+    summary: stripeErrors.length ? `falha ao cancelar no Stripe: ${stripeErrors.join("; ")}` : undefined
+  });
   revalidatePath("/admin/usuarios");
   revalidatePath("/admin/usuarios/[id]", "page");
 }

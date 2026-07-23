@@ -73,10 +73,11 @@ export async function POST(request: Request) {
         });
 
         const metadata =
-          turn.toolTrace.length || turn.sources?.length
+          turn.toolTrace.length || turn.sources?.length || turn.clarification
             ? ({
                 ...(turn.toolTrace.length ? { toolCalls: turn.toolTrace } : {}),
-                ...(turn.sources?.length ? { sources: turn.sources } : {})
+                ...(turn.sources?.length ? { sources: turn.sources } : {}),
+                ...(turn.clarification ? { clarification: turn.clarification } : {})
               } as unknown as Prisma.InputJsonValue)
             : undefined;
 
@@ -100,7 +101,8 @@ export async function POST(request: Request) {
           message: turn.message,
           questionSetId: turn.questionSetId ?? null,
           studyMaterialId: turn.studyMaterialId ?? null,
-          sources: turn.sources ?? []
+          sources: turn.sources ?? [],
+          clarification: turn.clarification ?? null
         });
 
         await recordAiUsageEvent({ user, type: AiUsageEventType.CHAT_RESPONSE, model: turn.model, prompt });

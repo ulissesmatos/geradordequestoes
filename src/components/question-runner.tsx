@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
-import { BadgeCheck, Check, Lock, RotateCcw, Trophy, X } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { BadgeCheck, Check, Lock, RotateCcw, Timer, Trophy, X } from "lucide-react";
 import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { MathText } from "@/components/math-text";
@@ -54,7 +54,21 @@ export function QuestionRunner({
   const [isPending, startTransition] = useTransition();
   const [finished, setFinished] = useState(initialAnswers != null && Object.keys(initialAnswers).length > 0);
   const [answerError, setAnswerError] = useState<{ message: string; limitReached: boolean } | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const current = questions[index];
+  const selected = current ? answers[current.id] : undefined;
+
+  // Zera o cronômetro só ao trocar de questão (não quando ela é respondida).
+  useEffect(() => {
+    setElapsedSeconds(0);
+  }, [current?.id]);
+
+  // Congela o cronômetro assim que a questão é respondida.
+  useEffect(() => {
+    if (!current || selected) return;
+    const timer = window.setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [current, selected]);
 
   // Recomeça o bloco do zero (as tentativas anteriores continuam no histórico do servidor).
   function restart() {
@@ -155,7 +169,6 @@ export function QuestionRunner({
     );
   }
 
-  const selected = answers[current.id];
   const showFeedback = mode === "study" && selected;
   const options = getRenderableOptions(current);
 
@@ -196,10 +209,22 @@ export function QuestionRunner({
   }
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
+      <div className="h-1.5 w-full bg-[var(--muted)]">
+        <div
+          className="h-full bg-[var(--primary)] transition-all duration-300"
+          style={{ width: `${((index + 1) / questions.length) * 100}%` }}
+        />
+      </div>
       <CardHeader>
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle>Questão {index + 1} de {questions.length}</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <CardTitle>Questão {index + 1} de {questions.length}</CardTitle>
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-subtle)] px-2.5 py-1 text-xs font-semibold tabular-nums text-[var(--muted-foreground)]">
+              <Timer className="h-3.5 w-3.5" />
+              {formatElapsed(elapsedSeconds)}
+            </span>
+          </div>
           <div className="flex items-center gap-1">
             <ReportQuestionButton questionId={current.id} />
             <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
@@ -249,7 +274,7 @@ export function QuestionRunner({
               onClick={() => submit(option)}
             >
               {option.icon}
-              <span className="font-bold">{option.label}</span>
+              <span className="font-bold">{option.label})</span>
               <span><MathText text={option.value} /></span>
             </Button>
           ))}
@@ -308,6 +333,12 @@ function getRenderableOptions(question: RunnerQuestion) {
       icon: <X className="h-5 w-5" />
     }
   ];
+}
+
+function formatElapsed(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function getCorrectLabel(question: RunnerQuestion) {

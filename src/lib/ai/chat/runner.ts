@@ -4,7 +4,7 @@ import { buildTurnMessages, maybeSummarizeSession } from "@/lib/ai/chat/context"
 import { withRetry } from "@/lib/ai/chat/errors";
 import { executeToolCall } from "@/lib/ai/chat/executors";
 import { completeChat, streamChat, type CompletionResult, type NeutralMessage } from "@/lib/ai/chat/provider";
-import { getNeutralToolSpecs } from "@/lib/ai/chat/tools";
+import { chatTools, getNeutralToolSpecs } from "@/lib/ai/chat/tools";
 
 const MAX_TOOL_ITERATIONS = 3;
 
@@ -19,6 +19,12 @@ export type ChatTurnEvent = { type: "tool_started"; name: string } | { type: "de
 
 export type ChatSource = { title: string; url: string };
 
+export type ChatClarification = {
+  question: string;
+  options: { label: string; description?: string }[];
+  allowFreeText: boolean;
+};
+
 export type ChatTurnResult = {
   message: string;
   model: string;
@@ -26,7 +32,23 @@ export type ChatTurnResult = {
   studyMaterialId?: string;
   toolTrace: ToolTraceEntry[];
   sources?: ChatSource[];
+  clarification?: ChatClarification;
 };
+
+/**
+ * Se a chamada for ask_clarifying_question, extrai a pergunta/opções e sinaliza
+ * para o loop encerrar o turno imediatamente (sem chamar o modelo de novo) —
+ * a resposta do usuário aos botões vira a próxima mensagem normal do chat.
+ */
+function tryParseClarification(call: { name: string; argumentsJson: string }): ChatClarification | null {
+  if (call.name !== "ask_clarifying_question") return null;
+  try {
+    const args = chatTools.ask_clarifying_question.schema.parse(JSON.parse(call.argumentsJson));
+    return { question: args.question, options: args.options, allowFreeText: args.allowFreeText ?? true };
+  } catch {
+    return null;
+  }
+}
 
 /** Acumula fontes únicas (por URL), limitando a 6. */
 function pushSources(into: ChatSource[], from?: ChatSource[]) {
@@ -60,6 +82,7 @@ export async function runChatTurn(input: {
   let questionSetId: string | undefined;
   let studyMaterialId: string | undefined;
   let lastFallbackMessage: string | undefined;
+  let clarification: ChatClarification | undefined;
   let generationCount = 0;
   let materialCount = 0;
   let finalText = "";
@@ -91,6 +114,15 @@ export async function runChatTurn(input: {
 
     for (const call of result.calls) {
       input.onEvent?.({ type: "tool_started", name: call.name });
+
+      const parsedClarification = tryParseClarification(call);
+      if (parsedClarification) {
+        clarification = parsedClarification;
+        finalText = parsedClarification.question;
+        toolTrace.push({ name: call.name, arguments: call.argumentsJson.slice(0, 2000), result: "(pergunta exibida ao usuário)", durationMs: 0 });
+        messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify({ ok: true, note: "Pergunta enviada ao usuário; aguardando resposta." }) });
+        continue;
+      }
 
       const isGeneration = call.name === "generate_questions" || call.name === "generate_review_from_mistakes";
       const isMaterial = call.name === "generate_study_material";
@@ -130,6 +162,8 @@ export async function runChatTurn(input: {
 
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: resultForModel });
     }
+
+    if (clarification) break;
   }
 
   if (!finalText.trim()) {
@@ -145,7 +179,8 @@ export async function runChatTurn(input: {
     questionSetId,
     studyMaterialId,
     toolTrace,
-    sources: collectedSources.length ? collectedSources : undefined
+    sources: collectedSources.length ? collectedSources : undefined,
+    clarification
   };
 }
 
@@ -171,6 +206,7 @@ export async function streamChatTurn(input: {
   let questionSetId: string | undefined;
   let studyMaterialId: string | undefined;
   let lastFallbackMessage: string | undefined;
+  let clarification: ChatClarification | undefined;
   let generationCount = 0;
   let materialCount = 0;
   let finalText = "";
@@ -204,6 +240,17 @@ export async function streamChatTurn(input: {
     for (const call of completion.calls) {
       input.onEvent({ type: "tool_started", name: call.name });
 
+      const parsedClarification = tryParseClarification(call);
+      if (parsedClarification) {
+        clarification = parsedClarification;
+        finalText = parsedClarification.question;
+        // A pergunta é sintética (não veio token a token do modelo): emite como delta pra aparecer na hora.
+        input.onEvent({ type: "delta", text: parsedClarification.question });
+        toolTrace.push({ name: call.name, arguments: call.argumentsJson.slice(0, 2000), result: "(pergunta exibida ao usuário)", durationMs: 0 });
+        messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: JSON.stringify({ ok: true, note: "Pergunta enviada ao usuário; aguardando resposta." }) });
+        continue;
+      }
+
       const isGeneration = call.name === "generate_questions" || call.name === "generate_review_from_mistakes";
       const isMaterial = call.name === "generate_study_material";
       let resultForModel: string;
@@ -242,6 +289,8 @@ export async function streamChatTurn(input: {
 
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: resultForModel });
     }
+
+    if (clarification) break;
   }
 
   if (!finalText.trim()) {
@@ -259,7 +308,8 @@ export async function streamChatTurn(input: {
     questionSetId,
     studyMaterialId,
     toolTrace,
-    sources: collectedSources.length ? collectedSources : undefined
+    sources: collectedSources.length ? collectedSources : undefined,
+    clarification
   };
 }
 

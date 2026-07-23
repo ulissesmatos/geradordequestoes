@@ -10,6 +10,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
@@ -24,6 +25,9 @@ type ChatAttachment = {
 };
 
 type ChatSource = { title: string; url: string };
+
+type ClarifyOption = { label: string; description?: string };
+type Clarification = { question: string; options: ClarifyOption[]; allowFreeText: boolean };
 
 type ChatMessage = {
   id: string;
@@ -130,6 +134,7 @@ export function AiChatDashboard({
   const [typedMaterialId, setTypedMaterialId] = useState<string | null>(null);
   const [typedSources, setTypedSources] = useState<ChatSource[]>([]);
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
+  const [typedClarification, setTypedClarification] = useState<Clarification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -193,6 +198,7 @@ export function AiChatDashboard({
     setTypedMaterialId(null);
     setTypedSources([]);
     setTypedMessageId(null);
+    setTypedClarification(null);
     setMessage(initialPrompt ?? "");
     setPastedBlocks([]);
     setFileAttachments([]);
@@ -325,24 +331,28 @@ export function AiChatDashboard({
     setDragActive(false);
   }
 
-  async function handleSubmit() {
-    if (!canSend || isSubmitting) return;
-    const promptToSend = submittedPrompt;
+  async function handleSubmit(overridePrompt?: string) {
+    if (isSubmitting) return;
+    if (!overridePrompt && !canSend) return;
+    const promptToSend = overridePrompt ?? submittedPrompt;
     const sessionToSend = activeSessionId;
-    const attachmentsToSend = readyAttachments.map((attachment) => ({
-      kind: attachment.kind,
-      url: attachment.url,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-      extractedText: attachment.extractedText
-    }));
+    const attachmentsToSend = overridePrompt
+      ? []
+      : readyAttachments.map((attachment) => ({
+          kind: attachment.kind,
+          url: attachment.url,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          extractedText: attachment.extractedText
+        }));
 
     setTypedResponse("");
     setTypedSetId(null);
     setTypedMaterialId(null);
     setTypedSources([]);
     setTypedMessageId(null);
+    setTypedClarification(null);
     setStreamError(null);
     setToolStatus(null);
     setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
@@ -400,6 +410,7 @@ export function AiChatDashboard({
             setTypedMaterialId((data.studyMaterialId as string | null) ?? null);
             setTypedSources(Array.isArray(data.sources) ? (data.sources as ChatSource[]) : []);
             setTypedMessageId((data.messageId as string | null) ?? null);
+            setTypedClarification((data.clarification as Clarification | null) ?? null);
             setIsSubmitting(false);
             setToolStatus(null);
             router.refresh();
@@ -570,6 +581,9 @@ export function AiChatDashboard({
                       <SourceLinks sources={typedSources} />
                     </div>
                     {typedMessageId && <ResultCard questionSetId={typedSetId} studyMaterialId={typedMaterialId} />}
+                    {typedClarification && !isSubmitting && (
+                      <ClarifyCard clarification={typedClarification} disabled={isSubmitting} onPick={(text) => void handleSubmit(text)} />
+                    )}
                   </div>
                 </div>
               )}
@@ -960,6 +974,65 @@ function ResultCard({
             <Link href={`/materiais/${studyMaterialId}`}>Abrir material</Link>
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pergunta de esclarecimento da IA (uso esporádico — só quando ela tem dúvida real):
+ * opções clicáveis + campo de texto livre opcional. Escolher uma opção ou escrever
+ * e enviar reaproveita handleSubmit como se o usuário tivesse digitado a resposta.
+ */
+function ClarifyCard({
+  clarification,
+  disabled,
+  onPick
+}: {
+  clarification: Clarification;
+  disabled: boolean;
+  onPick: (text: string) => void;
+}) {
+  const [freeText, setFreeText] = useState("");
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3.5 shadow-[var(--shadow-sm)]">
+      <div className="grid gap-2">
+        {clarification.options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(option.label)}
+            className="rounded-lg border border-[var(--border)] px-3.5 py-2.5 text-left text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--primary)] hover:bg-[var(--primary-soft)] disabled:pointer-events-none disabled:opacity-50"
+          >
+            {option.label}
+            {option.description && (
+              <span className="mt-0.5 block text-xs font-normal text-[var(--muted-foreground)]">{option.description}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      {clarification.allowFreeText && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const trimmed = freeText.trim();
+            if (trimmed) onPick(trimmed);
+          }}
+          className="flex items-center gap-2 border-t border-[var(--border)] pt-2.5"
+        >
+          <Input
+            value={freeText}
+            onChange={(event) => setFreeText(event.target.value)}
+            placeholder="Ou escreva sua resposta…"
+            disabled={disabled}
+            className="h-9"
+          />
+          <Button type="submit" size="sm" disabled={disabled || !freeText.trim()}>
+            Enviar
+          </Button>
+        </form>
       )}
     </div>
   );

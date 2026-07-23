@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import Stripe from "stripe";
 import { PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { recordAffiliateCommission } from "@/lib/affiliates";
 import { prisma } from "@/lib/prisma";
@@ -153,6 +154,34 @@ export async function findStripeSubscriptionId(localSubscriptionId: string) {
     select: { externalId: true }
   });
   return event?.externalId ?? null;
+}
+
+/**
+ * Cancela no Stripe as assinaturas recorrentes vinculadas às assinaturas locais informadas.
+ * Sem isso, cancelar/trocar de plano só localmente deixa a assinatura Stripe cobrando —
+ * a próxima fatura paga (invoice.paid) reativa a linha local, "desfazendo" o cancelamento.
+ * Best-effort: erro ao cancelar uma (ex.: já cancelada no Stripe) não interrompe as demais
+ * nem o cancelamento local — só volta na lista de erros para quem chamou decidir se avisa o admin.
+ */
+export async function cancelLinkedStripeSubscriptions(localSubscriptionIds: string[]): Promise<{ errors: string[] }> {
+  const errors: string[] = [];
+  const uniqueIds = [...new Set(localSubscriptionIds)];
+  if (uniqueIds.length === 0) return { errors };
+
+  const settings = await getPaymentSettings();
+  if (!settings.stripeSecretKey) return { errors };
+  const stripe = new Stripe(settings.stripeSecretKey);
+
+  for (const subscriptionId of uniqueIds) {
+    const stripeSubId = await findStripeSubscriptionId(subscriptionId);
+    if (!stripeSubId) continue;
+    try {
+      await stripe.subscriptions.cancel(stripeSubId);
+    } catch (error) {
+      errors.push(`${stripeSubId}: ${error instanceof Error ? error.message : "erro desconhecido"}`);
+    }
+  }
+  return { errors };
 }
 
 export function validateMercadoPagoSignature(input: {
