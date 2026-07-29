@@ -28,14 +28,33 @@ export type TrialStatus = {
   exhausted: boolean;
 };
 
-/** Estado do trial (N gerações grátis no total) de quem não tem assinatura. */
+/** Início do mês corrente no fuso do servidor — janela de reset do trial. */
+function startOfCurrentMonth() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(1);
+  return start;
+}
+
+/** Início do próximo mês — usado para informar quando o trial reseta. */
+function nextMonthlyReset() {
+  const start = startOfCurrentMonth();
+  start.setMonth(start.getMonth() + 1);
+  return start.toISOString();
+}
+
+/**
+ * Estado do trial (N gerações/mensagens grátis POR MÊS, resetando todo dia 1º)
+ * de quem não tem assinatura. Conta pelo AiUsageEvent (mesmo padrão do limite
+ * diário dos planos pagos) em vez de um contador vitalício — assim o trial
+ * realmente "recarrega" a cada mês em vez de acabar uma única vez para sempre.
+ */
 export async function getTrialStatus(userId: string): Promise<TrialStatus> {
-  const [user, settings] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { trialGenerationsUsed: true } }),
-    getAppSettings()
-  ]);
-  const used = user?.trialGenerationsUsed ?? 0;
+  const settings = await getAppSettings();
   const limit = settings.trialGenerationsLimit ?? 0;
+  const used = await prisma.aiUsageEvent.count({
+    where: { userId, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfCurrentMonth() } }
+  });
   return {
     used,
     limit,
@@ -77,7 +96,7 @@ export async function assertCanGenerateWithAi(user: { id: string; role?: Role })
   if (!trial.enabled || trial.exhausted) {
     throw new Error(
       trial.limit > 0
-        ? `Suas ${trial.limit} gerações gratuitas acabaram. Assine um plano para continuar gerando com IA.`
+        ? `Suas ${trial.limit} mensagens/gerações grátis deste mês acabaram. Assine um plano para continuar usando a IA, ou aguarde a virada do mês.`
         : "Assine um plano para usar a IA."
     );
   }
@@ -121,13 +140,13 @@ export async function getAiUsageStatus(user: { id: string; role?: Role }): Promi
     };
   }
 
-  // Trial: contador total (sem reset diário).
+  // Trial: reseta todo dia 1º do mês.
   const trial = await getTrialStatus(user.id);
   return {
     used: trial.used,
     limit: trial.limit,
     percent: trial.limit ? Math.round((trial.used / trial.limit) * 100) : 100,
-    resetsAt: null,
+    resetsAt: nextMonthlyReset(),
     isTrial: true
   };
 }

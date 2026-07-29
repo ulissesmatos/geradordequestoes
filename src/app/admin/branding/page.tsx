@@ -42,10 +42,10 @@ export default async function AdminBrandingPage() {
             <Textarea name="adminEmails" defaultValue={settings.adminEmails} placeholder="E-mails administrativos, um por linha ou separados por vírgula" />
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-semibold">
-                Gerações gratuitas (trial)
+                Mensagens/gerações grátis por mês (trial)
                 <Input name="trialGenerationsLimit" type="number" min={0} defaultValue={settings.trialGenerationsLimit} />
                 <span className="text-xs font-normal text-[var(--muted-foreground)]">
-                  Quantas gerações de IA um usuário sem assinatura pode fazer no total.
+                  Quantas mensagens de chat ou gerações de IA um usuário sem assinatura pode fazer por mês. Reseta todo dia 1º.
                 </span>
               </label>
               <label className="grid gap-1 text-sm font-semibold">

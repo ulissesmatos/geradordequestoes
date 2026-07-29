@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatCpf } from "@/lib/validation/cpf";
 
-export function CheckoutCpfStep({ planSlug, planName }: { planSlug: string; planName: string }) {
+export function CheckoutCpfStep({ planSlug, planName, couponCode }: { planSlug: string; planName: string; couponCode?: string }) {
   const [state, formAction, pending] = useActionState<CheckoutCpfState, FormData>(saveCheckoutCpfAction, null);
   const [cpfValue, setCpfValue] = useState("");
 
@@ -27,6 +27,7 @@ export function CheckoutCpfStep({ planSlug, planName }: { planSlug: string; plan
         <CardContent>
           <form action={formAction} className="space-y-4">
             <input type="hidden" name="plan" value={planSlug} />
+            {couponCode && <input type="hidden" name="coupon" value={couponCode} />}
             <label className="block space-y-1 text-sm font-medium">
               CPF
               <Input

@@ -204,7 +204,7 @@ export default async function ProfilePage({
           ) : usage.isTrial && usage.limit ? (
             <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-semibold">Gerações gratuitas</span>
+                <span className="font-semibold">Mensagens/gerações grátis (mês)</span>
                 <span className="font-semibold">{usage.used} de {usage.limit}</span>
               </div>
               <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
@@ -215,8 +215,8 @@ export default async function ProfilePage({
               </div>
               <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                 {usage.used >= usage.limit
-                  ? "Você usou todas as suas gerações gratuitas. Assine um plano para continuar gerando com IA."
-                  : `Você tem ${usage.limit - usage.used} ${usage.limit - usage.used === 1 ? "geração gratuita restante" : "gerações gratuitas restantes"}. Sem cartão.`}
+                  ? "Você usou todas as suas mensagens/gerações grátis deste mês. Assine um plano para continuar usando a IA."
+                  : `Você tem ${usage.limit - usage.used} ${usage.limit - usage.used === 1 ? "mensagem/geração grátis restante" : "mensagens/gerações grátis restantes"} este mês. Sem cartão.`}
               </p>
             </div>
           ) : (

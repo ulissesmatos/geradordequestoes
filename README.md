@@ -25,7 +25,7 @@ npm install
 2. Crie `.env` a partir de `.env.example`:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:55432/perguntas_concursos"
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:15432/perguntas_concursos"
 OPENAI_API_KEY="sk-proj..."
 AUTH_SECRET="gere-um-segredo-forte"
 AUTH_URL="http://localhost:3000"
@@ -42,7 +42,7 @@ Com Docker:
 docker compose up -d
 ```
 
-O `docker-compose.yml` expõe o Postgres local na porta `55432`. Sem Docker, crie um banco PostgreSQL chamado `perguntas_concursos` e ajuste `DATABASE_URL`.
+O `docker-compose.yml` expõe o Postgres local na porta `15432`. Sem Docker, crie um banco PostgreSQL chamado `perguntas_concursos` e ajuste `DATABASE_URL`.
 
 Se você já tem PostgreSQL instalado e aparecer erro de autenticação, troque usuário/senha no `.env`:
 

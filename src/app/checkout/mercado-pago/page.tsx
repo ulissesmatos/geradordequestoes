@@ -3,6 +3,7 @@ import { MercadoPagoCheckoutMode, PaymentProvider } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckoutCpfStep } from "@/app/checkout/mercado-pago/cpf-step";
 import { requireUser } from "@/lib/guards";
+import { validateCoupon } from "@/lib/coupons";
 import { createPixPayment } from "@/lib/mercado-pago";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
@@ -10,13 +11,24 @@ import { isTeamGrantedPlan } from "@/lib/teams";
 import { prisma } from "@/lib/prisma";
 import { onlyDigits } from "@/lib/validation/cpf";
 
-export default async function MercadoPagoCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
+export default async function MercadoPagoCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string; coupon?: string }> }) {
   const user = await requireUser();
-  const { plan: planSlug } = await searchParams;
+  const { plan: planSlug, coupon: couponCode } = await searchParams;
   const plan = planSlug
     ? await prisma.subscriptionPlan.findFirst({ where: { slug: planSlug, isActive: true } })
     : null;
   if (!plan) return <CheckoutError title="Plano não encontrado" message="Escolha um plano ativo na página de planos." />;
+
+  // Revalida o cupom no servidor (nunca confia no preview mostrado no modal do cliente).
+  let couponId: string | undefined;
+  let couponDiscountCents = 0;
+  if (couponCode) {
+    const couponResult = await validateCoupon(couponCode, plan.priceCents);
+    if (couponResult.ok) {
+      couponId = couponResult.coupon.id;
+      couponDiscountCents = couponResult.discountCents;
+    }
+  }
 
   const settings = await getPaymentSettings();
   if (!settings.mercadoPagoAccessToken) {
@@ -62,11 +74,15 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     const credit = teamGranted ? 0 : remainingCreditCents(activeSubscription);
     amountCents = Math.max(plan.priceCents - credit, 100);
   }
+  // Cupom digitado pelo cliente: abate por cima do crédito de upgrade (se houver).
+  if (couponDiscountCents > 0) {
+    amountCents = Math.max(amountCents - couponDiscountCents, 100);
+  }
 
   // Pix exige CPF do pagador: se ainda não temos, pedimos uma vez (salvo no perfil).
   const cpf = onlyDigits(user.cpf ?? "");
   if (cpf.length !== 11) {
-    return <CheckoutCpfStep planSlug={plan.slug} planName={plan.name} />;
+    return <CheckoutCpfStep planSlug={plan.slug} planName={plan.name} couponCode={couponCode} />;
   }
   const [firstName, ...restName] = (user.name ?? "").trim().split(/\s+/);
   const lastName = restName.join(" ");
@@ -77,12 +93,14 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
       planId: plan.id,
       provider: PaymentProvider.MERCADO_PAGO,
       amountCents,
+      couponId,
+      discountCents: couponDiscountCents || undefined,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24)
     }
   });
 
   const description =
-    amountCents < plan.priceCents ? `${plan.name} (upgrade com crédito do plano atual)` : plan.name;
+    amountCents < plan.priceCents ? `${plan.name} (upgrade e/ou cupom aplicado)` : plan.name;
 
   // ── Checkout transparente: gera o Pix pela API de Payments e exibe o QR Code
   // em página própria, sem redirecionar para o Mercado Pago. ──

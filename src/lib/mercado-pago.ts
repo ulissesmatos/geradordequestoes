@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { PaymentCheckoutStatus, PaymentProvider, PaymentTransactionStatus } from "@prisma/client";
+import { incrementCouponUsage } from "@/lib/coupons";
 import { activatePaidSubscription, pixAccessEndsAt, recordPaymentTransaction } from "@/lib/payments";
 import { sendPaymentReceiptEmail } from "@/lib/email/notifications";
 import { prisma } from "@/lib/prisma";
@@ -155,6 +156,13 @@ export async function applyMercadoPagoPayment(payment: MpPayment): Promise<Apply
     ? await prisma.paymentCheckoutSession.findUnique({ where: { id: ref }, include: { plan: true } })
     : null;
   if (!checkout) return { handled: null };
+
+  // Só incrementa o uso do cupom na PRIMEIRA confirmação — o webhook/polling pode
+  // reprocessar o mesmo pagamento várias vezes.
+  const wasAlreadyCompleted = checkout.status === PaymentCheckoutStatus.COMPLETED;
+  if (approved && !wasAlreadyCompleted && checkout.couponId) {
+    await incrementCouponUsage(checkout.couponId);
+  }
 
   await prisma.paymentCheckoutSession.update({
     where: { id: checkout.id },

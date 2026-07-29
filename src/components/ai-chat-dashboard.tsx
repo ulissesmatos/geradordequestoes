@@ -862,7 +862,10 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
       <div className="mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">
         <span>
           {isTrial ? (
-            <>Você usou todas as suas <strong>{usage.limit}</strong> gerações gratuitas. Assine um plano para continuar.</>
+            <>
+              Você usou todas as suas <strong>{usage.limit}</strong> mensagens/gerações grátis deste mês.
+              {resetHours !== null && <> O limite renova em cerca de <strong>{resetHours}h</strong>.</>} Assine um plano para continuar agora.
+            </>
           ) : (
             <>
               Você atingiu 100% do seu limite diário de uso da IA.
@@ -885,7 +888,7 @@ function UsageNotice({ usage }: { usage: { used: number; limit: number | null; p
     <div className="mx-auto mb-3 flex max-w-3xl items-center justify-between gap-3 rounded-lg border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-soft-foreground)]">
       <span>
         {isTrial
-          ? `Você já usou ${usage.used} das ${usage.limit} gerações gratuitas.`
+          ? `Você já usou ${usage.used} das ${usage.limit} mensagens/gerações grátis deste mês.`
           : `Você já usou ${usage.percent}% do limite diário de IA (${usage.used}/${usage.limit}).`}
       </span>
       <button

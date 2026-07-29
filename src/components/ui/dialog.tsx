@@ -73,7 +73,7 @@ export function DialogHeader({
   onClose
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   onClose: () => void;
 }) {
   return (

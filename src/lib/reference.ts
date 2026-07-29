@@ -259,6 +259,55 @@ export async function searchReferenceQuestions(input: {
   return runQuery(Prisma.sql`websearch_to_tsquery('portuguese', ${orQuery})`);
 }
 
+function shuffle<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Sorteio "burro" (sem chamada de IA) de questões estruturadas do banco de referência,
+ * filtrado por matéria/assunto quando houver. Usado como último recurso dentro do
+ * banco estruturado — quando a busca por palavra-chave não bate com nada, ainda assim
+ * priorizamos mostrar exemplares REAIS da matéria certa em vez de cair direto para
+ * trechos crus ou nenhum contexto.
+ */
+export async function getRandomReferenceQuestions(input: {
+  subjectId?: string | null;
+  topicId?: string | null;
+  limit?: number;
+}): Promise<ReferenceQuestionHit[]> {
+  const limit = Math.min(Math.max(input.limit ?? 4, 1), 30);
+
+  const run = (filters: Prisma.Sql[]) => {
+    const where = filters.length ? Prisma.sql`WHERE ${Prisma.join(filters, " AND ")}` : Prisma.sql``;
+    return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
+      SELECT q.id, q."documentId", q.statement, q."supportText", q.answer, q."answerText", q.explanation,
+             q."trickNote", q."hasImage", q."imageDescription", q."topicHint",
+             d.title, d.source
+      FROM "ReferenceQuestion" q
+      JOIN "ReferenceDocument" d ON d.id = q."documentId"
+      ${where}
+      ORDER BY random()
+      LIMIT ${limit}
+    `);
+  };
+
+  const filters: Prisma.Sql[] = [];
+  if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
+  if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
+  if (filters.length === 0) return run(filters);
+
+  const scoped = await run(filters);
+  if (scoped.length > 0) return scoped;
+  // Nada casou com a matéria/assunto (ex.: material sem essa classificação atribuída):
+  // sorteia sem filtro em vez de voltar vazio à toa.
+  return run([]);
+}
+
 /**
  * Catálogo curto dos materiais de referência disponíveis, para o system prompt.
  * Assim a IA SABE o que existe no acervo interno e pode listar/responder
@@ -319,19 +368,31 @@ export async function getReferenceContext(input: {
   const limit = input.limit ?? 4;
 
   // 1) Banco estruturado: questões extraídas por IA, com gabarito mapeado.
+  // Busca uma janela mais ampla por relevância (em vez de só os `limit` melhores) e
+  // sorteia `limit` dela — a matéria/assunto continuam priorizados pelo ts_rank, mas a
+  // IA deixa de ver sempre os mesmos exemplares top-ranking a cada chamada; o acervo
+  // compatível gira com o tempo. Sem custo de IA: é só uma seleção aleatória em código.
   if (input.query && input.query.trim()) {
-    let questionHits = await searchReferenceQuestions({
+    const pool = Math.min(limit * 4, 30);
+    let questionPool = await searchReferenceQuestions({
       query: input.query,
       subjectId: input.subjectId,
       topicId: input.topicId,
-      limit
+      limit: pool
     });
-    if (questionHits.length === 0 && (input.subjectId || input.topicId)) {
-      questionHits = await searchReferenceQuestions({ query: input.query, limit });
+    if (questionPool.length === 0 && (input.subjectId || input.topicId)) {
+      questionPool = await searchReferenceQuestions({ query: input.query, limit: pool });
     }
-    if (questionHits.length) {
+    // Nenhum resultado por palavra-chave: ainda assim sorteia entre o que existir da
+    // matéria/assunto — não deixa a IA sem nenhum exemplar real só porque os termos
+    // da busca não bateram com o texto das questões cadastradas.
+    if (questionPool.length === 0 && (input.subjectId || input.topicId)) {
+      questionPool = await getRandomReferenceQuestions({ subjectId: input.subjectId, topicId: input.topicId, limit: pool });
+    }
+    if (questionPool.length) {
+      const picked = shuffle(questionPool).slice(0, limit);
       return {
-        hits: questionHits.map((q) => ({
+        hits: picked.map((q) => ({
           id: q.id,
           documentId: q.documentId,
           content: formatReferenceQuestion(q),

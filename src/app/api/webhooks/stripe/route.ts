@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { PaymentCheckoutStatus, PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
+import { incrementCouponUsage } from "@/lib/coupons";
 import { activatePaidSubscription, getPaymentSettings, recordPaymentTransaction } from "@/lib/payments";
 import { sendPaymentReceiptEmail } from "@/lib/email/notifications";
 import { prisma } from "@/lib/prisma";
@@ -33,10 +34,16 @@ export async function POST(request: Request) {
     const userId = session.metadata?.userId;
     const planId = session.metadata?.planId;
     if (checkoutSessionId && userId && planId) {
+      const previous = await prisma.paymentCheckoutSession.findUnique({ where: { id: checkoutSessionId } });
       const checkout = await prisma.paymentCheckoutSession.update({
         where: { id: checkoutSessionId },
         data: { status: PaymentCheckoutStatus.COMPLETED, externalId: session.id }
       });
+      // Só incrementa na PRIMEIRA confirmação — Stripe pode reenviar o mesmo evento.
+      const couponId = session.metadata?.couponId;
+      if (couponId && previous?.status !== PaymentCheckoutStatus.COMPLETED) {
+        await incrementCouponUsage(couponId);
+      }
       if (typeof session.customer === "string") {
         await prisma.user.update({
           where: { id: userId },

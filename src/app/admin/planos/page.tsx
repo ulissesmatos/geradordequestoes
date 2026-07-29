@@ -124,7 +124,12 @@ export default async function AdminPlansPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Novo cupom</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Novo cupom</CardTitle>
+          <CardDescription>
+            O cupom vale para o checkout Stripe (cartão) e Mercado Pago (Pix) — o cliente digita o código na tela de planos antes de escolher a forma de pagamento.
+          </CardDescription>
+        </CardHeader>
         <CardContent>
           <form action={createCouponAction} className="grid gap-3 md:grid-cols-5">
             <Input name="code" placeholder="CODIGO" required />
@@ -132,11 +137,14 @@ export default async function AdminPlansPage() {
               <option value="PERCENT">Percentual</option>
               <option value="FIXED">Valor fixo</option>
             </Select>
-            <Input name="value" type="number" min="0" placeholder="Valor" required />
+            <Input name="value" type="number" min="0" step="1" placeholder="Valor" required />
             <Input name="maxUses" type="number" min="1" placeholder="Uso máximo" />
             <label className="flex items-center gap-2 text-sm">
               <input name="isActive" type="checkbox" defaultChecked /> Ativo
             </label>
+            <p className="text-xs text-[var(--muted-foreground)] md:col-span-5">
+              Percentual: número de 0 a 100 (ex.: 10 = 10% off). Valor fixo: em reais inteiros, sem centavos (ex.: 10 = R$ 10,00 off).
+            </p>
             <SubmitButton>Criar cupom</SubmitButton>
           </form>
         </CardContent>
@@ -149,7 +157,8 @@ export default async function AdminPlansPage() {
           {coupons.map((coupon) => (
             <div key={coupon.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border)] p-3 text-sm">
               <span>
-                <strong>{coupon.code}</strong> / {coupon.type} / {coupon.value} / {coupon.usedCount}
+                <strong>{coupon.code}</strong> /{" "}
+                {coupon.type === "PERCENT" ? `${coupon.value}%` : formatReais(coupon.value)} / {coupon.usedCount}
                 {coupon.maxUses ? ` de ${coupon.maxUses} usos` : " usos ilimitados"} / {coupon.isActive ? "ativo" : "inativo"}
               </span>
               <ConfirmDeleteButton action={deleteCouponAction} id={coupon.id} confirmMessage={`Excluir o cupom "${coupon.code}"?`} />
@@ -159,4 +168,8 @@ export default async function AdminPlansPage() {
       </Card>
     </div>
   );
+}
+
+function formatReais(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }

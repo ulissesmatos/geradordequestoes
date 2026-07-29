@@ -22,8 +22,9 @@ export async function recordAiUsageEvent(input: {
     }
   });
 
-  // Trial: consome uma geração gratuita por uso bem-sucedido de quem não é admin
-  // e não tem assinatura ativa. Idempotente por evento (1 incremento por geração).
+  // Contador histórico (vitalício) de uso do trial — mantido só para analytics/admin;
+  // o gate real (getTrialStatus) agora conta AiUsageEvent do mês corrente, para
+  // permitir reset mensal em vez de um total único para sempre.
   if (status === AiUsageEventStatus.SUCCESS && input.user.role !== Role.ADMIN) {
     const subscription = await getActiveSubscription(input.user.id);
     if (!subscription) {

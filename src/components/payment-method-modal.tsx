@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowRight, CreditCard, QrCode, Sparkles } from "lucide-react";
+import { ArrowRight, CreditCard, Loader2, QrCode, Sparkles, Tag, X } from "lucide-react";
+import { validateCouponAction } from "@/app/checkout/actions";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UpgradePreview } from "@/components/pricing-cards";
+
+type AppliedCoupon = { code: string; discountLabel: string; finalPriceLabel: string };
 
 type Props = {
   planSlug: string;
@@ -33,14 +36,17 @@ export function PaymentMethodModal({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"preview" | "choose">("preview");
+  const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
 
   const label = !ctaText || ctaText.toLowerCase().includes("criar conta") ? "Assinar agora" : ctaText;
-  const stripeHref = `/checkout/stripe?plan=${planSlug}`;
-  const pixHref = `/checkout/mercado-pago?plan=${planSlug}`;
+  const couponParam = coupon ? `&coupon=${encodeURIComponent(coupon.code)}` : "";
+  const stripeHref = `/checkout/stripe?plan=${planSlug}${couponParam}`;
+  const pixHref = `/checkout/mercado-pago?plan=${planSlug}${couponParam}`;
   const optionCount = (hasStripe ? 1 : 0) + (hasPix ? 1 : 0);
 
   function openModal() {
     setStep("preview");
+    setCoupon(null);
     setOpen(true);
   }
 
@@ -133,7 +139,7 @@ export function PaymentMethodModal({
   // Múltiplas opções: abre modal de escolha
   return (
     <>
-      <Button variant={highlighted ? "default" : "outline"} className="w-full" onClick={() => setOpen(true)}>
+      <Button variant={highlighted ? "default" : "outline"} className="w-full" onClick={openModal}>
         {highlighted && <Sparkles className="h-4 w-4" />}
         {label}
         <ArrowRight className="h-4 w-4" />
@@ -143,30 +149,42 @@ export function PaymentMethodModal({
         <DialogPanel>
           <DialogHeader
             title={`Assinar ${planName}`}
-            description={`${planPrice} / mês · Escolha como prefere pagar`}
+            description={
+              coupon ? (
+                <>
+                  <span className="mr-1.5 text-[var(--muted-foreground)] line-through">{planPrice}</span>
+                  <span className="font-semibold text-[var(--primary)]">{coupon.finalPriceLabel}</span> / mês · Escolha como prefere pagar
+                </>
+              ) : (
+                `${planPrice} / mês · Escolha como prefere pagar`
+              )
+            }
             onClose={() => setOpen(false)}
           />
-          <div className="grid gap-3 p-5">
-            {hasStripe && (
-              <PaymentOption
-                href={stripeHref}
-                icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
-                title="Cartão de crédito ou débito"
-                description="Cobrança recorrente mensal · Cancele quando quiser"
-                badge="Stripe"
-                onClick={() => setOpen(false)}
-              />
-            )}
-            {hasPix && (
-              <PaymentOption
-                href={pixHref}
-                icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
-                title="Pix"
-                description="Pagamento via QR Code · Acesso imediato"
-                badge="Mercado Pago"
-                onClick={() => setOpen(false)}
-              />
-            )}
+          <div className="space-y-4 p-5">
+            <div className="grid gap-3">
+              {hasStripe && (
+                <PaymentOption
+                  href={stripeHref}
+                  icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
+                  title="Cartão de crédito ou débito"
+                  description="Cobrança recorrente mensal · Cancele quando quiser"
+                  badge="Stripe"
+                  onClick={() => setOpen(false)}
+                />
+              )}
+              {hasPix && (
+                <PaymentOption
+                  href={pixHref}
+                  icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
+                  title="Pix"
+                  description="Pagamento via QR Code · Acesso imediato"
+                  badge="Mercado Pago"
+                  onClick={() => setOpen(false)}
+                />
+              )}
+            </div>
+            <CouponBox planSlug={planSlug} applied={coupon} onApplied={setCoupon} />
           </div>
         </DialogPanel>
       </Dialog>
@@ -313,4 +331,104 @@ function PaymentOption({
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+}
+
+/**
+ * Campo de cupom exibido no modal antes da escolha de pagamento. Um único código
+ * validado aqui é reaplicado nos dois métodos (Stripe via desconto dinâmico na
+ * Checkout Session; Pix abatendo o valor antes de gerar o QR Code) — mas o valor
+ * final sempre é recalculado no servidor ao criar o checkout, nunca confiando só
+ * neste preview.
+ */
+function CouponBox({
+  planSlug,
+  applied,
+  onApplied
+}: {
+  planSlug: string;
+  applied: AppliedCoupon | null;
+  onApplied: (value: AppliedCoupon | null) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  if (applied) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--primary)]/30 bg-[var(--primary)]/5 px-3 py-2 text-sm">
+        <span className="flex items-center gap-1.5">
+          <Tag className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+          Cupom <strong>{applied.code}</strong> aplicado: <strong className="text-[var(--primary)]">−{applied.discountLabel}</strong>
+        </span>
+        <button
+          type="button"
+          aria-label="Remover cupom"
+          className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          onClick={() => {
+            onApplied(null);
+            setValue("");
+            setExpanded(false);
+          }}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
+        onClick={() => setExpanded(true)}
+      >
+        <Tag className="h-3.5 w-3.5" />
+        Tem um cupom de desconto?
+      </button>
+    );
+  }
+
+  function apply() {
+    const code = value.trim();
+    if (!code) return;
+    startTransition(async () => {
+      const result = await validateCouponAction(planSlug, code);
+      if (result.ok) {
+        setError(null);
+        onApplied(result);
+      } else {
+        setError(result.error);
+      }
+    });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value.toUpperCase());
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              apply();
+            }
+          }}
+          placeholder="CÓDIGO DO CUPOM"
+          maxLength={40}
+          autoFocus
+          className="h-9 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm uppercase tracking-wide outline-none focus:border-[var(--primary)]"
+        />
+        <Button type="button" size="sm" variant="outline" disabled={pending || !value.trim()} onClick={apply}>
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+        </Button>
+      </div>
+      {error && <p className="text-xs text-[var(--danger-soft-foreground)]">{error}</p>}
+    </div>
+  );
 }

@@ -603,17 +603,18 @@ model UserSubscription {
 }
 
 model Coupon {
-  id            String             @id @default(cuid())
-  code          String             @unique
-  type          CouponType
-  value         Int
-  maxUses       Int?
-  usedCount     Int                @default(0)
-  expiresAt     DateTime?
-  isActive      Boolean            @default(true)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  subscriptions UserSubscription[]
+  id               String                   @id @default(cuid())
+  code             String                   @unique
+  type             CouponType
+  value            Int
+  maxUses          Int?
+  usedCount        Int                      @default(0)
+  expiresAt        DateTime?
+  isActive         Boolean                  @default(true)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  subscriptions    UserSubscription[]
+  checkoutSessions PaymentCheckoutSession[]
 }
 
 model PricingContent {
@@ -888,10 +889,14 @@ model PaymentCheckoutSession {
   currency           String                @default("BRL")
   metadata           Json?
   expiresAt          DateTime?
+  couponId           String?
+  // Quanto o cupom abateu nesta tentativa específica (o valor do cupom pode mudar depois).
+  discountCents      Int?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan               SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  coupon             Coupon?               @relation(fields: [couponId], references: [id], onDelete: SetNull)
   transactions       PaymentTransaction[]
 
   @@index([provider, externalId])

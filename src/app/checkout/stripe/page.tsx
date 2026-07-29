@@ -6,20 +6,34 @@ import { PaymentCheckoutStatus, PaymentProvider, PaymentTransactionStatus } from
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
+import { validateCoupon } from "@/lib/coupons";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents, activatePaidSubscription, recordPaymentTransaction } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
 import { isTeamGrantedPlan } from "@/lib/teams";
 import { prisma } from "@/lib/prisma";
 
-export default async function StripeCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
+export default async function StripeCheckoutPage({ searchParams }: { searchParams: Promise<{ plan?: string; coupon?: string }> }) {
   const user = await requireUser();
-  const { plan: planSlug } = await searchParams;
+  const { plan: planSlug, coupon: couponCode } = await searchParams;
 
   const plan = planSlug
     ? await prisma.subscriptionPlan.findFirst({ where: { slug: planSlug, isActive: true } })
     : null;
   if (!plan) {
     return <CheckoutError title="Plano não encontrado" message="Escolha um plano ativo na página de planos." />;
+  }
+
+  // Revalida o cupom no servidor (nunca confia no valor mostrado no modal do cliente).
+  // Código inválido/expirado aqui é ignorado silenciosamente: o cliente já viu o erro
+  // no preview do modal antes de chegar neste link.
+  let couponId: string | undefined;
+  let couponDiscountCents = 0;
+  if (couponCode) {
+    const couponResult = await validateCoupon(couponCode, plan.priceCents);
+    if (couponResult.ok) {
+      couponId = couponResult.coupon.id;
+      couponDiscountCents = couponResult.discountCents;
+    }
   }
 
   const settings = await getPaymentSettings();
@@ -109,7 +123,9 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
         userId: user.id,
         planId: plan.id,
         provider: PaymentProvider.STRIPE,
-        amountCents: plan.priceCents
+        amountCents: plan.priceCents - couponDiscountCents,
+        couponId,
+        discountCents: couponDiscountCents || undefined
       }
     });
 
@@ -133,19 +149,26 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
     // Exceção: plano cedido por empresa (teams) não gera crédito — quem pagou
     // foi a empresa. O assinante paga o valor cheio e sai do pacote (a vaga é
     // revogada automaticamente em activatePaidSubscription).
-    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
     const teamGranted = activeSubscription ? await isTeamGrantedPlan(user.id, activeSubscription.planId) : false;
-    if (activeSubscription && !teamGranted) {
-      const credit = Math.min(remainingCreditCents(activeSubscription), plan.priceCents - 100);
-      if (credit > 0) {
-        const coupon = await stripe.coupons.create({
-          amount_off: credit,
-          currency: "brl",
-          duration: "once",
-          name: `Crédito do plano ${activeSubscription.plan.name}`
-        });
-        discounts = [{ coupon: coupon.id }];
-      }
+    const upgradeCreditCents =
+      activeSubscription && !teamGranted ? Math.min(remainingCreditCents(activeSubscription), plan.priceCents - 100) : 0;
+
+    // Crédito de upgrade e cupom digitado pelo cliente viram UM único desconto de uso
+    // único na Stripe (a Checkout Session só aceita um desconto por sessão).
+    let discounts: Stripe.Checkout.SessionCreateParams.Discount[] | undefined;
+    const totalDiscountCents = upgradeCreditCents + couponDiscountCents;
+    if (totalDiscountCents > 0) {
+      const nameParts = [
+        upgradeCreditCents > 0 ? `Crédito do plano ${activeSubscription?.plan.name}` : "",
+        couponId ? `Cupom ${couponCode?.trim().toUpperCase()}` : ""
+      ].filter(Boolean);
+      const stripeCoupon = await stripe.coupons.create({
+        amount_off: Math.min(totalDiscountCents, plan.priceCents - 100),
+        currency: "brl",
+        duration: "once",
+        name: nameParts.join(" + ")
+      });
+      discounts = [{ coupon: stripeCoupon.id }];
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -158,13 +181,15 @@ export default async function StripeCheckoutPage({ searchParams }: { searchParam
       metadata: {
         userId: user.id,
         planId: plan.id,
-        checkoutSessionId: localCheckout.id
+        checkoutSessionId: localCheckout.id,
+        ...(couponId ? { couponId } : {})
       },
       subscription_data: {
         metadata: {
           userId: user.id,
           planId: plan.id,
-          checkoutSessionId: localCheckout.id
+          checkoutSessionId: localCheckout.id,
+          ...(couponId ? { couponId } : {})
         }
       }
     });
