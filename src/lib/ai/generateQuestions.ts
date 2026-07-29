@@ -16,12 +16,28 @@ export type ReferenceVariantSource = {
   trickNote: string | null;
 };
 
+/**
+ * Piso de tamanho do texto de apoio. Baixo de propósito: em Português um item costuma
+ * julgar UM período curto — "Houve atrasos, logo não será possível cumprir o cronograma"
+ * tem 57 caracteres. Com um piso alto (era 80), o modelo NÃO TINHA como devolver esse
+ * período no supportText, então encavalava o material dentro do próprio enunciado; e
+ * quando tentava, normalizeGenerated descartava o texto curto e sobrava um item citando
+ * um texto inexistente. Serve apenas para barrar placeholder inútil ("texto", "N/A").
+ */
+const MIN_SUPPORT_TEXT_LENGTH = 25;
+
 const generatedItemSchema = z.object({
   statement: z.string().min(20),
   format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]),
   answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
   explanation: z.string().min(10),
   difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]),
+  /**
+   * Classificação explícita: a questão só se resolve com o texto-base do grupo?
+   * Obriga o modelo a decidir de forma consciente (em vez de deixar implícito) e nos dá
+   * um sinal verificável em código — ver enforceSelfContainment.
+   */
+  dependsOnSupportText: z.boolean(),
   // Só preenchido no modo "variação fiel": índice (1-based) da questão de referência usada como base.
   sourceIndex: z.number().int().min(1).optional(),
   options: z.array(
@@ -45,7 +61,7 @@ const generatedQuestionSchema = z.object({
     z.object({
       supportText: z
         .string()
-        .min(80)
+        .min(MIN_SUPPORT_TEXT_LENGTH)
         .nullable()
         .optional()
         .describe("Texto de apoio compartilhado pelas questões deste grupo; null quando as questões forem independentes."),
@@ -65,7 +81,40 @@ const MATH_FORMATTING_INSTRUCTION =
   "Notação matemática: sempre que o enunciado, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, matrizes, números complexos, somatórios, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) para fórmulas dentro do texto ou \\[ ... \\] para fórmulas em bloco/destaque. Nunca use apenas $ ou $$ como delimitador (pode ser confundido com valores em reais, ex. \"R$ 10,00\"). Fora desses casos, mantenha texto normal em português.";
 
 const GROUP_STRUCTURE_INSTRUCTION =
-  'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" (texto de apoio compartilhado) e uma lista "questions". Na maioria dos casos as questões são independentes entre si: use supportText null e distribua as questões em um ou mais groups sem texto compartilhado. A soma de todas as questões em todos os groups deve ser exatamente a quantidade pedida.';
+  'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" (texto de apoio compartilhado) e uma lista "questions". Use supportText null nos grupos cujas questões forem puramente conceituais/teóricas e se resolvam sem nenhum texto-base. A soma de todas as questões em todos os groups deve ser exatamente a quantidade pedida.';
+
+/**
+ * Regra sempre presente no prompt. É a camada de PREVENÇÃO do contrato de
+ * autossuficiência; a de VERIFICAÇÃO é determinística, em código (enforceSelfContainment) —
+ * pedir "não alucine" não basta, então validamos e mandamos refazer quando quebra.
+ */
+const SELF_CONTAINMENT_INSTRUCTION = [
+  "REGRA OBRIGATÓRIA — autossuficiência de cada questão:",
+  'Toda questão precisa ser respondível apenas com o que o aluno vê na tela: o texto de apoio do grupo (supportText) + o enunciado. Se o enunciado mencionar "o texto", "o trecho", "a passagem", "o fragmento", "o autor", "acima", ou números de linha, então o grupo dessa questão OBRIGATORIAMENTE precisa ter o supportText correspondente preenchido. É proibido citar material que não esteja no supportText do próprio grupo.',
+  'Preencha "dependsOnSupportText": true quando a questão só se resolve com o texto-base do grupo, e false quando ela for autossuficiente sozinha. Se marcar true, o grupo TEM de ter supportText — nunca true com supportText null.',
+  `O supportText pode ser curto: um único período de ${MIN_SUPPORT_TEXT_LENGTH}+ caracteres já é válido quando o item analisa apenas uma frase. Não é preciso inventar texto longo para cumprir a regra.`
+].join("\n");
+
+/**
+ * Português e afins: o material analisado vai para o texto de apoio, não solto no enunciado.
+ * Aplicado em QUALQUER dificuldade (diferente de SUPPORT_TEXT_INSTRUCTION, que é só do nível
+ * difícil), porque um item de crase/conjunção/pontuação depende de um período-base mesmo no fácil.
+ */
+const PORTUGUESE_SUPPORT_TEXT_INSTRUCTION = [
+  "Matéria de língua/texto (Português, Redação Oficial, Interpretação de Texto, Gramática):",
+  "Quando o item analisar um período, frase, trecho ou texto específico — interpretação, coesão, coerência, pontuação, crase, regência, concordância, sentido/classificação de conjunções, reescrita, figuras de linguagem, ortografia em contexto etc. —, o material analisado NÃO pode ficar solto dentro do enunciado entre aspas: coloque-o no supportText do grupo e escreva o enunciado referindo-se a ele (ex.: supportText = 'Houve atrasos, logo não será possível cumprir o cronograma.' e enunciado = 'No período apresentado, a conjunção \"logo\" estabelece relação de conclusão.'). Marque dependsOnSupportText: true nesses itens.",
+  "Vários itens podem julgar o MESMO supportText sob ângulos diferentes — é assim que a banca monta as provas de Português, e é o formato preferido.",
+  "Só use supportText null (e dependsOnSupportText: false) quando a questão for puramente teórica e não exigir nenhum texto-base — ex.: 'A crase é a fusão da preposição \"a\" com o artigo \"a\".'"
+].join("\n");
+
+/** Detecção determinística de matéria/assunto que exige texto de apoio para itens de análise. */
+function isLanguageSubject(subject: string, topic: string): boolean {
+  const haystack = `${subject} ${topic}`
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  return /portugu|reda[cç]|interpretac|gramat|linguistic|lingua |texto|literatura/.test(haystack);
+}
 
 /**
  * Só entra no prompt quando difficulty === "DIFICIL" — replica o padrão real do Cebraspe de
@@ -78,13 +127,14 @@ const SUPPORT_TEXT_INSTRUCTION =
 const generatedItemJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["statement", "format", "answer", "explanation", "difficulty", "options"],
+  required: ["statement", "format", "answer", "explanation", "difficulty", "dependsOnSupportText", "options"],
   properties: {
     statement: { type: "string", minLength: 20 },
     format: { type: "string", enum: ["CERTO_ERRADO", "MULTIPLA_ESCOLHA"] },
     answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
     explanation: { type: "string", minLength: 10 },
     difficulty: { type: "string", enum: ["FACIL", "MEDIO", "DIFICIL"] },
+    dependsOnSupportText: { type: "boolean" },
     sourceIndex: { type: "integer", minimum: 1 },
     options: {
       type: "array",
@@ -117,13 +167,131 @@ const questionsJsonSchema = {
         additionalProperties: false,
         required: ["supportText", "questions"],
         properties: {
-          supportText: { type: ["string", "null"], minLength: 80 },
+          supportText: { type: ["string", "null"], minLength: MIN_SUPPORT_TEXT_LENGTH },
           questions: { type: "array", minItems: 1, items: generatedItemJsonSchema }
         }
       }
     }
   }
 } as const;
+
+type RawGroup = { supportText?: string | null; questions: z.infer<typeof generatedItemSchema>[] };
+
+/**
+ * Marcas textuais de dependência de um texto-base. Verificação determinística e de custo
+ * zero (sem IA): se o enunciado fala de "o texto"/"o trecho"/"linha 3" e o grupo não trouxe
+ * supportText, a questão é literalmente impossível de responder e não pode ir para o aluno.
+ */
+const EXTERNAL_TEXT_REFERENCE_PATTERNS: RegExp[] = [
+  /\b(?:o|no|do|ao|nesse|neste|desse|deste|esse|este|referido)\s+texto\b/i,
+  /\btexto\s+(?:acima|apresentado|anterior|lido|base|a\s+seguir|transcrito)\b/i,
+  /\b(?:o|no|do|nesse|neste)\s+trecho\b/i,
+  /\btrecho\s+(?:acima|apresentado|anterior|a\s+seguir|em\s+destaque|transcrito)\b/i,
+  /\b(?:o|no|do)\s+fragmento\b/i,
+  /\b(?:a|na|da)\s+passagem\s+(?:acima|apresentada|anterior|destacada)\b/i,
+  /\b(?:o|no|do)\s+excerto\b/i,
+  /\bo\s+autor\s+(?:do|desse|deste|no)\s+texto\b/i,
+  /\blinhas?\s+\d+/i,
+  /\b(?:ℓ|l)\.\s*\d+/i,
+  /\b(?:primeiro|segundo|terceiro|quarto|último|ultimo)\s+par[áa]grafo\b/i,
+  /\bpar[áa]grafo\s+(?:acima|anterior|citado|apresentado)\b/i,
+  /\b(?:per[íi]odo|frase|ora[cç][ãa]o|senten[cç]a)\s+(?:acima|apresentad[oa]|anterior|em\s+destaque|transcrit[oa])\b/i,
+  /\bde\s+acordo\s+com\s+o\s+texto\b/i,
+  /\bsegundo\s+o\s+texto\b/i,
+  /\bcom\s+base\s+n[oa]\s+(?:texto|trecho|fragmento|passagem|per[íi]odo)\b/i,
+  /\b(?:quadro|figura|tabela|gr[áa]fico|imagem|charge)\s+acima\b/i,
+  /\bacima\s+(?:apresentad|transcrit|reproduzid|exposto)/i
+];
+
+/**
+ * Trecho analisado encavalado dentro do enunciado, entre aspas. É o caso reportado na prática:
+ * "Em “Houve atrasos, logo não será possível cumprir o cronograma”, a conjunção “logo”...".
+ * Em Português o material analisado tem de ir para o supportText, então tratamos isso como
+ * violação também — em vez de confiar que o modelo vai seguir a instrução do prompt.
+ * Piso de 30 caracteres para não confundir com a citação da palavra/expressão julgada ("logo").
+ */
+const INLINE_QUOTED_FRAGMENT_PATTERN = /[“"«‘']([^”"»’']{30,})[”"»’']/;
+
+function hasUsableSupportText(group: RawGroup): boolean {
+  return Boolean(group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH);
+}
+
+function referencesExternalText(statement: string): boolean {
+  return EXTERNAL_TEXT_REFERENCE_PATTERNS.some((pattern) => pattern.test(statement));
+}
+
+type OrphanQuestion = { statement: string; reason: string };
+
+/** Questões que dependem de um texto-base que o grupo não forneceu (ou o embutiu no enunciado). */
+function findOrphanQuestions(groups: RawGroup[], options: { languageSubject: boolean }): OrphanQuestion[] {
+  const orphans: OrphanQuestion[] = [];
+  for (const group of groups) {
+    if (hasUsableSupportText(group)) continue;
+    for (const question of group.questions) {
+      if (question.dependsOnSupportText) {
+        orphans.push({
+          statement: question.statement,
+          reason: "marcada com dependsOnSupportText: true, mas o grupo veio com supportText null"
+        });
+      } else if (referencesExternalText(question.statement)) {
+        orphans.push({
+          statement: question.statement,
+          reason: "cita um texto/trecho/período/linha que não foi fornecido em nenhum supportText"
+        });
+      } else if (options.languageSubject && INLINE_QUOTED_FRAGMENT_PATTERN.test(question.statement)) {
+        orphans.push({
+          statement: question.statement,
+          reason:
+            "analisa um período citado dentro do próprio enunciado; em matéria de língua esse material deve ficar no supportText do grupo, com o enunciado apenas se referindo a ele"
+        });
+      }
+    }
+  }
+  return orphans;
+}
+
+function buildSelfContainmentRepairInstruction(orphans: OrphanQuestion[]): string {
+  const list = orphans
+    .map((orphan, index) => `${index + 1}. "${orphan.statement.slice(0, 220)}" — ${orphan.reason}.`)
+    .join("\n");
+  return [
+    "CORREÇÃO OBRIGATÓRIA — sua resposta anterior foi REJEITADA pela validação automática.",
+    "Estas questões dependem de um texto-base que você não forneceu, então são impossíveis de responder:",
+    list,
+    "Gere o lote NOVAMENTE do zero, com a mesma quantidade, formato e dificuldade, corrigindo cada caso de UMA destas duas formas:",
+    "(a) PREFERIDO — coloque o período/trecho analisado no supportText do grupo daquela questão (pode ser um único período curto) e mantenha o enunciado referindo-se a ele, com dependsOnSupportText: true; ou",
+    '(b) reescreva o enunciado para ser totalmente autossuficiente, sem mencionar "o texto", "o trecho", "a passagem", "o autor", "acima" nem números de linha, com dependsOnSupportText: false.',
+    "Não devolva NENHUMA questão que cite material ausente do supportText do próprio grupo."
+  ].join("\n");
+}
+
+/**
+ * Fail-safe da última camada: se nem o reparo resolveu, descarta as questões quebradas em vez
+ * de entregar ao aluno um item que cita um texto inexistente. Só falha de vez se sobrar nada.
+ */
+function dropOrphanQuestions(groups: RawGroup[], options: { languageSubject: boolean }): RawGroup[] {
+  const cleaned = groups
+    .map((group) => {
+      if (hasUsableSupportText(group)) return group;
+      return {
+        ...group,
+        questions: group.questions.filter(
+          (question) =>
+            !question.dependsOnSupportText &&
+            !referencesExternalText(question.statement) &&
+            !(options.languageSubject && INLINE_QUOTED_FRAGMENT_PATTERN.test(question.statement))
+        )
+      };
+    })
+    .filter((group) => group.questions.length > 0);
+
+  if (cleaned.length === 0) {
+    throw new Error(
+      "A IA insistiu em gerar questões que citam um texto de apoio inexistente. Tente novamente ou use um modelo mais forte no painel admin."
+    );
+  }
+  return cleaned;
+}
 
 export async function generateQuestions(input: {
   subject: string;
@@ -162,15 +330,26 @@ export async function generateQuestions(input: {
       ? buildVariantPrompt({ ...input, format, alternativesCount, referenceQuestions: input.referenceQuestions })
       : buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
 
-  if (settings.provider === AiProvider.CLAUDE) {
-    return generateWithClaude(settings, prompt);
+  const runProvider = (fullPrompt: string): Promise<RawGroup[]> => {
+    if (settings.provider === AiProvider.CLAUDE) return generateWithClaude(settings, fullPrompt);
+    if (settings.provider === AiProvider.OPENROUTER) return generateWithOpenRouter(settings, fullPrompt);
+    return generateWithOpenAI(settings, fullPrompt);
+  };
+
+  let groups = await runProvider(prompt);
+
+  // Contrato de autossuficiência, verificado em código: nenhuma questão pode citar um
+  // texto-base ausente. Quando quebra, manda refazer UMA vez apontando exatamente o que
+  // deu errado (o custo extra só existe no caminho ruim) e, se ainda vier torto, descarta
+  // as questões quebradas em vez de entregá-las ao aluno.
+  const checkOptions = { languageSubject: isLanguageSubject(input.subject, input.topic) };
+  const orphans = findOrphanQuestions(groups, checkOptions);
+  if (orphans.length > 0) {
+    const repaired = await runProvider(`${prompt}\n\n${buildSelfContainmentRepairInstruction(orphans)}`);
+    groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
   }
 
-  if (settings.provider === AiProvider.OPENROUTER) {
-    return generateWithOpenRouter(settings, prompt);
-  }
-
-  return generateWithOpenAI(settings, prompt);
+  return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups });
 }
 
 function buildPrompt(input: {
@@ -210,6 +389,8 @@ function buildPrompt(input: {
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
     GROUP_STRUCTURE_INSTRUCTION,
+    SELF_CONTAINMENT_INSTRUCTION,
+    isLanguageSubject(input.subject, input.topic) ? PORTUGUESE_SUPPORT_TEXT_INSTRUCTION : "",
     input.difficulty === "DIFICIL" ? SUPPORT_TEXT_INSTRUCTION : "",
     MATH_FORMATTING_INSTRUCTION
   ]
@@ -277,13 +458,17 @@ function buildVariantPrompt(input: {
     "A justificativa deve explicar de forma didática por que a resposta correta está correta, considerando o enunciado que você reescreveu.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
     'Estrutura da resposta: agrupe as questões em "groups" (cada group tem "supportText" e "questions"), um group por variação (supportText conforme a regra acima).',
+    SELF_CONTAINMENT_INSTRUCTION,
     MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-async function generateWithOpenAI(settings: Awaited<ReturnType<typeof getAiSettings>>, prompt: string) {
+async function generateWithOpenAI(
+  settings: Awaited<ReturnType<typeof getAiSettings>>,
+  prompt: string
+): Promise<RawGroup[]> {
   const openai = new OpenAI({
     apiKey: settings.apiKey,
     baseURL: settings.baseUrl || undefined
@@ -308,15 +493,13 @@ async function generateWithOpenAI(settings: Awaited<ReturnType<typeof getAiSetti
     throw new Error("A IA não retornou uma estrutura válida.");
   }
 
-  return normalizeGenerated({
-    provider: AiProvider.OPENAI,
-    model: settings.model,
-    prompt,
-    groups: response.output_parsed.groups
-  });
+  return response.output_parsed.groups;
 }
 
-async function generateWithClaude(settings: Awaited<ReturnType<typeof getAiSettings>>, prompt: string) {
+async function generateWithClaude(
+  settings: Awaited<ReturnType<typeof getAiSettings>>,
+  prompt: string
+): Promise<RawGroup[]> {
   const response = await fetch(settings.baseUrl || "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -345,15 +528,13 @@ async function generateWithClaude(settings: Awaited<ReturnType<typeof getAiSetti
   const toolUse = data.content?.find((block: { type?: string; name?: string }) => block.type === "tool_use" && block.name === "emit_questions");
   const parsed = generatedQuestionSchema.parse(toolUse?.input);
 
-  return normalizeGenerated({
-    provider: AiProvider.CLAUDE,
-    model: settings.model,
-    prompt,
-    groups: parsed.groups
-  });
+  return parsed.groups;
 }
 
-async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiSettings>>, prompt: string) {
+async function generateWithOpenRouter(
+  settings: Awaited<ReturnType<typeof getAiSettings>>,
+  prompt: string
+): Promise<RawGroup[]> {
   const response = await fetch(settings.baseUrl || "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -392,12 +573,7 @@ async function generateWithOpenRouter(settings: Awaited<ReturnType<typeof getAiS
   if (!rawArgs) throw new Error("O provedor não retornou uma chamada de ferramenta válida.");
   const parsed = generatedQuestionSchema.parse(JSON.parse(rawArgs));
 
-  return normalizeGenerated({
-    provider: AiProvider.OPENROUTER,
-    model: settings.model,
-    prompt,
-    groups: parsed.groups
-  });
+  return parsed.groups;
 }
 
 function normalizeGenerated(result: {
@@ -409,7 +585,8 @@ function normalizeGenerated(result: {
   // Achata os grupos em questões individuais, carregando o supportText do grupo em cada uma —
   // texto null/curto demais (placeholder inútil) vira null em vez de "quase vazio".
   const flattened: GeneratedQuestion[] = result.groups.flatMap((group) => {
-    const supportText = group.supportText && group.supportText.trim().length >= 80 ? group.supportText.trim() : null;
+    const supportText =
+      group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH ? group.supportText.trim() : null;
     return group.questions.map((question) => ({ ...question, supportText }));
   });
 
