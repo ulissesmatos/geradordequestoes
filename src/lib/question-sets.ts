@@ -47,16 +47,15 @@ export async function generateAndSaveQuestionSet(input: {
   let closeVariantFallback = false;
   if (input.closeVariant) {
     const variantLimit = Math.min(Math.max(input.quantity, 1), 30);
-    let variantHits = await searchReferenceQuestions({
+    // O filtro de matéria em searchReferenceQuestions é suave (matéria pedida OU questão sem
+    // classificação), então não refazemos sem filtro: gerar "variação fiel" a partir de uma
+    // questão de outra matéria produziria item fora do assunto pedido.
+    const variantHits = await searchReferenceQuestions({
       query,
       subjectId: input.subjectId,
       topicId: input.topicId,
       limit: variantLimit
     });
-    if (variantHits.length === 0) {
-      // Sem casar matéria/assunto (ex.: material sem essa classificação): tenta sem o filtro.
-      variantHits = await searchReferenceQuestions({ query, limit: variantLimit });
-    }
     if (variantHits.length > 0) {
       variantSources = variantHits.map((hit) => ({
         id: hit.id,

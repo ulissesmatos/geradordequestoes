@@ -114,8 +114,10 @@ export async function searchReferenceChunks(input: {
 
   const runQuery = (tsQuerySql: Prisma.Sql) => {
     const filters: Prisma.Sql[] = [Prisma.sql`to_tsvector('portuguese', c.content) @@ ${tsQuerySql}`];
-    if (input.subjectId) filters.push(Prisma.sql`c."subjectId" = ${input.subjectId}`);
-    if (input.topicId) filters.push(Prisma.sql`c."topicId" = ${input.topicId}`);
+    // Filtro SUAVE: casa a matéria pedida ou o material ainda sem classificação, mas nunca
+    // uma matéria diferente — trecho de Direito não pode fundamentar questão de Português.
+    if (input.subjectId) filters.push(Prisma.sql`(c."subjectId" = ${input.subjectId} OR c."subjectId" IS NULL)`);
+    if (input.topicId) filters.push(Prisma.sql`(c."topicId" = ${input.topicId} OR c."topicId" IS NULL)`);
     const where = Prisma.join(filters, " AND ");
     return prisma.$queryRaw<ReferenceHit[]>(Prisma.sql`
       SELECT c.id, c."documentId", c.content, d.title, d.source
@@ -231,10 +233,12 @@ export async function searchReferenceQuestions(input: {
 
   const runQuery = (tsQuerySql: Prisma.Sql) => {
     const filters: Prisma.Sql[] = [
-      Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q."supportText", '') || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '')) @@ ${tsQuerySql}`
+      Prisma.sql`to_tsvector('portuguese', q.statement || ' ' || coalesce(q."supportText", '') || ' ' || coalesce(q.explanation, '') || ' ' || coalesce(q."topicHint", '') || ' ' || coalesce(q."subjectHint", '')) @@ ${tsQuerySql}`
     ];
-    if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
-    if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
+    // Filtro SUAVE (ver searchReferenceChunks): matéria pedida OU ainda não classificada,
+    // nunca uma matéria diferente.
+    if (input.subjectId) filters.push(Prisma.sql`(q."subjectId" = ${input.subjectId} OR q."subjectId" IS NULL)`);
+    if (input.topicId) filters.push(Prisma.sql`(q."topicId" = ${input.topicId} OR q."topicId" IS NULL)`);
     const where = Prisma.join(filters, " AND ");
     return prisma.$queryRaw<ReferenceQuestionHit[]>(Prisma.sql`
       SELECT q.id, q."documentId", q.statement, q."supportText", q.answer, q."answerText", q.explanation,
@@ -296,16 +300,14 @@ export async function getRandomReferenceQuestions(input: {
     `);
   };
 
+  // Filtro SUAVE, igual às buscas por palavra-chave: sorteia dentro da matéria pedida ou
+  // entre as ainda não classificadas. NÃO existe fallback sem filtro de propósito — sortear
+  // no acervo todo injetaria questão de outra matéria como âncora de estilo ("baseie as
+  // questões NESTE material"), que é pior do que não ter referência nenhuma.
   const filters: Prisma.Sql[] = [];
-  if (input.subjectId) filters.push(Prisma.sql`q."subjectId" = ${input.subjectId}`);
-  if (input.topicId) filters.push(Prisma.sql`q."topicId" = ${input.topicId}`);
-  if (filters.length === 0) return run(filters);
-
-  const scoped = await run(filters);
-  if (scoped.length > 0) return scoped;
-  // Nada casou com a matéria/assunto (ex.: material sem essa classificação atribuída):
-  // sorteia sem filtro em vez de voltar vazio à toa.
-  return run([]);
+  if (input.subjectId) filters.push(Prisma.sql`(q."subjectId" = ${input.subjectId} OR q."subjectId" IS NULL)`);
+  if (input.topicId) filters.push(Prisma.sql`(q."topicId" = ${input.topicId} OR q."topicId" IS NULL)`);
+  return run(filters);
 }
 
 /**
@@ -380,12 +382,10 @@ export async function getReferenceContext(input: {
       topicId: input.topicId,
       limit: pool
     });
-    if (questionPool.length === 0 && (input.subjectId || input.topicId)) {
-      questionPool = await searchReferenceQuestions({ query: input.query, limit: pool });
-    }
     // Nenhum resultado por palavra-chave: ainda assim sorteia entre o que existir da
     // matéria/assunto — não deixa a IA sem nenhum exemplar real só porque os termos
-    // da busca não bateram com o texto das questões cadastradas.
+    // da busca não bateram com o texto das questões cadastradas. O sorteio respeita o
+    // mesmo filtro de matéria, então nunca traz exemplar de outra matéria.
     if (questionPool.length === 0 && (input.subjectId || input.topicId)) {
       questionPool = await getRandomReferenceQuestions({ subjectId: input.subjectId, topicId: input.topicId, limit: pool });
     }
@@ -404,17 +404,14 @@ export async function getReferenceContext(input: {
     }
   }
 
-  // 2) Fallback: full-text nos trechos crus.
+  // 2) Fallback: full-text nos trechos crus (mesmo filtro suave de matéria).
   if (input.query && input.query.trim()) {
-    let hits = await searchReferenceChunks({
+    const hits = await searchReferenceChunks({
       query: input.query,
       subjectId: input.subjectId,
       topicId: input.topicId,
       limit
     });
-    if (hits.length === 0 && (input.subjectId || input.topicId)) {
-      hits = await searchReferenceChunks({ query: input.query, limit });
-    }
     if (hits.length) return { hits, usedStructuredQuestions: false };
   }
   if (!input.subjectId && !input.topicId) return { hits: [], usedStructuredQuestions: false };

@@ -5,6 +5,7 @@ import { createReferenceAction, deleteReferenceAction } from "@/app/admin/refere
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { ExtractionModelPicker } from "@/components/admin/extraction-model-picker";
+import { ReclassifyAllButton } from "@/components/admin/reclassify-all-button";
 import { ReferenceProcessButton } from "@/components/admin/reference-process-button";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -32,15 +33,34 @@ const extractionMeta: Record<ReferenceExtractionStatus, { label: string; tone: "
 const questionSourceKinds: ReferenceKind[] = [ReferenceKind.PROVA, ReferenceKind.GABARITO];
 
 export default async function AdminReferenciasPage() {
-  const [subjects, documents, aiSettings] = await Promise.all([
+  const [subjects, documents, aiSettings, questionsBySubject] = await Promise.all([
     prisma.subject.findMany({ include: { topics: { orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
     prisma.referenceDocument.findMany({
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { chunks: true, questions: true } } }
     }),
-    getAiSettings()
+    getAiSettings(),
+    // Distribuição real por matéria de cada material. Uma prova de concurso mistura matérias,
+    // então a matéria única do documento não descreve o que está lá dentro.
+    prisma.referenceQuestion.groupBy({
+      by: ["documentId", "subjectId"],
+      _count: { _all: true }
+    })
   ]);
   const subjectName = new Map(subjects.map((s) => [s.id, s.name]));
+
+  const breakdown = new Map<string, { classified: { name: string; count: number }[]; unclassified: number }>();
+  for (const row of questionsBySubject) {
+    const entry = breakdown.get(row.documentId) ?? { classified: [], unclassified: 0 };
+    if (row.subjectId) {
+      entry.classified.push({ name: subjectName.get(row.subjectId) ?? "(matéria removida)", count: row._count._all });
+    } else {
+      entry.unclassified += row._count._all;
+    }
+    breakdown.set(row.documentId, entry);
+  }
+  for (const entry of breakdown.values()) entry.classified.sort((a, b) => b.count - a.count);
+  const totalUnclassified = [...breakdown.values()].reduce((sum, e) => sum + e.unclassified, 0);
 
   return (
     <div className="space-y-6">
@@ -48,6 +68,8 @@ export default async function AdminReferenciasPage() {
         title="Materiais de referência"
         description="Provas reais, gabaritos, editais, leis e resumos/apostilas. Todo material vira trechos pesquisáveis pelo chat assim que é salvo — 'Processar com IA' é um passo à parte, só para extrair questões estruturadas (enunciado, gabarito, pegadinha) de provas."
       />
+
+      {totalUnclassified > 0 && <ReclassifyAllButton pending={totalUnclassified} />}
 
       {/* ── Adicionar material ── */}
       <Card>
@@ -131,7 +153,7 @@ export default async function AdminReferenciasPage() {
         <CardContent className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead className="text-left text-xs uppercase text-[var(--muted-foreground)]">
-              <tr><th className="py-2">Título</th><th>Tipo</th><th>Matéria</th><th>Trechos</th><th>Extração IA</th><th>Criado</th><th></th></tr>
+              <tr><th className="py-2">Título</th><th>Tipo</th><th>Matérias das questões</th><th>Trechos</th><th>Extração IA</th><th>Criado</th><th></th></tr>
             </thead>
             <tbody>
               {documents.map((doc) => {
@@ -149,7 +171,12 @@ export default async function AdminReferenciasPage() {
                       {doc.source && <span className="text-xs text-[var(--muted-foreground)]">{doc.source}</span>}
                     </td>
                     <td><StatusBadge tone="neutral">{doc.kind}</StatusBadge></td>
-                    <td>{doc.subjectId ? subjectName.get(doc.subjectId) ?? "—" : "—"}</td>
+                    <td className="py-3">
+                      <SubjectBreakdown
+                        entry={breakdown.get(doc.id)}
+                        documentSubject={doc.subjectId ? subjectName.get(doc.subjectId) ?? null : null}
+                      />
+                    </td>
                     <td>{doc._count.chunks}</td>
                     <td>
                       <div className="flex flex-col gap-0.5">
@@ -204,6 +231,37 @@ export default async function AdminReferenciasPage() {
           </table>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Distribuição por matéria das questões extraídas de um material. Substitui a antiga coluna
+ * que mostrava só a matéria do documento — inútil em prova multidisciplinar, onde o documento
+ * costuma ficar sem matéria e as questões são de 5 ou 6 matérias diferentes.
+ */
+function SubjectBreakdown({
+  entry,
+  documentSubject
+}: {
+  entry?: { classified: { name: string; count: number }[]; unclassified: number };
+  documentSubject: string | null;
+}) {
+  if (!entry || (entry.classified.length === 0 && entry.unclassified === 0)) {
+    // Sem questões extraídas: cai para a matéria do documento (ex.: edital indexado).
+    return <span className="text-[var(--muted-foreground)]">{documentSubject ?? "—"}</span>;
+  }
+  const shown = entry.classified.slice(0, 3);
+  const rest = entry.classified.length - shown.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {shown.map((item) => (
+        <StatusBadge key={item.name} tone="info">
+          {item.name} · {item.count}
+        </StatusBadge>
+      ))}
+      {rest > 0 && <span className="text-xs text-[var(--muted-foreground)]">+{rest}</span>}
+      {entry.unclassified > 0 && <StatusBadge tone="warning">{entry.unclassified} sem matéria</StatusBadge>}
     </div>
   );
 }

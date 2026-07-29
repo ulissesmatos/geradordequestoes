@@ -17,6 +17,7 @@ import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 import { searchReferenceChunks, searchReferenceQuestions, searchWithinDocument } from "@/lib/reference";
+import { matchByName } from "@/lib/taxonomy";
 import { webSearch } from "@/lib/ai/web-search";
 
 export type ToolSource = { title: string; url: string };
@@ -373,12 +374,10 @@ async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult
   }
 
   // 1) Banco estruturado: questões extraídas por IA (gabarito/pegadinha já mapeados).
-  // Filtro de matéria/assunto é PREFERÊNCIA: se não casar (ex.: material sem
-  // matéria atribuída), refaz a busca sem filtro para não retornar vazio à toa.
-  let questionHits = await searchReferenceQuestions({ query: args.query, subjectId, topicId, limit });
-  if (questionHits.length === 0 && (subjectId || topicId)) {
-    questionHits = await searchReferenceQuestions({ query: args.query, limit });
-  }
+  // O filtro de matéria é suave dentro de searchReferenceQuestions (matéria pedida OU sem
+  // classificação), então não refazemos a busca sem filtro: trazer questão de outra matéria
+  // como fundamento é pior do que responder que não há material interno sobre o ponto.
+  const questionHits = await searchReferenceQuestions({ query: args.query, subjectId, topicId, limit });
   if (questionHits.length > 0) {
     return {
       resultForModel: JSON.stringify({
@@ -398,11 +397,8 @@ async function runSearchReference(rawArgs: unknown): Promise<ToolExecutionResult
     };
   }
 
-  // 2) Fallback: busca crua nos trechos dos documentos (mesmo filtro suave).
-  let hits = await searchReferenceChunks({ query: args.query, subjectId, topicId, limit });
-  if (hits.length === 0 && (subjectId || topicId)) {
-    hits = await searchReferenceChunks({ query: args.query, limit });
-  }
+  // 2) Fallback: busca crua nos trechos dos documentos (mesmo filtro suave de matéria).
+  const hits = await searchReferenceChunks({ query: args.query, subjectId, topicId, limit });
   if (hits.length === 0) {
     return {
       resultForModel: JSON.stringify({
@@ -564,20 +560,3 @@ function buildGenerationFallback(input: {
     : `${base}\n\nObs.: não havia prova real cadastrada sobre este ponto — as questões foram criadas no estilo Cebraspe.`;
 }
 
-function matchByName<T extends { name: string }>(items: T[], query: string): T | null {
-  const normalizedQuery = normalizeText(query);
-  if (!normalizedQuery) return null;
-  return (
-    items.find((item) => normalizeText(item.name) === normalizedQuery) ??
-    items.find((item) => normalizeText(item.name).includes(normalizedQuery) || normalizedQuery.includes(normalizeText(item.name))) ??
-    null
-  );
-}
-
-function normalizeText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
-}

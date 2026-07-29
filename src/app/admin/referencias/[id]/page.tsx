@@ -4,7 +4,9 @@ import { ArrowLeft, Check, ImageIcon, Layers, Lightbulb, MapPin, RotateCcw, X } 
 import { ReferenceExtractionStatus, ReferenceKind } from "@prisma/client";
 import { resetExtractionAction } from "@/app/admin/referencias/actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
+import { ReferenceClassificationPanel } from "@/components/admin/reference-classification-panel";
 import { ReferenceProcessButton } from "@/components/admin/reference-process-button";
+import { ReferenceSubjectSelect } from "@/components/admin/reference-subject-select";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,13 +43,33 @@ function groupQuestions(questions: ExtractedQuestionRow[]) {
 
 export default async function ReferenceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const document = await loadDocument(id);
+  const [document, subjects] = await Promise.all([
+    loadDocument(id),
+    prisma.subject.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })
+  ]);
   if (!document) notFound();
 
   const done = document.extractionStatus === ReferenceExtractionStatus.DONE;
   const isQuestionSource = questionSourceKinds.includes(document.kind);
   const groups = groupQuestions(document.questions);
   let questionCounter = 0;
+
+  // Distribuição real por matéria: uma prova mistura matérias, então o número que importa
+  // é este, não a matéria única do documento.
+  const subjectNameById = new Map(subjects.map((s) => [s.id, s.name]));
+  const counts = new Map<string, number>();
+  let unclassified = 0;
+  for (const question of document.questions) {
+    if (!question.subjectId) {
+      unclassified += 1;
+      continue;
+    }
+    const name = subjectNameById.get(question.subjectId) ?? "(matéria removida)";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const distribution = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -97,6 +119,15 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
         </p>
       )}
 
+      {document.questions.length > 0 && (
+        <ReferenceClassificationPanel
+          documentId={document.id}
+          distribution={distribution}
+          unclassified={unclassified}
+          subjects={subjects}
+        />
+      )}
+
       {document.questions.length === 0 && (
         <Card>
           <CardContent className="p-6 text-sm text-[var(--muted-foreground)]">
@@ -123,7 +154,15 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
                 <div className="space-y-3">
                   {group.items.map((question) => {
                     questionCounter += 1;
-                    return <QuestionCard key={question.id} question={question} index={questionCounter} />;
+                    return (
+                      <QuestionCard
+                        key={question.id}
+                        question={question}
+                        index={questionCounter}
+                        documentId={document.id}
+                        subjects={subjects}
+                      />
+                    );
                   })}
                 </div>
               </div>
@@ -131,7 +170,15 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
               <div key={`loose-${groupIndex}`} className="space-y-4">
                 {group.items.map((question) => {
                   questionCounter += 1;
-                  return <QuestionCard key={question.id} question={question} index={questionCounter} />;
+                  return (
+                      <QuestionCard
+                        key={question.id}
+                        question={question}
+                        index={questionCounter}
+                        documentId={document.id}
+                        subjects={subjects}
+                      />
+                    );
                 })}
               </div>
             )
@@ -169,17 +216,35 @@ export default async function ReferenceDetailPage({ params }: { params: Promise<
   );
 }
 
-function QuestionCard({ question, index }: { question: ExtractedQuestionRow; index: number }) {
+function QuestionCard({
+  question,
+  index,
+  documentId,
+  subjects
+}: {
+  question: ExtractedQuestionRow;
+  index: number;
+  documentId: string;
+  subjects: { id: string; name: string }[];
+}) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
             Questão {index}
-            {question.topicHint && <span className="ml-2 normal-case tracking-normal">· {question.topicHint}</span>}
+            {question.topicHint && <span className="normal-case tracking-normal">· {question.topicHint}</span>}
+            <ReferenceSubjectSelect
+              questionId={question.id}
+              documentId={documentId}
+              subjectId={question.subjectId}
+              subjects={subjects}
+            />
           </CardTitle>
           <div className="flex flex-wrap items-center gap-1.5">
-            {question.subjectHint && <StatusBadge tone="info">{question.subjectHint}</StatusBadge>}
+            {/* Palpite da IA, mantido visível: é a origem da classificação e ajuda a auditar
+                quando o admin discorda da matéria escolhida. */}
+            {question.subjectHint && <StatusBadge tone="neutral">IA: {question.subjectHint}</StatusBadge>}
             {question.regionHint && (
               <StatusBadge tone="neutral">
                 <MapPin className="h-3 w-3" />

@@ -7,6 +7,8 @@ import { logAdminAction } from "@/lib/audit";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { ingestReferenceDocument } from "@/lib/reference";
+import { isPlausibleSubjectName, matchByName, resolveSubjectFromHint } from "@/lib/taxonomy";
+import { slugify } from "@/lib/utils";
 
 async function extractPdfText(file: File): Promise<string> {
   try {
@@ -106,6 +108,51 @@ function normalizeStatement(statement: string) {
   return statement.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
+/** Nota de procedência das matérias nascidas da extração — permite ao admin achá-las e mesclar depois. */
+const AUTO_SUBJECT_DESCRIPTION = "Criada automaticamente pela extração de materiais de referência.";
+
+type SubjectWithTopics = { id: string; name: string; topics: { id: string; name: string }[] };
+
+/**
+ * Resolve a matéria de UMA questão extraída a partir do rótulo livre que a IA devolveu
+ * (`subjectHint`), criando a matéria quando não existir.
+ *
+ * O cache é obrigatório para correção, não só performance: dentro de um mesmo lote várias
+ * questões trazem o mesmo hint, e sem ele duas criações concorreriam pelo mesmo slug único.
+ */
+async function resolveOrCreateSubjectId(input: {
+  hint: string | null | undefined;
+  subjects: SubjectWithTopics[];
+  createdSubjects: string[];
+}): Promise<string | null> {
+  const { subject, canonicalName } = resolveSubjectFromHint({ hint: input.hint, subjects: input.subjects });
+  if (subject) return subject.id;
+  if (!canonicalName || !isPlausibleSubjectName(canonicalName)) return null;
+
+  // upsert por slug (nunca create): slug é único global e slugify normaliza acento/caixa,
+  // então "Português" e "portugues" convergem para a MESMA linha em vez de estourar.
+  const created = await prisma.subject.upsert({
+    where: { slug: slugify(canonicalName) },
+    update: {},
+    create: { name: canonicalName, slug: slugify(canonicalName), description: AUTO_SUBJECT_DESCRIPTION },
+    select: { id: true, name: true }
+  });
+  // Alimenta a lista em memória para as próximas questões do lote reusarem esta matéria.
+  if (!input.subjects.some((s) => s.id === created.id)) {
+    input.subjects.push({ ...created, topics: [] });
+    input.createdSubjects.push(created.name);
+  }
+  return created.id;
+}
+
+/** Assunto só é casado contra os tópicos JÁ existentes da matéria — nunca criado (evitaria centenas de linhas). */
+function resolveTopicId(input: { hint: string | null | undefined; subjectId: string | null; subjects: SubjectWithTopics[] }) {
+  if (!input.subjectId || !input.hint?.trim()) return null;
+  const subject = input.subjects.find((s) => s.id === input.subjectId);
+  if (!subject?.topics.length) return null;
+  return matchByName(subject.topics, input.hint)?.id ?? null;
+}
+
 /**
  * Processa o PRÓXIMO lote de trechos do documento com IA, extraindo questões
  * estruturadas. Chamada repetidamente pelo client até `done` (evita timeout de
@@ -179,7 +226,16 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
       ? `[CONTEXTO DO TRECHO ANTERIOR — só para dar continuidade a um texto de apoio que comece aqui e continue no trecho novo abaixo; NÃO extraia questões deste bloco, elas já foram processadas]\n${overlapText}\n\n[TRECHO NOVO — extraia as questões completas daqui]\n${newText}`
       : newText;
 
-    const extraction = text.trim() ? await extractReferenceQuestions(text) : { questions: [], model: "", provider: null };
+    // Catálogo real de matérias: vai no prompt (a IA prefere um nome existente) e serve de
+    // base para resolver o subjectHint de cada questão logo abaixo.
+    const subjects: SubjectWithTopics[] = await prisma.subject.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, topics: { select: { id: true, name: true }, orderBy: { name: "asc" } } }
+    });
+
+    const extraction = text.trim()
+      ? await extractReferenceQuestions(text, subjects.map((s) => s.name))
+      : { questions: [], model: "", provider: null };
     const extracted = extraction.questions;
 
     // Dedupe contra o que já foi extraído deste documento (overlap entre lotes).
@@ -198,30 +254,36 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
     const nextCursor = Math.min(document.extractionCursor + CHUNKS_PER_BATCH, totalChunks);
     const isDone = nextCursor >= totalChunks;
 
+    // Classificação por questão. Uma prova de concurso mistura várias matérias, então a
+    // matéria do documento (quando o admin escolheu uma) tem precedência, e no resto vale o
+    // subjectHint que a IA deu para AQUELA questão. Resolvido fora da $transaction porque
+    // pode criar matéria nova (escrita própria).
+    const createdSubjects: string[] = [];
+    const rows = [];
+    for (const [i, q] of fresh.entries()) {
+      const subjectId =
+        document.subjectId ?? (await resolveOrCreateSubjectId({ hint: q.subjectHint, subjects, createdSubjects }));
+      rows.push({
+        documentId: document.id,
+        subjectId,
+        topicId: document.topicId ?? resolveTopicId({ hint: q.topicHint, subjectId, subjects }),
+        statement: q.statement,
+        supportText: q.supportText,
+        answer: q.answer,
+        answerText: q.answerText,
+        explanation: q.explanation,
+        trickNote: q.trickNote,
+        hasImage: q.hasImage,
+        imageDescription: q.imageDescription,
+        topicHint: q.topicHint,
+        subjectHint: q.subjectHint,
+        regionHint: q.regionHint,
+        ordinal: existing.length + i
+      });
+    }
+
     await prisma.$transaction([
-      ...(fresh.length
-        ? [
-            prisma.referenceQuestion.createMany({
-              data: fresh.map((q, i) => ({
-                documentId: document.id,
-                subjectId: document.subjectId,
-                topicId: document.topicId,
-                statement: q.statement,
-                supportText: q.supportText,
-                answer: q.answer,
-                answerText: q.answerText,
-                explanation: q.explanation,
-                trickNote: q.trickNote,
-                hasImage: q.hasImage,
-                imageDescription: q.imageDescription,
-                topicHint: q.topicHint,
-                subjectHint: q.subjectHint,
-                regionHint: q.regionHint,
-                ordinal: existing.length + i
-              }))
-            })
-          ]
-        : []),
+      ...(rows.length ? [prisma.referenceQuestion.createMany({ data: rows })] : []),
       prisma.referenceDocument.update({
         where: { id: document.id },
         data: {
@@ -231,6 +293,17 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
       })
     ]);
 
+    // Matéria criada automaticamente é sempre logada (inclusive em lote intermediário) — é
+    // escrita no catálogo que o aluno vê, então precisa de rastro mesmo se a extração falhar depois.
+    if (createdSubjects.length) {
+      await logAdminAction(admin, {
+        action: "create",
+        entity: "Subject",
+        entityId: document.id,
+        summary: `Matérias criadas pela extração de "${document.title}": ${createdSubjects.join(", ")}`
+      });
+    }
+
     if (isDone) {
       await logAdminAction(admin, {
         action: "extract",
@@ -239,6 +312,7 @@ export async function processReferenceBatchAction(documentId: string): Promise<E
         summary: `${document.title}: ${existing.length + fresh.length} questões extraídas (modelo: ${extraction.model || "padrão"})`
       });
       revalidatePath("/admin/referencias");
+      revalidatePath("/admin/materias");
     }
 
     return {
@@ -284,6 +358,131 @@ export async function updateExtractionModelAction(formData: FormData) {
     summary: `Modelo de extração: ${raw || "padrão"}`
   });
   revalidatePath("/admin/referencias");
+}
+
+export type ReclassifyResult = {
+  scanned: number;
+  classified: number;
+  unresolved: number;
+  createdSubjects: string[];
+};
+
+/**
+ * Classifica retroativamente as questões extraídas que ficaram sem matéria, usando o
+ * `subjectHint` que a IA JÁ gravou. Não chama IA nenhuma — é de graça.
+ *
+ * Existe porque durante muito tempo a matéria era copiada do documento; como uma prova de
+ * concurso mistura matérias, o admin deixava o documento sem matéria e TODA questão dele
+ * nascia sem classificação, quebrando a priorização por matéria na geração.
+ *
+ * Idempotente: só toca em questões com `subjectId` nulo, então rodar de novo não altera o
+ * que já foi classificado (nem desfaz correção manual feita no admin).
+ */
+export async function reclassifyReferenceQuestionsAction(formData: FormData): Promise<ReclassifyResult> {
+  const admin = await requireAdmin();
+  const documentId = String(formData.get("documentId") ?? "") || null;
+
+  const subjects: SubjectWithTopics[] = await prisma.subject.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, topics: { select: { id: true, name: true }, orderBy: { name: "asc" } } }
+  });
+
+  const pending = await prisma.referenceQuestion.findMany({
+    where: {
+      subjectId: null,
+      subjectHint: { not: null },
+      ...(documentId ? { documentId } : {})
+    },
+    select: { id: true, subjectHint: true, topicHint: true }
+  });
+
+  const createdSubjects: string[] = [];
+  let classified = 0;
+
+  for (const question of pending) {
+    const subjectId = await resolveOrCreateSubjectId({ hint: question.subjectHint, subjects, createdSubjects });
+    if (!subjectId) continue;
+    await prisma.referenceQuestion.update({
+      where: { id: question.id },
+      data: { subjectId, topicId: resolveTopicId({ hint: question.topicHint, subjectId, subjects }) }
+    });
+    classified += 1;
+  }
+
+  await logAdminAction(admin, {
+    action: "reclassify",
+    entity: documentId ? "ReferenceDocument" : "ReferenceQuestion",
+    entityId: documentId ?? undefined,
+    summary: `${classified}/${pending.length} questões classificadas por matéria${
+      createdSubjects.length ? `; matérias criadas: ${createdSubjects.join(", ")}` : ""
+    }`
+  });
+
+  revalidatePath("/admin/referencias");
+  if (documentId) revalidatePath(`/admin/referencias/${documentId}`);
+  if (createdSubjects.length) revalidatePath("/admin/materias");
+
+  return {
+    scanned: pending.length,
+    classified,
+    unresolved: pending.length - classified,
+    createdSubjects
+  };
+}
+
+/** Corrige a matéria de UMA questão extraída (revisão manual do admin sobre o palpite da IA). */
+export async function updateReferenceQuestionSubjectAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const questionId = String(formData.get("questionId") ?? "");
+  const documentId = String(formData.get("documentId") ?? "");
+  const rawSubjectId = String(formData.get("subjectId") ?? "");
+  if (!questionId) return;
+
+  // "" = limpar a classificação. Valida a matéria antes de gravar (subjectId não tem FK no schema).
+  const subjectId = rawSubjectId || null;
+  if (subjectId) {
+    const exists = await prisma.subject.findUnique({ where: { id: subjectId }, select: { id: true } });
+    if (!exists) throw new Error("Matéria não encontrada.");
+  }
+
+  await prisma.referenceQuestion.update({
+    where: { id: questionId },
+    // Zera o assunto: um tópico pertence a uma matéria, então manter o antigo criaria
+    // uma combinação matéria/assunto inconsistente.
+    data: { subjectId, topicId: null }
+  });
+  await logAdminAction(admin, {
+    action: "update",
+    entity: "ReferenceQuestion",
+    entityId: questionId,
+    summary: subjectId ? `Matéria ajustada manualmente` : "Matéria removida"
+  });
+  revalidatePath("/admin/referencias");
+  if (documentId) revalidatePath(`/admin/referencias/${documentId}`);
+}
+
+/** Aplica uma matéria a TODAS as questões sem classificação de um documento. */
+export async function bulkAssignSubjectAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const documentId = String(formData.get("documentId") ?? "");
+  const subjectId = String(formData.get("subjectId") ?? "");
+  if (!documentId || !subjectId) return;
+
+  const exists = await prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } });
+  if (!exists) throw new Error("Matéria não encontrada.");
+
+  const { count } = await prisma.referenceQuestion.updateMany({
+    where: { documentId, subjectId: null },
+    data: { subjectId }
+  });
+  await logAdminAction(admin, {
+    action: "update",
+    entity: "ReferenceDocument",
+    entityId: documentId,
+    summary: `${count} questões sem matéria atribuídas a ${exists.name}`
+  });
+  revalidatePath("/admin/referencias");
+  revalidatePath(`/admin/referencias/${documentId}`);
 }
 
 /** Zera a extração (apaga questões extraídas e volta o cursor) para reprocessar. */

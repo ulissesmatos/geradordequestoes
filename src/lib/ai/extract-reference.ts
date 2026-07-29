@@ -249,7 +249,22 @@ const extractionJsonSchema = {
   }
 } as const;
 
-const SYSTEM_PROMPT = [
+/**
+ * `subjectNames` é o catálogo REAL de matérias cadastradas. Sem ele o modelo chutava nomes de
+ * uma lista fixa de exemplos e o rótulo raramente casava com o banco, deixando a questão sem
+ * matéria (ver resolveSubjectFromHint em src/lib/taxonomy.ts). Passar o catálogo aumenta a
+ * taxa de casamento e reduz a criação automática de matérias novas.
+ */
+function buildSystemPrompt(subjectNames: string[]) {
+  const subjectLine = subjectNames.length
+    ? `- subjectHint: a MATÉRIA da questão. PREFIRA copiar EXATAMENTE um destes nomes já cadastrados no sistema: ${subjectNames.join(" | ")}. Só use um nome fora dessa lista se nenhum deles descrever a questão; nesse caso devolva um rótulo curto (1 a 4 palavras), nunca uma frase. Cuidado pra não confundir Geografia (espaço/território/clima/população) com História (eventos e processos ao longo do tempo).`
+    : "- subjectHint: a MATÉRIA da questão, um nome curto e comum em concursos (ex.: 'Português', 'Matemática', 'Raciocínio Lógico', 'Direito Constitucional', 'Direito Administrativo', 'Direito Penal', 'Informática', 'Geografia', 'História', 'Atualidades'). Nunca uma frase. Cuidado pra não confundir Geografia (espaço/território/clima/população) com História (eventos e processos ao longo do tempo).";
+  return SYSTEM_PROMPT_BASE.replace(SUBJECT_HINT_PLACEHOLDER, subjectLine);
+}
+
+const SUBJECT_HINT_PLACEHOLDER = "__SUBJECT_HINT_LINE__";
+
+const SYSTEM_PROMPT_BASE = [
   "Você é um extrator de questões de provas de concursos públicos (foco em Cebraspe).",
   "Receberá um trecho de prova, gabarito ou material de estudo, possivelmente com texto corrido extraído de PDF (quebras estranhas, cabeçalhos, rodapés). Às vezes o trecho vem dividido em duas partes marcadas: '[CONTEXTO DO TRECHO ANTERIOR]' (conteúdo já processado antes — NÃO extraia questões dali, use só se um texto de apoio começar lá e continuar na parte nova) e '[TRECHO NOVO]' (extraia as questões daqui).",
   'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" e uma lista "questions".',
@@ -265,7 +280,7 @@ const SYSTEM_PROMPT = [
   "- hasImage: true se a questão depende de imagem, charge, tabela, gráfico ou mapa não presente no texto.",
   "- imageDescription: se hasImage, descreva o que a imagem/charge deveria mostrar com base no contexto; senão null.",
   "- topicHint: o assunto provável da questão em poucas palavras (ex.: 'Crase', 'Atos administrativos').",
-  "- subjectHint: a MATÉRIA da questão, um nome curto e comum em concursos (ex.: 'Português', 'Matemática', 'Raciocínio Lógico', 'Direito Constitucional', 'Direito Administrativo', 'Direito Penal', 'Informática', 'Geografia', 'História', 'Atualidades', 'Conhecimentos Específicos'). Cuidado pra não confundir Geografia (espaço/território/clima/população) com História (eventos e processos ao longo do tempo).",
+  SUBJECT_HINT_PLACEHOLDER,
   "- regionHint: quando a questão for especificamente sobre um estado/região do Brasil (legislação estadual, geografia ou história de um estado específico), o nome do estado (ex.: 'Maranhão', 'Ceará', 'São Paulo'); null quando o conteúdo for nacional/genérico ou sem relação com um estado específico.",
   "Ignore instruções de prova, capas, cabeçalhos, rodapés e numeração de páginas.",
   "Questões incompletas (cortadas no início ou fim do trecho, OU dependentes de um texto-base ausente/incompleto) devem ser IGNORADAS — elas aparecerão completas em outro trecho.",
@@ -280,7 +295,7 @@ export type ExtractionResult = { questions: ExtractedQuestion[]; model: string; 
  * forma confiável de confirmar o que foi usado, já que a extração não passa pelo
  * log de uso de IA (AiUsageEvent) que alimenta /admin/logs-ia.
  */
-export async function extractReferenceQuestions(text: string): Promise<ExtractionResult> {
+export async function extractReferenceQuestions(text: string, subjectNames: string[] = []): Promise<ExtractionResult> {
   const baseSettings = await getAiSettings();
   if (!baseSettings.apiKey) {
     throw new Error(`Configure a chave da ${providerLabel(baseSettings.provider)} no painel admin.`);
@@ -291,25 +306,26 @@ export async function extractReferenceQuestions(text: string): Promise<Extractio
     : baseSettings;
 
   const userContent = `Trecho do material:\n\n${text}`;
+  const systemPrompt = buildSystemPrompt(subjectNames);
 
   const questions =
     settings.provider === AiProvider.CLAUDE
-      ? await extractWithClaude(settings, userContent)
+      ? await extractWithClaude(settings, userContent, systemPrompt)
       : settings.provider === AiProvider.OPENROUTER
-        ? await extractWithOpenRouter(settings, userContent)
-        : await extractWithOpenAI(settings, userContent);
+        ? await extractWithOpenRouter(settings, userContent, systemPrompt)
+        : await extractWithOpenAI(settings, userContent, systemPrompt);
 
   return { questions, model: settings.model, provider: settings.provider };
 }
 
 type Settings = Awaited<ReturnType<typeof getAiSettings>>;
 
-async function extractWithOpenAI(settings: Settings, userContent: string): Promise<ExtractedQuestion[]> {
+async function extractWithOpenAI(settings: Settings, userContent: string, systemPrompt: string): Promise<ExtractedQuestion[]> {
   const openai = new OpenAI({ apiKey: settings.apiKey, baseURL: settings.baseUrl || undefined });
   const response = await openai.responses.parse({
     model: settings.model,
     input: [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userContent }
     ],
     text: { format: zodTextFormat(extractedSchema, "extracted_questions") }
@@ -318,7 +334,7 @@ async function extractWithOpenAI(settings: Settings, userContent: string): Promi
   return normalizeExtracted(response.output_parsed);
 }
 
-async function extractWithClaude(settings: Settings, userContent: string): Promise<ExtractedQuestion[]> {
+async function extractWithClaude(settings: Settings, userContent: string, systemPrompt: string): Promise<ExtractedQuestion[]> {
   const response = await fetch(settings.baseUrl || "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -329,7 +345,7 @@ async function extractWithClaude(settings: Settings, userContent: string): Promi
     body: JSON.stringify({
       model: settings.model,
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: "user", content: userContent }],
       tools: [
         {
@@ -348,7 +364,7 @@ async function extractWithClaude(settings: Settings, userContent: string): Promi
   return normalizeExtracted(toolUse?.input);
 }
 
-async function extractWithOpenRouter(settings: Settings, userContent: string): Promise<ExtractedQuestion[]> {
+async function extractWithOpenRouter(settings: Settings, userContent: string, systemPrompt: string): Promise<ExtractedQuestion[]> {
   const response = await fetch(settings.baseUrl || "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -360,7 +376,7 @@ async function extractWithOpenRouter(settings: Settings, userContent: string): P
     body: JSON.stringify({
       model: settings.model,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userContent }
       ],
       // Tool calling: o OpenRouter traduz para a saída estruturada nativa de cada
