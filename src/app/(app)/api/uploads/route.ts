@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { cleanExtractedText } from "@/lib/sanitize";
 import { put } from "@vercel/blob";
 import { requireUser } from "@/lib/guards";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -28,7 +29,9 @@ async function extractPdfText(buffer: Uint8Array): Promise<string> {
     const pdf = await getDocumentProxy(buffer);
     const { text } = await extractText(pdf, { mergePages: true });
     const merged = Array.isArray(text) ? text.join("\n") : text;
-    return merged.trim().slice(0, 20_000);
+    // PDF ruim traz NUL e outros controles; sem limpar aqui o byte viaja para o prompt,
+    // volta ecoado na resposta do modelo e derruba a gravação no Postgres.
+    return cleanExtractedText(merged).trim().slice(0, 20_000);
   } catch {
     return "";
   }

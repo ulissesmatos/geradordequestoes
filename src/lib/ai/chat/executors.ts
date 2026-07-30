@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { generateStudyMaterial } from "@/lib/ai/generateStudyMaterial";
 import { reviewDefaults, runStudyTool } from "@/lib/ai/study-tools";
 import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { stripNullBytes } from "@/lib/sanitize";
 import { difficultyLabel, questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { inferMaterialTaxonomy, materialTitleFromPrompt } from "@/lib/materials";
 import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/question-sets";
@@ -210,7 +211,8 @@ async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawAr
       topicId: taxonomy.topic?.id,
       title: materialTitleFromPrompt(materialPrompt),
       prompt: materialPrompt,
-      content: generated.content,
+      // Conteúdo vem inteiro do modelo: NUL aqui derrubaria a gravação (Postgres 22021).
+      content: stripNullBytes(generated.content),
       aiModel: generated.model
     }
   });

@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowRight, CreditCard, Loader2, QrCode, Sparkles, Tag, X } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, CreditCard, Loader2, QrCode, ShieldCheck, Sparkles, Tag, X, Zap } from "lucide-react";
 import { validateCouponAction } from "@/app/checkout/actions";
-import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
+import { Dialog, DialogPanel } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UpgradePreview } from "@/components/pricing-cards";
@@ -61,7 +61,7 @@ export function PaymentMethodModal({
         </Button>
 
         <Dialog open={open} onClose={() => setOpen(false)}>
-          <DialogPanel>
+          <DialogPanel className="overflow-hidden">
             {step === "preview" ? (
               <UpgradePreviewPane
                 planName={planName}
@@ -78,33 +78,32 @@ export function PaymentMethodModal({
               />
             ) : (
               <>
-                <DialogHeader
+                <CheckoutHeader
                   title={`Upgrade para ${planName}`}
-                  description="Escolha como prefere pagar"
+                  subtitle="Escolha como prefere pagar"
                   onClose={() => setOpen(false)}
                 />
-                <div className="grid gap-3 p-5">
+                <div className="space-y-3 p-5">
                   {hasStripe && (
                     <PaymentOption
                       href={stripeHref}
-                      icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
+                      icon={<CreditCard className="h-5 w-5" />}
                       title="Cartão de crédito ou débito"
-                      description="Upgrade imediato com proração automática"
-                      badge="Stripe"
+                      description="Upgrade na hora, com proração automática"
                       onClick={() => setOpen(false)}
                     />
                   )}
                   {hasPix && (
                     <PaymentOption
                       href={pixHref}
-                      icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
+                      icon={<QrCode className="h-5 w-5" />}
                       title="Pix"
                       description="Paga só a diferença proporcional · Acesso imediato"
-                      badge="Mercado Pago"
                       onClick={() => setOpen(false)}
                     />
                   )}
                 </div>
+                <TrustFooter />
               </>
             )}
           </DialogPanel>
@@ -122,21 +121,6 @@ export function PaymentMethodModal({
     );
   }
 
-  // Opção única: link direto sem modal
-  if (optionCount === 1) {
-    const href = hasStripe ? stripeHref : pixHref;
-    return (
-      <Link href={href} className="block w-full">
-        <Button variant={highlighted ? "default" : "outline"} className="w-full" asChild={false}>
-          {highlighted && <Sparkles className="h-4 w-4" />}
-          {label}
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </Link>
-    );
-  }
-
-  // Múltiplas opções: abre modal de escolha
   return (
     <>
       <Button variant={highlighted ? "default" : "outline"} className="w-full" onClick={openModal}>
@@ -146,49 +130,116 @@ export function PaymentMethodModal({
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)}>
-        <DialogPanel>
-          <DialogHeader
-            title={`Assinar ${planName}`}
-            description={
-              coupon ? (
-                <>
-                  <span className="mr-1.5 text-[var(--muted-foreground)] line-through">{planPrice}</span>
-                  <span className="font-semibold text-[var(--primary)]">{coupon.finalPriceLabel}</span> / mês · Escolha como prefere pagar
-                </>
-              ) : (
-                `${planPrice} / mês · Escolha como prefere pagar`
-              )
-            }
-            onClose={() => setOpen(false)}
-          />
-          <div className="space-y-4 p-5">
-            <div className="grid gap-3">
+        <DialogPanel className="overflow-hidden">
+          <CheckoutHeader title={`Assinar ${planName}`} onClose={() => setOpen(false)} />
+
+          {/* Resumo de valores no topo: o cliente vê o que vai pagar antes de escolher o meio,
+              e o desconto aplicado aparece como linha própria (não só um preço trocado). */}
+          <div className="border-b border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-4">
+            {/* Detalhamento só existe quando há desconto — sem cupom, repetir o mesmo valor
+                em duas linhas é ruído. */}
+            {coupon && (
+              <>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-[var(--muted-foreground)]">Plano {planName}</span>
+                  <span className="text-[var(--muted-foreground)] line-through">{planPrice}</span>
+                </div>
+                <div className="mt-1.5 flex items-baseline justify-between gap-3 text-sm">
+                  <span className="inline-flex items-center gap-1.5 font-medium text-[var(--primary)]">
+                    <BadgeCheck className="h-4 w-4" />
+                    Cupom {coupon.code}
+                  </span>
+                  <span className="font-medium text-[var(--primary)]">− {coupon.discountLabel}</span>
+                </div>
+                <div className="mt-3 border-t border-[var(--border)]" />
+              </>
+            )}
+            <div className={cn("flex items-baseline justify-between gap-3", coupon && "pt-3")}>
+              <span className="text-sm font-semibold">Total por mês</span>
+              <span className="text-2xl font-semibold tracking-tight">
+                {coupon ? coupon.finalPriceLabel : planPrice}
+              </span>
+            </div>
+          </div>
+
+          {/* Cupom ANTES das formas de pagamento: clicar numa forma navega para fora, então um
+              campo abaixo delas era ignorado — clientes com código estavam pagando cheio. */}
+          <div className="border-b border-[var(--border)] px-5 py-4">
+            <CouponBox planSlug={planSlug} applied={coupon} onApplied={setCoupon} />
+          </div>
+
+          <div className="p-5">
+            <p className="mb-3 text-sm font-semibold">Como você prefere pagar?</p>
+            <div className="space-y-3">
               {hasStripe && (
                 <PaymentOption
                   href={stripeHref}
-                  icon={<CreditCard className="h-6 w-6 text-[var(--primary)]" />}
+                  icon={<CreditCard className="h-5 w-5" />}
                   title="Cartão de crédito ou débito"
-                  description="Cobrança recorrente mensal · Cancele quando quiser"
-                  badge="Stripe"
+                  description="Renovação automática · Cancele quando quiser"
                   onClick={() => setOpen(false)}
                 />
               )}
               {hasPix && (
                 <PaymentOption
                   href={pixHref}
-                  icon={<QrCode className="h-6 w-6 text-[var(--accent)]" />}
+                  icon={<QrCode className="h-5 w-5" />}
                   title="Pix"
-                  description="Pagamento via QR Code · Acesso imediato"
-                  badge="Mercado Pago"
+                  description="Aprovação na hora · Acesso liberado na sequência"
                   onClick={() => setOpen(false)}
                 />
               )}
             </div>
-            <CouponBox planSlug={planSlug} applied={coupon} onApplied={setCoupon} />
           </div>
+
+          <TrustFooter />
         </DialogPanel>
       </Dialog>
     </>
+  );
+}
+
+/** Cabeçalho enxuto do checkout: título, subtítulo opcional e fechar. */
+function CheckoutHeader({
+  title,
+  subtitle,
+  onClose
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
+      <div>
+        <h2 className="text-lg font-semibold leading-snug">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">{subtitle}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="-mr-1 -mt-1 shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+        aria-label="Fechar"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+/** Reforço de confiança no rodapé — padrão de checkout de grandes sites. */
+function TrustFooter() {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-3 text-xs text-[var(--muted-foreground)]">
+      <span className="inline-flex items-center gap-1.5">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        Pagamento em ambiente seguro
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <Zap className="h-3.5 w-3.5" />
+        Acesso liberado após a confirmação
+      </span>
+    </div>
   );
 }
 
@@ -207,9 +258,9 @@ function UpgradePreviewPane({
 }) {
   return (
     <>
-      <DialogHeader
+      <CheckoutHeader
         title={`Upgrade para ${planName}`}
-        description={preview ? `${preview.currentPlanName} → ${planName}` : `Trocar para ${planName}`}
+        subtitle={preview ? `${preview.currentPlanName} → ${planName}` : `Trocar para ${planName}`}
         onClose={onClose}
       />
       <div className="space-y-4 p-5">
@@ -218,7 +269,7 @@ function UpgradePreviewPane({
             <PreviewRow label="Plano atual" value={`${formatMoney(preview.currentPriceCents)}/mês`} />
             <PreviewRow label="Novo plano" value={`${formatMoney(preview.newPriceCents)}/mês`} highlight />
             {preview.isRecurring ? (
-              <PreviewRow label="Crédito / proração" value="Calculado pelo Stripe" subtle />
+              <PreviewRow label="Crédito / proração" value="Calculado automaticamente" subtle />
             ) : (
               <>
                 {preview.creditCents !== null && preview.creditCents > 0 && (
@@ -243,7 +294,7 @@ function UpgradePreviewPane({
 
         {preview?.isRecurring && (
           <p className="rounded-md bg-[var(--surface-subtle)] px-3 py-2 text-xs text-[var(--muted-foreground)]">
-            O Stripe abaterá automaticamente o crédito proporcional do período não utilizado e cobrará apenas a diferença.
+            O crédito proporcional do período não utilizado é abatido automaticamente — você paga apenas a diferença.
           </p>
         )}
 
@@ -288,19 +339,22 @@ function PreviewRow({
   );
 }
 
+/**
+ * Opção de pagamento. Sem badge do gateway (Stripe/Mercado Pago) de propósito: o cliente
+ * confundia com exigência de ter conta no provedor — "Mercado Pago" fazia parecer que só quem
+ * tem conta lá consegue pagar via Pix.
+ */
 function PaymentOption({
   href,
   icon,
   title,
   description,
-  badge,
   onClick
 }: {
   href: string;
   icon: React.ReactNode;
   title: string;
   description: string;
-  badge: string;
   onClick: () => void;
 }) {
   return (
@@ -309,22 +363,18 @@ function PaymentOption({
       onClick={onClick}
       className={cn(
         "group flex items-center gap-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4",
-        "transition-all hover:border-[var(--primary)] hover:shadow-[var(--shadow-sm)]"
+        "transition-all hover:border-[var(--primary)] hover:bg-[var(--surface-subtle)] hover:shadow-[var(--shadow-sm)]",
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
       )}
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--surface-subtle)]">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary)]">
         {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold leading-snug">{title}</p>
-        <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">{description}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="rounded-full bg-[var(--surface-subtle)] px-2 py-0.5 text-xs font-semibold text-[var(--muted-foreground)]">
-          {badge}
-        </span>
-        <ArrowRight className="h-4 w-4 text-[var(--muted-foreground)] transition-transform group-hover:translate-x-0.5" />
-      </div>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold leading-snug">{title}</span>
+        <span className="mt-0.5 block text-xs text-[var(--muted-foreground)]">{description}</span>
+      </span>
+      <ArrowRight className="h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--primary)]" />
     </Link>
   );
 }
@@ -334,11 +384,10 @@ function formatMoney(cents: number) {
 }
 
 /**
- * Campo de cupom exibido no modal antes da escolha de pagamento. Um único código
- * validado aqui é reaplicado nos dois métodos (Stripe via desconto dinâmico na
- * Checkout Session; Pix abatendo o valor antes de gerar o QR Code) — mas o valor
- * final sempre é recalculado no servidor ao criar o checkout, nunca confiando só
- * neste preview.
+ * Campo de cupom. Fica SEMPRE visível (antes era um link "Tem um cupom?" que quase ninguém
+ * abria) e acima das formas de pagamento, porque clicar numa forma navega para fora do modal.
+ * O desconto mostrado aqui é só prévia: o valor real é recalculado no servidor ao criar a
+ * cobrança, tanto no cartão quanto no Pix.
  */
 function CouponBox({
   planSlug,
@@ -349,44 +398,31 @@ function CouponBox({
   applied: AppliedCoupon | null;
   onApplied: (value: AppliedCoupon | null) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // O resumo acima já mostra o cupom e o valor abatido, então aqui basta a confirmação
+  // curta e a saída — repetir "Cupom X aplicado" em destaque duplicaria a mesma informação.
   if (applied) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--primary)]/30 bg-[var(--primary)]/5 px-3 py-2 text-sm">
-        <span className="flex items-center gap-1.5">
-          <Tag className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
-          Cupom <strong>{applied.code}</strong> aplicado: <strong className="text-[var(--primary)]">−{applied.discountLabel}</strong>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-[var(--primary)]">
+          <Check className="h-4 w-4 shrink-0" />
+          Desconto aplicado
         </span>
         <button
           type="button"
-          aria-label="Remover cupom"
-          className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+          className="shrink-0 text-xs font-medium text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
           onClick={() => {
             onApplied(null);
             setValue("");
-            setExpanded(false);
+            setError(null);
           }}
         >
-          <X className="h-3.5 w-3.5" />
+          Remover cupom
         </button>
       </div>
-    );
-  }
-
-  if (!expanded) {
-    return (
-      <button
-        type="button"
-        className="flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)] underline underline-offset-2 hover:text-[var(--foreground)]"
-        onClick={() => setExpanded(true)}
-      >
-        <Tag className="h-3.5 w-3.5" />
-        Tem um cupom de desconto?
-      </button>
     );
   }
 
@@ -405,9 +441,15 @@ function CouponBox({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div>
+      <label htmlFor="coupon-code" className="mb-1.5 flex items-center gap-1.5 text-sm font-medium">
+        <Tag className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+        Cupom de desconto
+        <span className="font-normal text-[var(--muted-foreground)]">(opcional)</span>
+      </label>
       <div className="flex gap-2">
         <input
+          id="coupon-code"
           value={value}
           onChange={(e) => {
             setValue(e.target.value.toUpperCase());
@@ -419,16 +461,20 @@ function CouponBox({
               apply();
             }
           }}
-          placeholder="CÓDIGO DO CUPOM"
+          placeholder="Digite seu código"
           maxLength={40}
-          autoFocus
-          className="h-9 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm uppercase tracking-wide outline-none focus:border-[var(--primary)]"
+          autoComplete="off"
+          className={cn(
+            "h-10 flex-1 rounded-md border bg-[var(--surface)] px-3 text-sm uppercase tracking-wide outline-none transition-colors",
+            "placeholder:normal-case placeholder:tracking-normal placeholder:text-[var(--muted-foreground)]",
+            error ? "border-[var(--destructive)]" : "border-[var(--border)] focus:border-[var(--primary)]"
+          )}
         />
-        <Button type="button" size="sm" variant="outline" disabled={pending || !value.trim()} onClick={apply}>
+        <Button type="button" variant="outline" disabled={pending || !value.trim()} onClick={apply}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
         </Button>
       </div>
-      {error && <p className="text-xs text-[var(--danger-soft-foreground)]">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-medium text-[var(--destructive)]">{error}</p>}
     </div>
   );
 }

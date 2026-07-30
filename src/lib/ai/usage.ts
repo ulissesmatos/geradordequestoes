@@ -1,5 +1,6 @@
 import { AiUsageEventStatus, AiUsageEventType, Role, TrialUsageKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { stripNullBytesNullable } from "@/lib/sanitize";
 import { getActiveSubscription } from "@/lib/subscriptions";
 
 /**
@@ -21,8 +22,10 @@ export async function recordAiUsageEvent(input: {
       type: input.type,
       status: input.status ?? AiUsageEventStatus.SUCCESS,
       model: input.model,
-      prompt: input.prompt?.slice(0, 5000),
-      errorMessage: input.errorMessage?.slice(0, 2000)
+      // O prompt carrega o material de referência (vindo de PDF) e a resposta do modelo,
+      // então é rota comum de byte NUL, que o Postgres rejeita em coluna text.
+      prompt: stripNullBytesNullable(input.prompt)?.slice(0, 5000),
+      errorMessage: stripNullBytesNullable(input.errorMessage)?.slice(0, 2000)
     }
   });
 }

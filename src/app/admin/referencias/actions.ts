@@ -7,6 +7,7 @@ import { logAdminAction } from "@/lib/audit";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { ingestReferenceDocument } from "@/lib/reference";
+import { cleanExtractedText } from "@/lib/sanitize";
 import { isPlausibleSubjectName, matchByName, resolveSubjectFromHint } from "@/lib/taxonomy";
 import { slugify } from "@/lib/utils";
 
@@ -17,7 +18,9 @@ async function extractPdfText(file: File): Promise<string> {
     const pdf = await getDocumentProxy(buffer);
     const { text } = await extractText(pdf, { mergePages: true });
     const merged = Array.isArray(text) ? text.join("\n") : text;
-    return merged.trim();
+    // Limpa NUL/controles na entrada: esse texto vira trechos indexados e depois
+    // contexto de prompt, então um byte inválido aqui contamina tudo a jusante.
+    return cleanExtractedText(merged).trim();
   } catch {
     return "";
   }

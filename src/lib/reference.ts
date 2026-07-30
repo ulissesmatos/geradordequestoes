@@ -1,5 +1,6 @@
 import { Prisma, type QuestionAnswer, type ReferenceKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { cleanExtractedText } from "@/lib/sanitize";
 
 // Alvo maior que o "padrão de livro" de propósito: textos de apoio do Cebraspe (situação
 // hipotética, texto de leitura) costumam ter 800-1500 caracteres — um chunk pequeno demais
@@ -36,7 +37,10 @@ function widenQueryToOr(query: string): string {
 
 /** Quebra um texto longo em trechos (~1000 chars) com leve sobreposição, respeitando parágrafos. */
 export function chunkText(raw: string): string[] {
-  const text = (raw ?? "").replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  // cleanExtractedText aqui e não só em quem chama: o material entra tanto por PDF quanto por
+  // texto COLADO no admin, e byte de controle em qualquer um dos dois derruba o insert dos
+  // trechos no Postgres (erro 22021) e contamina todo prompt que use este material depois.
+  const text = cleanExtractedText(raw ?? "").replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!text) return [];
   const paragraphs = text.split(/\n\n+/);
   const chunks: string[] = [];

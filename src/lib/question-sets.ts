@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { generateQuestions, type ReferenceVariantSource } from "@/lib/ai/generateQuestions";
 import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { formatReferenceContext, getReferenceContext, searchReferenceQuestions } from "@/lib/reference";
+import { deepStripNullBytes, stripNullBytes } from "@/lib/sanitize";
 
 export async function generateAndSaveQuestionSet(input: {
   user: Pick<User, "id" | "role">;
@@ -100,8 +101,11 @@ export async function generateAndSaveQuestionSet(input: {
 
   const title = input.title || buildQuestionSetTitle(input.mode, subject.name, topic.name);
 
+  // deepStripNullBytes cobre TODO o payload (título, prompt, enunciados, textos de apoio,
+  // justificativas e alternativas). Postgres rejeita NUL em coluna text e derruba o insert
+  // inteiro; o byte chega da resposta do modelo ou ecoado do material de referência (PDF).
   const questionSet = await prisma.questionSet.create({
-    data: {
+    data: deepStripNullBytes({
       userId: input.user.id,
       subjectId: input.subjectId,
       topicId: input.topicId,
@@ -145,7 +149,7 @@ export async function generateAndSaveQuestionSet(input: {
           };
         })
       }
-    },
+    }),
     include: { questions: { select: { id: true } } }
   });
 
@@ -157,7 +161,7 @@ export async function generateAndSaveQuestionSet(input: {
       difficulty: input.difficulty,
       quantity: generated.questions.length,
       model: generated.model,
-      prompt: generated.prompt,
+      prompt: stripNullBytes(generated.prompt),
       status: input.user.role === "ADMIN" ? "SUCCESS" : "USER_SUCCESS"
     }
   });
@@ -165,7 +169,7 @@ export async function generateAndSaveQuestionSet(input: {
     user: input.user,
     type: AiUsageEventType.QUESTION_GENERATION,
     model: generated.model,
-    prompt: generated.prompt
+    prompt: stripNullBytes(generated.prompt)
   });
 
   return Object.assign(questionSet, {

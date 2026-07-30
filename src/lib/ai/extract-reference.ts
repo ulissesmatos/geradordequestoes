@@ -1,4 +1,5 @@
 import { AiProvider } from "@prisma/client";
+import { stripNullBytes } from "@/lib/sanitize";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
@@ -77,7 +78,8 @@ function normalizeAnswer(raw: string | null | undefined): { answer: "CERTO" | "E
 }
 
 function cleanText(value: string | null | undefined): string | null {
-  const text = (value ?? "").trim();
+  // stripNullBytes antes de tudo: este texto vai direto para colunas text do Postgres.
+  const text = stripNullBytes(value ?? "").trim();
   if (!text || text.toLowerCase() === "null") return null;
   return text;
 }

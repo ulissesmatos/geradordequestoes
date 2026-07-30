@@ -4,6 +4,7 @@ import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
+import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { parseAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -57,7 +58,8 @@ export async function POST(request: Request) {
               name: attachment.name,
               mimeType: attachment.mimeType,
               size: attachment.size,
-              extractedText: attachment.extractedText
+              // Defensivo: o valor chega do cliente, então não confiamos na limpeza da origem.
+              extractedText: stripNullBytesNullable(attachment.extractedText)
             }))
           });
         }
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
           data: {
             sessionId: session.id,
             role: AiChatRole.ASSISTANT,
-            content: turn.message,
+            content: stripNullBytes(turn.message),
             questionSetId: turn.questionSetId,
             studyMaterialId: turn.studyMaterialId,
             metadata
