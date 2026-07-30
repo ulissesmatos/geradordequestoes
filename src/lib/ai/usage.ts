@@ -1,7 +1,8 @@
-import { AiUsageEventStatus, AiUsageEventType, Role, TrialUsageKind } from "@prisma/client";
+import { AiUsageEventStatus, AiUsageEventType, Role, TrialUsageKind, UsageKind, UsageMeter } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { stripNullBytesNullable } from "@/lib/sanitize";
 import { getActiveSubscription } from "@/lib/subscriptions";
+import { refundUsage, reserveUsage } from "@/lib/usage/ledger";
 
 /**
  * Registra UMA chamada de IA no log bruto (AiUsageEvent). Continua alimentando /admin/logs-ia e
@@ -66,4 +67,52 @@ export async function chargeTrialUsage(input: {
 export async function refundTrialUsage(eventId: string | null) {
   if (!eventId) return;
   await prisma.trialUsageEvent.delete({ where: { id: eventId } }).catch(() => undefined);
+}
+
+export type AiActionCharge = {
+  /** Livro-caixa legado do trial — some quando o medidor novo assumir. */
+  trialEventId: string | null;
+  /** Livro-caixa novo, medidor CHAT. */
+  ledgerId: string | null;
+};
+
+/**
+ * Cobra UMA ação de IA que não é geração de questões: mensagem de chat, material novo,
+ * aprofundar seção.
+ *
+ * Escreve nos DOIS livros-caixa de propósito durante a transição: o antigo continua sendo
+ * quem bloqueia enquanto `usageEnforcementEnabled` estiver desligado, e o novo já mede para
+ * dar base de calibragem. Quando o enforcement virar, o antigo vira só histórico.
+ *
+ * O medidor usado é CHAT, nunca QUESTIONS. É isso que permite ao funil de geração cobrar
+ * separadamente sem cobrar a mesma mensagem duas vezes — o bug que existe hoje com
+ * AiUsageEvent (ver assertCanGenerateWithAi).
+ */
+export async function chargeAiAction(input: {
+  user: { id: string; role?: Role };
+  kind: TrialUsageKind;
+  ledgerKind: UsageKind;
+}): Promise<AiActionCharge> {
+  const trialEventId = await chargeTrialUsage({ user: input.user, kind: input.kind });
+  try {
+    const ledgerId = await reserveUsage({
+      user: input.user,
+      meter: UsageMeter.CHAT,
+      kind: input.ledgerKind,
+      units: 1
+    });
+    return { trialEventId, ledgerId };
+  } catch (error) {
+    // Recusado pela cota nova: desfaz a cobrança do livro antigo para o usuário não perder
+    // crédito por uma ação que nunca aconteceu.
+    await refundTrialUsage(trialEventId);
+    throw error;
+  }
+}
+
+/** Estorna a ação nos dois livros. Best-effort, nunca lança. */
+export async function refundAiAction(charge: AiActionCharge | null) {
+  if (!charge) return;
+  await refundTrialUsage(charge.trialEventId);
+  await refundUsage(charge.ledgerId);
 }

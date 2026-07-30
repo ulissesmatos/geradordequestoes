@@ -282,6 +282,70 @@ export async function settleUsage(ledgerId: string | null, actualUnits: number):
     .catch(() => undefined);
 }
 
+/** Motivo do corte, para a mensagem ao usuário não culpar o limite errado. */
+export type QuantityCapReason = "PLANO_GRATUITO" | "TAMANHO_DO_BLOCO" | "COTA_DIARIA" | "COTA_MENSAL";
+
+export type GenerationAllowance = {
+  /** Maior bloco que este usuário pode gerar agora, já considerando cota e teto. null = sem teto. */
+  maxPerBlock: number | null;
+  reason: QuantityCapReason | null;
+  /** true quando não sobrou cota nem para um bloco mínimo — recusar é melhor que gerar um toco. */
+  exhausted: boolean;
+  limits: ResolvedLimits;
+};
+
+/** Abaixo disso um bloco não vale a pena: recusar com convite é melhor que entregar 2 questões. */
+const MIN_USEFUL_BLOCK = 3;
+
+/**
+ * Quanto o usuário pode gerar AGORA, e por que está limitado.
+ *
+ * Substitui o antigo `getQuestionQuantityCap`, que só conhecia o teto do trial e por isso
+ * fazia toda mensagem de corte dizer "plano gratuito" — o que vira mentira para o assinante
+ * que esbarrou na rajada diária.
+ */
+export async function resolveGenerationAllowance(
+  user: { id: string; role?: Role },
+  limits?: ResolvedLimits
+): Promise<GenerationAllowance> {
+  const resolved = limits ?? (await resolveLimits(user));
+  if (resolved.kind === "ADMIN") {
+    return { maxPerBlock: null, reason: null, exhausted: false, limits: resolved };
+  }
+
+  const blockCap = resolved.maxQuestionsPerGeneration;
+  const candidates: Array<{ value: number; reason: QuantityCapReason }> = [];
+  if (blockCap !== null) {
+    candidates.push({ value: blockCap, reason: resolved.kind === "TRIAL" ? "PLANO_GRATUITO" : "TAMANHO_DO_BLOCO" });
+  }
+
+  // O saldo só entra na conta quando ele de fato bloqueia. Em modo sombra o teto do bloco
+  // continua valendo (é regra de plano, não de consumo), mas a cota não corta nada.
+  if (resolved.enforcement) {
+    const status = await getMeterStatus(user, UsageMeter.QUESTIONS, resolved);
+    const remainingMonth =
+      status.limits.perMonth === null ? null : Math.max(0, status.limits.perMonth - status.usedMonth);
+    const remainingDay = status.limits.perDay === null ? null : Math.max(0, status.limits.perDay - status.usedToday);
+    if (remainingDay !== null) candidates.push({ value: remainingDay, reason: "COTA_DIARIA" });
+    if (remainingMonth !== null) candidates.push({ value: remainingMonth, reason: "COTA_MENSAL" });
+  }
+
+  if (candidates.length === 0) {
+    return { maxPerBlock: null, reason: null, exhausted: false, limits: resolved };
+  }
+
+  const tightest = candidates.reduce((a, b) => (b.value < a.value ? b : a));
+  return {
+    maxPerBlock: tightest.value,
+    reason: tightest.reason,
+    // Só considera esgotado quando o aperto vem de COTA — teto de bloco pequeno é regra do
+    // plano, não falta de saldo, e nunca deve recusar a geração.
+    exhausted:
+      tightest.value < MIN_USEFUL_BLOCK && (tightest.reason === "COTA_DIARIA" || tightest.reason === "COTA_MENSAL"),
+    limits: resolved
+  };
+}
+
 /**
  * Devolve a reserva quando a ação não entregou resultado.
  *

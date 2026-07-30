@@ -1,10 +1,10 @@
 "use server";
 
-import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind } from "@prisma/client";
+import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind, UsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { expandStudyMaterialSection } from "@/lib/ai/generateStudyMaterial";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
-import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
+import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import type { CapabilityKey } from "@/lib/capabilities";
 import { getEntitlements, upgradeRequired } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
@@ -84,11 +84,13 @@ export async function expandMaterialSectionAction(input: {
     return { ok: false, error: "Seção não encontrada. Recarregue a página e tente novamente." };
   }
 
-  // Cota do trial cobrada na entrada e estornada nos caminhos que não entregam conteúdo.
-  let trialChargeId: string | null = null;
+  // Cobrado na entrada e estornado nos caminhos que não entregam conteúdo.
+  let charge: AiActionCharge | null = null;
   try {
     await assertCanGenerateWithAi(user);
-    trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.MATERIAL_EXPAND });
+    // Vai para o medidor CHAT: aprofundar é uma ação de IA como uma mensagem, não geração
+    // de questões. O `kind` preserva a distinção para auditoria.
+    charge = await chargeAiAction({ user, kind: TrialUsageKind.MATERIAL_EXPAND, ledgerKind: UsageKind.MATERIAL_EXPAND });
 
     const generated = await expandStudyMaterialSection({
       materialTitle: material.title,
@@ -120,7 +122,7 @@ export async function expandMaterialSectionAction(input: {
     }
 
     if (newContent === null) {
-      await refundTrialUsage(trialChargeId);
+      await refundAiAction(charge);
       await recordAiUsageEvent({
         user,
         type: AiUsageEventType.CHAT_RESPONSE,
@@ -142,7 +144,7 @@ export async function expandMaterialSectionAction(input: {
     revalidatePath(`/materiais/${input.materialId}`);
     return { ok: true, content: newContent };
   } catch (error) {
-    await refundTrialUsage(trialChargeId);
+    await refundAiAction(charge);
     await recordAiUsageEvent({
       user,
       type: AiUsageEventType.CHAT_RESPONSE,

@@ -6,6 +6,8 @@ import {
   QuestionSetMode,
   QuestionStatus,
   SourceType,
+  UsageKind,
+  UsageMeter,
   type User
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +15,7 @@ import { generateQuestions, type ReferenceVariantSource } from "@/lib/ai/generat
 import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { formatReferenceContext, getReferenceContext, searchReferenceQuestions } from "@/lib/reference";
 import { deepStripNullBytes, stripNullBytes } from "@/lib/sanitize";
-import { getQuestionQuantityCap } from "@/lib/subscriptions";
+import { refundUsage, reserveUsage, resolveGenerationAllowance, settleUsage } from "@/lib/usage/ledger";
 
 export async function generateAndSaveQuestionSet(input: {
   user: Pick<User, "id" | "role">;
@@ -40,21 +42,40 @@ export async function generateAndSaveQuestionSet(input: {
   /** Repassado a generateQuestions para a tela mostrar o que está acontecendo de fato. */
   onProgress?: (label: string) => void;
 }) {
-  const [subject, topic, quantityCap] = await Promise.all([
+  const [subject, topic, allowance] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: input.subjectId } }),
     prisma.topic.findUniqueOrThrow({ where: { id: input.topicId } }),
-    getQuestionQuantityCap(input.user)
+    resolveGenerationAllowance(input.user)
   ]);
 
-  // Teto do trial aplicado AQUI, no funil único de geração: chat, formulário e revisão dos
-  // erros passam todos por esta função, então nenhum caminho novo escapa do limite por
-  // esquecimento. Corta em silêncio para o gerador; quem chamou recebe `trialQuantityCap`
-  // e é quem avisa o usuário.
+  /*
+   * MEDIÇÃO DE QUESTÕES ACONTECE AQUI, e só aqui.
+   *
+   * Esta função é o funil único: chat, formulário e revisão dos erros passam todos por ela,
+   * então nenhum caminho novo escapa do limite por esquecimento — a mesma razão pela qual o
+   * teto de tamanho de bloco também mora aqui.
+   *
+   * NÃO mova a cobrança para os pontos de entrada e NÃO cobre também lá. Foi exatamente esse
+   * o bug com AiUsageEvent: o chat contava uma unidade pela resposta e a geração contava
+   * outra, então "gere 15 questões" consumia DUAS das 20 do plano Essencial. Só é seguro
+   * medir nos dois lugares porque são medidores diferentes: a mensagem debita CHAT no entry
+   * point, o bloco debita QUESTIONS aqui.
+   */
+  if (allowance.exhausted) {
+    throw new Error(
+      allowance.reason === "COTA_DIARIA"
+        ? "Sua cota de questões de hoje acabou. Amanhã libera de novo, ou faça upgrade para gerar mais."
+        : "Sua cota de questões deste ciclo acabou. Faça upgrade de plano para continuar gerando."
+    );
+  }
+
   const requestedQuantity = input.quantity;
   const quantity =
-    quantityCap.max !== null ? Math.min(requestedQuantity, quantityCap.max) : requestedQuantity;
-  const trialQuantityCap =
-    quantity < requestedQuantity ? { requested: requestedQuantity, applied: quantity } : null;
+    allowance.maxPerBlock !== null ? Math.min(requestedQuantity, allowance.maxPerBlock) : requestedQuantity;
+  const quantityCap =
+    quantity < requestedQuantity
+      ? { requested: requestedQuantity, applied: quantity, reason: allowance.reason }
+      : null;
 
   const query = [input.prompt, topic.name, subject.name].filter(Boolean).join(" ");
 
@@ -104,28 +125,110 @@ export async function generateAndSaveQuestionSet(input: {
     );
   }
 
-  const generated = await generateQuestions({
-    subject: subject.name,
-    topic: topic.name,
-    difficulty: input.difficulty,
-    quantity: variantSources?.length ?? quantity,
-    format: input.format,
-    alternativesCount: input.alternativesCount,
-    mode: input.mode,
-    prompt: input.prompt,
-    referenceContext: variantSources ? undefined : referenceBlock || undefined,
-    referenceQuestions: variantSources,
-    context: input.context?.slice(0, 12000),
-    modelOverride: input.modelOverride,
-    onProgress: input.onProgress
+  // Reserva feita AQUI, e não lá em cima: as buscas de referência já rodaram, então o número
+  // reservado é o que vai de fato ao modelo (variação fiel pode ter achado menos fontes que o
+  // pedido), e uma falha de busca não deixa reserva pendurada. Da reserva até o `settle`
+  // existem exatamente duas operações que podem falhar, e as duas estão no try abaixo.
+  const plannedQuantity = variantSources?.length ?? quantity;
+  const ledgerId = await reserveUsage({
+    user: input.user,
+    meter: UsageMeter.QUESTIONS,
+    kind: UsageKind.QUESTION_GENERATION,
+    units: plannedQuantity,
+    limits: allowance.limits
   });
 
+  let generated: Awaited<ReturnType<typeof generateQuestions>>;
+  let questionSet: Awaited<ReturnType<typeof createQuestionSetRow>>;
+  try {
+    generated = await generateQuestions({
+      subject: subject.name,
+      topic: topic.name,
+      difficulty: input.difficulty,
+      quantity: plannedQuantity,
+      format: input.format,
+      alternativesCount: input.alternativesCount,
+      mode: input.mode,
+      prompt: input.prompt,
+      referenceContext: variantSources ? undefined : referenceBlock || undefined,
+      referenceQuestions: variantSources,
+      context: input.context?.slice(0, 12000),
+      modelOverride: input.modelOverride,
+      onProgress: input.onProgress
+    });
+
+    questionSet = await createQuestionSetRow({ input, subject, topic, generated, variantSources });
+  } catch (error) {
+    // Não entregou bloco: devolve a reserva inteira.
+    await refundUsage(ledgerId);
+    throw error;
+  }
+
+  // Acerta pelo que o modelo realmente devolveu — ele às vezes traz um item a menos, e cobrar
+  // o pedido em vez do entregue corroeria a cota do aluno sem ele entender por quê.
+  await settleUsage(ledgerId, generated.questions.length);
+
+  await prisma.aiGenerationLog.create({
+    data: {
+      adminId: input.user.id,
+      subjectId: input.subjectId,
+      topicId: input.topicId,
+      difficulty: input.difficulty,
+      quantity: generated.questions.length,
+      model: generated.model,
+      prompt: stripNullBytes(generated.prompt),
+      status: input.user.role === "ADMIN" ? "SUCCESS" : "USER_SUCCESS"
+    }
+  });
+  await recordAiUsageEvent({
+    user: input.user,
+    type: AiUsageEventType.QUESTION_GENERATION,
+    model: generated.model,
+    prompt: stripNullBytes(generated.prompt)
+  });
+
+  return Object.assign(questionSet, {
+    referenceUsed: usedStructuredQuestions,
+    closeVariantCount: variantSources?.length ?? 0,
+    // true quando o usuário pediu variação fiel mas não havia questões reais cadastradas
+    // para essa matéria/assunto — o set foi gerado no modo padrão (âncora de estilo).
+    closeVariantFallback,
+    // Preenchido quando o pedido foi cortado — quem chamou usa `reason` para explicar o
+    // motivo CERTO ao usuário (teto do plano, rajada do dia ou cota do ciclo).
+    quantityCap
+  });
+}
+
+/**
+ * Grava o bloco e suas questões. Extraído só para manter a janela reserva→acerto legível no
+ * corpo principal; não tem lógica de negócio própria.
+ *
+ * deepStripNullBytes cobre TODO o payload (título, prompt, enunciados, textos de apoio,
+ * justificativas e alternativas): o Postgres rejeita NUL em coluna text e derruba o insert
+ * inteiro, e o byte chega da resposta do modelo ou ecoado do material de referência (PDF).
+ */
+async function createQuestionSetRow(args: {
+  input: {
+    user: Pick<User, "id" | "role">;
+    subjectId: string;
+    topicId: string;
+    chatSessionId?: string;
+    title?: string;
+    prompt: string;
+    mode: QuestionSetMode;
+    format: QuestionFormat;
+    alternativesCount?: number;
+    difficulty: Difficulty;
+  };
+  subject: { name: string };
+  topic: { name: string };
+  generated: Awaited<ReturnType<typeof generateQuestions>>;
+  variantSources: ReferenceVariantSource[] | undefined;
+}) {
+  const { input, subject, topic, generated, variantSources } = args;
   const title = input.title || buildQuestionSetTitle(input.mode, subject.name, topic.name);
 
-  // deepStripNullBytes cobre TODO o payload (título, prompt, enunciados, textos de apoio,
-  // justificativas e alternativas). Postgres rejeita NUL em coluna text e derruba o insert
-  // inteiro; o byte chega da resposta do modelo ou ecoado do material de referência (PDF).
-  const questionSet = await prisma.questionSet.create({
+  return prisma.questionSet.create({
     data: deepStripNullBytes({
       userId: input.user.id,
       subjectId: input.subjectId,
@@ -172,36 +275,6 @@ export async function generateAndSaveQuestionSet(input: {
       }
     }),
     include: { questions: { select: { id: true } } }
-  });
-
-  await prisma.aiGenerationLog.create({
-    data: {
-      adminId: input.user.id,
-      subjectId: input.subjectId,
-      topicId: input.topicId,
-      difficulty: input.difficulty,
-      quantity: generated.questions.length,
-      model: generated.model,
-      prompt: stripNullBytes(generated.prompt),
-      status: input.user.role === "ADMIN" ? "SUCCESS" : "USER_SUCCESS"
-    }
-  });
-  await recordAiUsageEvent({
-    user: input.user,
-    type: AiUsageEventType.QUESTION_GENERATION,
-    model: generated.model,
-    prompt: stripNullBytes(generated.prompt)
-  });
-
-  return Object.assign(questionSet, {
-    referenceUsed: usedStructuredQuestions,
-    closeVariantCount: variantSources?.length ?? 0,
-    // true quando o usuário pediu variação fiel mas não havia questões reais cadastradas
-    // para essa matéria/assunto — o set foi gerado no modo padrão (âncora de estilo).
-    closeVariantFallback,
-    // Preenchido quando o pedido foi cortado pelo teto do trial — quem chamou usa para
-    // explicar ao usuário por que vieram menos questões do que ele pediu.
-    trialQuantityCap
   });
 }
 

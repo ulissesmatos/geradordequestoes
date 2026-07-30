@@ -18,13 +18,30 @@ type SubjectWithTopics = {
 
 const QUANTITY_OPTIONS = [3, 5, 10, 15];
 
+/** Texto do corte na voz do motivo certo — culpar o "plano gratuito" mente para o assinante. */
+function capReasonText(cap: { applied: number; reason: string | null }) {
+  switch (cap.reason) {
+    case "COTA_DIARIA":
+      return `sua cota de questões de hoje só permitia ${cap.applied}`;
+    case "COTA_MENSAL":
+      return `sua cota de questões deste ciclo só permitia ${cap.applied}`;
+    case "TAMANHO_DO_BLOCO":
+      return `seu plano gera até ${cap.applied} questões por bloco`;
+    default:
+      return `o plano gratuito gera até ${cap.applied} por bloco`;
+  }
+}
+
 export function UserGenerateForm({
   subjects,
-  maxQuantity
+  maxQuantity,
+  capReason
 }: {
   subjects: SubjectWithTopics[];
-  /** Teto de questões por bloco do plano gratuito; null = sem teto. */
+  /** Maior bloco que este usuário pode gerar agora; null = sem teto. */
   maxQuantity?: number | null;
+  /** Por que está limitado — muda o texto e o destino do convite. */
+  capReason?: string | null;
 }) {
   const [state, formAction] = useActionState(generateUserQuestionsAction, null);
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
@@ -52,11 +69,17 @@ export function UserGenerateForm({
           {maxQuantity ? (
             <>
               {" "}
-              No plano gratuito cada bloco sai com até <strong>{maxQuantity} questões</strong> —{" "}
-              <Link href="/assinatura" className="underline">
-                assine um plano
-              </Link>{" "}
-              para gerar blocos maiores.
+              Agora você pode gerar blocos de até <strong>{maxQuantity} questões</strong> —{" "}
+              {capReason === "COTA_DIARIA" || capReason === "COTA_MENSAL" ? (
+                "é o que resta da sua cota."
+              ) : (
+                <>
+                  <Link href="/assinatura" className="underline">
+                    {capReason === "TAMANHO_DO_BLOCO" ? "faça upgrade" : "assine um plano"}
+                  </Link>{" "}
+                  para gerar blocos maiores.
+                </>
+              )}
             </>
           ) : null}
         </CardDescription>
@@ -117,14 +140,20 @@ export function UserGenerateForm({
             Basear-se em provas reais (variações bem próximas das questões do acervo)
           </label>
           {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
-          {state?.ok && state.trialQuantityCap && (
+          {state?.ok && state.quantityCap && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-              Você pediu {state.trialQuantityCap.requested} questões, mas o plano gratuito gera até{" "}
-              {state.trialQuantityCap.applied} por bloco — foi esse o tamanho gerado.{" "}
-              <Link href="/assinatura" className="font-semibold underline">
-                Assine um plano
-              </Link>{" "}
-              para gerar blocos maiores.
+              Você pediu {state.quantityCap.requested} questões, mas {capReasonText(state.quantityCap)} — foi esse o
+              tamanho gerado.{" "}
+              {state.quantityCap.reason === "COTA_DIARIA" ? (
+                "A cota diária renova amanhã."
+              ) : (
+                <>
+                  <Link href="/assinatura" className="font-semibold underline">
+                    {state.quantityCap.reason === "PLANO_GRATUITO" ? "Assine um plano" : "Faça upgrade"}
+                  </Link>{" "}
+                  para gerar blocos maiores.
+                </>
+              )}
             </p>
           )}
           {state?.ok && state.closeVariantFallback && (

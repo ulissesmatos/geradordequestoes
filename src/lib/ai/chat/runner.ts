@@ -6,7 +6,7 @@ import { executeToolCall } from "@/lib/ai/chat/executors";
 import { describeToolStart } from "@/lib/ai/chat/progress";
 import { completeChat, streamChat, type CompletionResult, type NeutralMessage } from "@/lib/ai/chat/provider";
 import { chatTools, getNeutralToolSpecs } from "@/lib/ai/chat/tools";
-import { getQuestionQuantityCap } from "@/lib/subscriptions";
+import { resolveGenerationAllowance } from "@/lib/usage/ledger";
 
 const MAX_TOOL_ITERATIONS = 3;
 
@@ -86,7 +86,7 @@ export async function runChatTurn(input: {
   // Teto do plano gratuito resolvido uma vez por turno e repassado: o prompt precisa dele para
   // não prometer 20 questões, e o texto de progresso para não anunciar mais do que vai chegar.
   // O corte de verdade acontece na geração (generateAndSaveQuestionSet).
-  const { max: quantityCap } = await getQuestionQuantityCap(input.user);
+  const { maxPerBlock: quantityCap } = await resolveGenerationAllowance(input.user);
   const messages: NeutralMessage[] = await buildTurnMessages({
     sessionId: input.sessionId,
     user: input.user,
@@ -217,7 +217,7 @@ export async function streamChatTurn(input: {
   // Teto do plano gratuito resolvido uma vez por turno e repassado: o prompt precisa dele para
   // não prometer 20 questões, e o texto de progresso para não anunciar mais do que vai chegar.
   // O corte de verdade acontece na geração (generateAndSaveQuestionSet).
-  const { max: quantityCap } = await getQuestionQuantityCap(input.user);
+  const { maxPerBlock: quantityCap } = await resolveGenerationAllowance(input.user);
   const messages: NeutralMessage[] = await buildTurnMessages({
     sessionId: input.sessionId,
     user: input.user,

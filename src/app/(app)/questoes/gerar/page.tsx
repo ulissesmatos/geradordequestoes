@@ -1,17 +1,18 @@
 import { UserGenerateForm } from "@/components/user-generate-form";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { getQuestionQuantityCap, requireActiveSubscription } from "@/lib/subscriptions";
+import { requireActiveSubscription } from "@/lib/subscriptions";
+import { resolveGenerationAllowance } from "@/lib/usage/ledger";
 
 export default async function UserGenerateQuestionsPage() {
   const user = await requireUser();
   await requireActiveSubscription(user);
-  const [subjects, quantityCap] = await Promise.all([
+  const [subjects, allowance] = await Promise.all([
     prisma.subject.findMany({
       include: { topics: { orderBy: { name: "asc" } } },
       orderBy: { name: "asc" }
     }),
-    getQuestionQuantityCap(user)
+    resolveGenerationAllowance(user)
   ]);
 
   return (
@@ -22,7 +23,7 @@ export default async function UserGenerateQuestionsPage() {
           Crie um bloco personalizado para estudar Certo/Errado na hora.
         </p>
       </div>
-      <UserGenerateForm subjects={subjects} maxQuantity={quantityCap.max} />
+      <UserGenerateForm subjects={subjects} maxQuantity={allowance.maxPerBlock} capReason={allowance.reason} />
     </div>
   );
 }
