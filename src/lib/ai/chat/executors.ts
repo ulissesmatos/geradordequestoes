@@ -40,6 +40,8 @@ export async function executeToolCall(input: {
   userPrompt: string;
   name: string;
   argumentsJson: string;
+  /** Progresso em tempo real para a tela (ex.: a segunda geração do loop de reparo). */
+  onProgress?: (label: string) => void;
 }): Promise<ToolExecutionResult> {
   if (!isChatToolName(input.name)) {
     return errorResult(`Ferramenta desconhecida: ${input.name}.`);
@@ -55,7 +57,7 @@ export async function executeToolCall(input: {
   try {
     switch (input.name) {
       case "generate_questions":
-        return await runGenerateQuestions(input.user, input.sessionId, input.userPrompt, rawArgs);
+        return await runGenerateQuestions(input.user, input.sessionId, input.userPrompt, rawArgs, input.onProgress);
       case "generate_study_material":
         return await runGenerateStudyMaterial(input.user, input.sessionId, rawArgs);
       case "get_performance":
@@ -63,7 +65,7 @@ export async function executeToolCall(input: {
       case "get_study_history":
         return await runGetStudyHistory(input.user, rawArgs);
       case "generate_review_from_mistakes":
-        return await runGenerateReview(input.user, input.sessionId, input.userPrompt, rawArgs);
+        return await runGenerateReview(input.user, input.sessionId, input.userPrompt, rawArgs, input.onProgress);
       case "search_reference_material":
         return await runSearchReference(rawArgs);
       case "web_search":
@@ -92,7 +94,7 @@ function parseArgs<T extends z.ZodType>(schema: T, rawArgs: unknown): { ok: true
   return { ok: false, result: errorResult(`Argumentos inválidos (${issues}). Corrija e tente novamente.`) };
 }
 
-async function runGenerateQuestions(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown): Promise<ToolExecutionResult> {
+async function runGenerateQuestions(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown, onProgress?: (label: string) => void): Promise<ToolExecutionResult> {
   const parsed = parseArgs(chatTools.generate_questions.schema, rawArgs);
   if (!parsed.ok) return parsed.result;
   const args = parsed.args;
@@ -262,7 +264,7 @@ async function runGetStudyHistory(user: ToolUser, rawArgs: unknown): Promise<Too
   return { resultForModel: result.kind === "message" ? result.message : "Sem dados de histórico." };
 }
 
-async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown): Promise<ToolExecutionResult> {
+async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown, onProgress?: (label: string) => void): Promise<ToolExecutionResult> {
   const parsed = parseArgs(chatTools.generate_review_from_mistakes.schema, rawArgs);
   if (!parsed.ok) return parsed.result;
   const args = parsed.args;

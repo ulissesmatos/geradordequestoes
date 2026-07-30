@@ -36,6 +36,8 @@ export async function generateAndSaveQuestionSet(input: {
    * (âncora de estilo) — ver `closeVariantFallback` no retorno.
    */
   closeVariant?: boolean;
+  /** Repassado a generateQuestions para a tela mostrar o que está acontecendo de fato. */
+  onProgress?: (label: string) => void;
 }) {
   const [subject, topic] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: input.subjectId } }),
@@ -83,6 +85,12 @@ export async function generateAndSaveQuestionSet(input: {
         limit: 4
       });
   const referenceBlock = formatReferenceContext(hits);
+  // Informação real e útil: o aluno fica sabendo que o lote está ancorado em prova de verdade.
+  if (usedStructuredQuestions && hits.length > 0) {
+    input.onProgress?.(
+      `Usando ${hits.length} ${hits.length === 1 ? "questão real de prova" : "questões reais de prova"} como base…`
+    );
+  }
 
   const generated = await generateQuestions({
     subject: subject.name,
@@ -96,7 +104,8 @@ export async function generateAndSaveQuestionSet(input: {
     referenceContext: variantSources ? undefined : referenceBlock || undefined,
     referenceQuestions: variantSources,
     context: input.context?.slice(0, 12000),
-    modelOverride: input.modelOverride
+    modelOverride: input.modelOverride,
+    onProgress: input.onProgress
   });
 
   const title = input.title || buildQuestionSetTitle(input.mode, subject.name, topic.name);

@@ -75,7 +75,7 @@ export async function POST(request: Request) {
           prompt: prompt || "Analise o anexo enviado.",
           onEvent: (event) => {
             if (event.type === "delta") send("delta", { text: event.text });
-            else if (event.type === "tool_started") send("tool", { name: event.name });
+            else if (event.type === "tool_started") send("tool", { name: event.name, label: event.label });
           }
         });
 

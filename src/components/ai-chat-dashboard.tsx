@@ -90,12 +90,22 @@ function buildPlaceholders(subjectNames: string[] | undefined) {
 
 const loadingLabels = ["Pensando...", "Consultando...", "Preparando a resposta...", "Quase lá...", "Organizando as ideias...", "Só um momento...", "Analisando os detalhes...", "Processando a informação...", "Ajustando os parâmetros...", "Refletindo sobre a melhor resposta..."];
 
+/**
+ * Fallback: hoje o servidor envia a frase pronta (com matéria/assunto/termo de busca reais)
+ * no campo `label`. Este mapa cobre o caso de um cliente aberto durante um deploy, quando o
+ * backend antigo ainda manda só o nome. web_search e search_reference_material faltavam aqui
+ * e caíam no genérico "Trabalhando nisso…".
+ */
 const TOOL_LABELS: Record<string, string> = {
   generate_questions: "Gerando suas questões…",
   generate_review_from_mistakes: "Montando sua revisão…",
   generate_study_material: "Escrevendo o material…",
   get_performance: "Consultando seu desempenho…",
-  get_study_history: "Consultando seu histórico…"
+  get_study_history: "Consultando seu histórico…",
+  get_question_set_results: "Buscando o resultado do seu bloco…",
+  search_reference_material: "Consultando provas e materiais cadastrados…",
+  web_search: "Buscando informações atualizadas na web…",
+  ask_clarifying_question: "Preparando uma pergunta…"
 };
 
 export function AiChatDashboard({
@@ -137,6 +147,8 @@ export function AiChatDashboard({
   const [typedClarification, setTypedClarification] = useState<Clarification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
+  /** Instante em que o turno começou, para o contador de tempo decorrido. */
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamSessionId, setStreamSessionId] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(loadingLabels[0]);
@@ -203,6 +215,7 @@ export function AiChatDashboard({
     setPastedBlocks([]);
     setFileAttachments([]);
     setIsSubmitting(false);
+    setTurnStartedAt(null);
     setToolStatus(null);
     setStreamError(null);
     setStreamSessionId(null);
@@ -356,6 +369,7 @@ export function AiChatDashboard({
     setStreamError(null);
     setToolStatus(null);
     setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
+    setTurnStartedAt(Date.now());
     setIsSubmitting(true);
     setMessage("");
     setPastedBlocks([]);
@@ -400,9 +414,15 @@ export function AiChatDashboard({
               window.history.replaceState(null, "", `/ai?sessionId=${data.sessionId}`);
             }
           } else if (event === "tool") {
-            setToolStatus(TOOL_LABELS[String(data.name)] ?? "Trabalhando nisso…");
+            // O servidor manda a frase pronta com os argumentos reais da ferramenta
+            // ("Gerando 20 questões de Direito Constitucional…"). TOOL_LABELS só cobre
+            // versão antiga do backend, que não enviava label.
+            setToolStatus(
+              (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…"
+            );
           } else if (event === "delta") {
             setIsSubmitting(false);
+            setTurnStartedAt(null);
             setToolStatus(null);
             setTypedResponse((previous) => previous + String(data.text ?? ""));
           } else if (event === "done") {
@@ -412,11 +432,13 @@ export function AiChatDashboard({
             setTypedMessageId((data.messageId as string | null) ?? null);
             setTypedClarification((data.clarification as Clarification | null) ?? null);
             setIsSubmitting(false);
+            setTurnStartedAt(null);
             setToolStatus(null);
             router.refresh();
           } else if (event === "error") {
             setStreamError(String(data.error ?? "Erro ao enviar a mensagem."));
             setIsSubmitting(false);
+            setTurnStartedAt(null);
             setToolStatus(null);
           }
         }
@@ -424,6 +446,7 @@ export function AiChatDashboard({
     } catch (error) {
       setStreamError(error instanceof Error ? error.message : "Erro ao enviar a mensagem.");
       setIsSubmitting(false);
+      setTurnStartedAt(null);
       setToolStatus(null);
     }
   }
@@ -592,6 +615,7 @@ export function AiChatDashboard({
                   <BotAvatar />
                   <div className="flex max-w-[88%] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-[var(--shadow-sm)]">
                     <ShiningText text={toolStatus ?? loadingText} />
+                    {turnStartedAt !== null && <ElapsedTime startedAt={turnStartedAt} />}
                   </div>
                 </div>
               )}
@@ -824,6 +848,28 @@ function SessionList({
       ))}
     </div>
   );
+}
+
+/**
+ * Tempo decorrido do turno. Serve para o usuário distinguir "está trabalhando" de "travou" em
+ * geração longa (um lote de 20 questões sai de uma única chamada e pode levar bem mais de um
+ * minuto). Só aparece depois de DELAY_MS para não poluir resposta rápida.
+ *
+ * Não é barra de progresso de propósito: o modelo devolve o lote inteiro numa resposta só, então
+ * não existe percentual real para mostrar — e inventar um seria mentir para o usuário.
+ */
+function ElapsedTime({ startedAt }: { startedAt: number }) {
+  const DELAY_MS = 6000;
+  const [seconds, setSeconds] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
+
+  useEffect(() => {
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  if (seconds * 1000 < DELAY_MS) return null;
+  const label = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}min ${seconds % 60}s`;
+  return <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">{label}</span>;
 }
 
 function hoursUntil(iso: string | undefined) {

@@ -3,6 +3,7 @@ import { getAiSettings, providerLabel } from "@/lib/ai/settings";
 import { buildTurnMessages, maybeSummarizeSession } from "@/lib/ai/chat/context";
 import { withRetry } from "@/lib/ai/chat/errors";
 import { executeToolCall } from "@/lib/ai/chat/executors";
+import { describeToolStart } from "@/lib/ai/chat/progress";
 import { completeChat, streamChat, type CompletionResult, type NeutralMessage } from "@/lib/ai/chat/provider";
 import { chatTools, getNeutralToolSpecs } from "@/lib/ai/chat/tools";
 
@@ -15,7 +16,10 @@ export type ToolTraceEntry = {
   durationMs: number;
 };
 
-export type ChatTurnEvent = { type: "tool_started"; name: string } | { type: "delta"; text: string };
+export type ChatTurnEvent =
+  /** `label` e a frase pronta mostrada ao usuario, montada a partir dos argumentos REAIS da ferramenta. */
+  | { type: "tool_started"; name: string; label: string }
+  | { type: "delta"; text: string };
 
 export type ChatSource = { title: string; url: string };
 
@@ -113,7 +117,7 @@ export async function runChatTurn(input: {
     messages.push({ role: "assistant", content: result.assistantText, toolCalls: result.calls });
 
     for (const call of result.calls) {
-      input.onEvent?.({ type: "tool_started", name: call.name });
+      input.onEvent?.({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson) });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {
@@ -139,7 +143,9 @@ export async function runChatTurn(input: {
           sessionId: input.sessionId,
           userPrompt: input.prompt,
           name: call.name,
-          argumentsJson: call.argumentsJson
+          argumentsJson: call.argumentsJson,
+          // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label })
         });
         toolTrace.push({
           name: call.name,
@@ -238,7 +244,7 @@ export async function streamChatTurn(input: {
     messages.push({ role: "assistant", content: completion.assistantText, toolCalls: completion.calls });
 
     for (const call of completion.calls) {
-      input.onEvent({ type: "tool_started", name: call.name });
+      input.onEvent({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson) });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {
@@ -266,7 +272,9 @@ export async function streamChatTurn(input: {
           sessionId: input.sessionId,
           userPrompt: input.prompt,
           name: call.name,
-          argumentsJson: call.argumentsJson
+          argumentsJson: call.argumentsJson,
+          // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label })
         });
         toolTrace.push({
           name: call.name,

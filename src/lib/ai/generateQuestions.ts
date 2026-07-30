@@ -358,6 +358,11 @@ export async function generateQuestions(input: {
   referenceQuestions?: ReferenceVariantSource[];
   /** Modelo alternativo (mesma API key do provedor configurado). Vazio = modelo padrão. */
   modelOverride?: string;
+  /**
+   * Emissor de progresso para a tela. Existe porque o loop de reparo faz uma SEGUNDA geração
+   * completa: sem avisar, a espera dobra e parece que a tela travou.
+   */
+  onProgress?: (label: string) => void;
 }) {
   const baseSettings = await getAiSettings();
   if (!baseSettings.apiKey) {
@@ -389,6 +394,7 @@ export async function generateQuestions(input: {
   const checkOptions = { languageSubject: isLanguageSubject(input.subject, input.topic) };
   const orphans = findOrphanQuestions(groups, checkOptions);
   if (orphans.length > 0) {
+    input.onProgress?.("Revisando as questões geradas…");
     const repaired = await runProvider(`${prompt}\n\n${buildSelfContainmentRepairInstruction(orphans)}`);
     groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
   }
