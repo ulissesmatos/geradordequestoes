@@ -1,5 +1,6 @@
 import { Difficulty, Prisma, QuestionFormat, QuestionStatus, Role } from "@prisma/client";
 import { getAppSettings } from "@/lib/app-settings";
+import { startOfDayInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getActiveSubscription } from "@/lib/subscriptions";
 
@@ -117,15 +118,13 @@ export type TrialBankStatus = {
 /**
  * Respostas de HOJE em questões da plataforma (exclui simulados, que têm fluxo
  * próprio, e questões criadas pelo próprio usuário — os sets de IA dele já são
- * limitados pelo trial de geração). Meia-noite do servidor "reseta" sozinha,
- * mesmo corte do limite diário de IA.
+ * limitados pelo trial de geração). Vira à meia-noite de Brasília, mesmo corte
+ * do limite diário de IA (ver src/lib/dates.ts).
  */
 function bankAnswersTodayWhere(userId: string): Prisma.QuestionAttemptWhereInput {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
   return {
     userId,
-    createdAt: { gte: todayStart },
+    createdAt: { gte: startOfDayInBrazil() },
     mockExamSessionId: null,
     question: { OR: [{ createdById: null }, { createdById: { not: userId } }] }
   };

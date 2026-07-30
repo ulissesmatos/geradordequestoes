@@ -2,6 +2,7 @@ import { AiUsageEventStatus, Role, SubscriptionStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/app-settings";
+import { startOfDayInBrazil, startOfMonthInBrazil, startOfNextDayInBrazil, startOfNextMonthInBrazil } from "@/lib/dates";
 
 export async function getActiveSubscription(userId: string) {
   return prisma.userSubscription.findFirst({
@@ -28,19 +29,9 @@ export type TrialStatus = {
   exhausted: boolean;
 };
 
-/** Início do mês corrente no fuso do servidor — janela de reset do trial. */
-function startOfCurrentMonth() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(1);
-  return start;
-}
-
-/** Início do próximo mês — usado para informar quando o trial reseta. */
+/** Início do próximo mês em Brasília — usado para informar quando o trial reseta. */
 function nextMonthlyReset() {
-  const start = startOfCurrentMonth();
-  start.setMonth(start.getMonth() + 1);
-  return start.toISOString();
+  return startOfNextMonthInBrazil().toISOString();
 }
 
 /**
@@ -55,7 +46,7 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
   const settings = await getAppSettings();
   const limit = settings.trialGenerationsLimit ?? 0;
   const used = await prisma.trialUsageEvent.count({
-    where: { userId, createdAt: { gte: startOfCurrentMonth() } }
+    where: { userId, createdAt: { gte: startOfMonthInBrazil() } }
   });
   return {
     used,
@@ -106,10 +97,8 @@ export async function assertCanGenerateWithAi(user: { id: string; role?: Role })
   const subscription = await getActiveSubscription(user.id);
 
   if (subscription) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const usage = await prisma.aiUsageEvent.count({
-      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: today } }
+      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfDayInBrazil() } }
     });
     if (usage >= subscription.plan.aiGenerationsPerDay) {
       throw new Error("Seu limite diário de uso da IA foi atingido.");
@@ -128,12 +117,9 @@ export async function assertCanGenerateWithAi(user: { id: string; role?: Role })
   }
 }
 
-/** Próxima meia-noite no fuso do servidor — mesmo corte usado na contagem diária. */
+/** Próxima meia-noite em Brasília — mesmo corte usado na contagem diária. */
 function nextUsageReset() {
-  const reset = new Date();
-  reset.setHours(0, 0, 0, 0);
-  reset.setDate(reset.getDate() + 1);
-  return reset.toISOString();
+  return startOfNextDayInBrazil().toISOString();
 }
 
 export type AiUsageStatus = {
@@ -151,10 +137,8 @@ export async function getAiUsageStatus(user: { id: string; role?: Role }): Promi
 
   const subscription = await getActiveSubscription(user.id);
   if (subscription) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const used = await prisma.aiUsageEvent.count({
-      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: today } }
+      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfDayInBrazil() } }
     });
     const limit = subscription.plan.aiGenerationsPerDay;
     return {

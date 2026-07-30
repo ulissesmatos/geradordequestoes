@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
+import { dayKeyInBrazil } from "@/lib/dates";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -889,8 +890,9 @@ function hoursUntil(iso: string | undefined) {
 }
 
 function usageDismissKey() {
-  // Chave por dia (UTC, mesmo corte do reset) para a dispensa não vazar para o dia seguinte.
-  return `ai-usage-notice-dismissed:${new Date().toISOString().slice(0, 10)}`;
+  // Chave por dia de Brasília, mesmo corte do reset da cota — com o dia em UTC o aviso
+  // reaparecia às 21h, no meio da noite de estudo, sem a cota ter virado.
+  return `ai-usage-notice-dismissed:${dayKeyInBrazil()}`;
 }
 
 function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean } }) {

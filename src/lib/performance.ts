@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { createdAtInBrazil } from "@/lib/dates-sql";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -67,7 +68,7 @@ export async function getSubjectBreakdown(userId: string): Promise<SubjectBreakd
 }
 
 export type DailyActivityRow = {
-  day: string; // YYYY-MM-DD
+  day: string; // YYYY-MM-DD, dia do calendário brasileiro
   total: number;
   correct: number;
 };
@@ -76,7 +77,7 @@ export async function getDailyActivity(userId: string, days = 30): Promise<Daily
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return prisma.$queryRaw<DailyActivityRow[]>(Prisma.sql`
     SELECT
-      to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS day,
+      to_char(date_trunc('day', ${createdAtInBrazil}), 'YYYY-MM-DD') AS day,
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE "isCorrect")::int AS correct
     FROM "QuestionAttempt"
