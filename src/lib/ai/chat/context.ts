@@ -1,4 +1,5 @@
 import { AiChatRole, AttachmentKind } from "@prisma/client";
+import { getAppSettings } from "@/lib/app-settings";
 import { prisma } from "@/lib/prisma";
 import { getUserStudySnapshot } from "@/lib/ai/study-tools";
 import { getReferenceCatalog } from "@/lib/reference";
@@ -34,7 +35,7 @@ async function blobToDataUrl(url: string): Promise<string | null> {
 }
 
 export async function buildTurnMessages(input: { sessionId: string; userId: string }): Promise<NeutralMessage[]> {
-  const [session, subjects, snapshot, userPrefs, referenceCatalog] = await Promise.all([
+  const [session, subjects, snapshot, userPrefs, referenceCatalog, appSettings] = await Promise.all([
     prisma.aiChatSession.findUnique({
       where: { id: input.sessionId },
       select: { summary: true, summarizedCount: true }
@@ -48,7 +49,8 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
       where: { id: input.userId },
       select: { preferredStates: true }
     }),
-    getReferenceCatalog()
+    getReferenceCatalog(),
+    getAppSettings()
   ]);
 
   const subjectCatalog = subjects
@@ -60,7 +62,10 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
     studySnapshot: snapshot,
     preferredStates: userPrefs?.preferredStates,
     referenceCatalog,
-    conversationSummary: session?.summary
+    conversationSummary: session?.summary,
+    // Só deixa a IA oferecer teste gratuito quando ele existe de fato — com o limite
+    // zerado no admin, prometer teste grátis seria uma promessa falsa.
+    trialEnabled: (appSettings.trialGenerationsLimit ?? 0) > 0
   });
 
   const stored = await prisma.aiChatMessage.findMany({
