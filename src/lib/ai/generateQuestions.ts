@@ -80,8 +80,17 @@ export type GeneratedQuestion = z.infer<typeof generatedItemSchema> & { supportT
 const MATH_FORMATTING_INSTRUCTION =
   "Notação matemática: sempre que o enunciado, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, matrizes, números complexos, somatórios, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) para fórmulas dentro do texto ou \\[ ... \\] para fórmulas em bloco/destaque. Nunca use apenas $ ou $$ como delimitador (pode ser confundido com valores em reais, ex. \"R$ 10,00\"). Fora desses casos, mantenha texto normal em português.";
 
-const GROUP_STRUCTURE_INSTRUCTION =
-  'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" (texto de apoio compartilhado) e uma lista "questions". Use supportText null nos grupos cujas questões forem puramente conceituais/teóricas e se resolvam sem nenhum texto-base. A soma de todas as questões em todos os groups deve ser exatamente a quantidade pedida.';
+/**
+ * Recebe a quantidade para repetir o número LITERAL. A versão anterior dizia só "exatamente a
+ * quantidade pedida", e com vários grupos o modelo perdia a conta e estourava (pedido de 5
+ * virando 20 na prática). O número explícito ajuda, mas quem garante é enforceQuantity.
+ */
+function buildGroupStructureInstruction(quantity: number) {
+  return [
+    'Estrutura da resposta: agrupe as questões em "groups". Cada group tem um "supportText" (texto de apoio compartilhado) e uma lista "questions". Use supportText null nos grupos cujas questões forem puramente conceituais/teóricas e se resolvam sem nenhum texto-base.',
+    `CONTAGEM OBRIGATÓRIA: somando as questões de TODOS os groups, o total tem de ser exatamente ${quantity}. Não é "pelo menos ${quantity}" nem "aproximadamente" — é ${quantity}. Antes de responder, conte os itens de todos os groups e confirme que a soma dá ${quantity}. Devolver mais que isso é erro.`
+  ].join("\n");
+}
 
 /**
  * Regra sempre presente no prompt. É a camada de PREVENÇÃO do contrato de
@@ -120,9 +129,16 @@ function isLanguageSubject(subject: string, topic: string): boolean {
  * Só entra no prompt quando difficulty === "DIFICIL" — replica o padrão real do Cebraspe de
  * blocos "texto de apoio + vários itens Certo/Errado que o julgam", em vez de questões sempre
  * independentes.
+ *
+ * Depende da quantidade porque a versão fixa ("um ou mais grupos, cada um com 3 a 6 questões")
+ * era lida como licença para multiplicar: um pedido de 5 itens no nível difícil voltava com 20,
+ * quatro grupos de cinco. Agora o teto por grupo nunca passa do total pedido, e abaixo de 3
+ * itens a instrução nem entra — não cabe bloco de prova em 1 ou 2 questões.
  */
-const SUPPORT_TEXT_INSTRUCTION =
-  "Nível DIFÍCIL — texto de apoio: quando o assunto se prestar a isso (interpretação de texto, direito, legislação, história, temas com uma situação hipotética ou trecho normativo plausível — NÃO force em assuntos que não combinam, como pura gramática/ortografia/informática básica), gere um ou mais grupos no estilo real de prova: um supportText de 2 a 4 parágrafos (uma situação hipotética, um texto informativo ou um trecho de lei/norma) seguido de 3 a 6 questões — no formato já definido acima — que o julgam sob ângulos diferentes, assim como um bloco real de prova tem um texto seguido de vários itens numerados. Nem toda questão difícil precisa disso: use julgamento — se o tema não render um texto de apoio natural, gere itens independentes normalmente (supportText null).";
+function buildSupportTextInstruction(quantity: number) {
+  const maxPerGroup = Math.min(6, quantity);
+  return `Nível DIFÍCIL — texto de apoio: quando o assunto se prestar a isso (interpretação de texto, direito, legislação, história, temas com uma situação hipotética ou trecho normativo plausível — NÃO force em assuntos que não combinam, como pura gramática/ortografia/informática básica), você pode montar um bloco no estilo real de prova: um supportText de 2 a 4 parágrafos (uma situação hipotética, um texto informativo ou um trecho de lei/norma) seguido de 3 a ${maxPerGroup} questões — no formato já definido acima — que o julgam sob ângulos diferentes. ATENÇÃO: isso NÃO aumenta o total. O bloco consome parte das ${quantity} questões pedidas, nunca soma por cima delas; se um bloco já usar as ${quantity}, não crie outro grupo. Nem toda questão difícil precisa disso: se o tema não render um texto de apoio natural, gere itens independentes normalmente (supportText null).`;
+};
 
 const generatedItemJsonSchema = {
   type: "object",
@@ -211,6 +227,34 @@ const EXTERNAL_TEXT_REFERENCE_PATTERNS: RegExp[] = [
  * Piso de 30 caracteres para não confundir com a citação da palavra/expressão julgada ("logo").
  */
 const INLINE_QUOTED_FRAGMENT_PATTERN = /[“"«‘']([^”"»’']{30,})[”"»’']/;
+
+/**
+ * Corta o excedente para a quantidade pedida. É a trava REAL do número de questões: `quantity`
+ * sempre foi só uma linha de prompt, e o banco gravava o que viesse — pedido de 5 no nível
+ * difícil chegava a virar 20 questões (grupos de bloco multiplicando o total). Pedir "conte
+ * antes de responder" ajuda, mas não garante; isto garante.
+ *
+ * Corta do fim, preservando a ordem. Truncar no meio de um bloco é seguro porque o supportText
+ * viaja em CADA questão depois do achatamento (ver normalizeGenerated) — nenhuma questão fica
+ * órfã do texto que ela julga.
+ *
+ * Não completa quando vem MENOS que o pedido: forçar uma segunda chamada por 1 item faltando
+ * custaria mais do que vale, e o set é salvo com a contagem real, então o app não mente.
+ */
+function enforceQuantity(groups: RawGroup[], expected: number): RawGroup[] {
+  const total = groups.reduce((sum, group) => sum + group.questions.length, 0);
+  if (total <= expected) return groups;
+
+  const trimmed: RawGroup[] = [];
+  let remaining = expected;
+  for (const group of groups) {
+    if (remaining <= 0) break;
+    const questions = group.questions.slice(0, remaining);
+    remaining -= questions.length;
+    trimmed.push({ ...group, questions });
+  }
+  return trimmed;
+}
 
 function hasUsableSupportText(group: RawGroup): boolean {
   return Boolean(group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH);
@@ -349,6 +393,12 @@ export async function generateQuestions(input: {
     groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
   }
 
+  // Por último, depois do descarte de questões quebradas: cortar antes faria o descarte
+  // devolver menos do que o pedido mesmo havendo item bom sobrando no excedente.
+  // No modo variação fiel o esperado é uma variação por questão de referência.
+  const expectedQuantity = input.referenceQuestions?.length ?? input.quantity;
+  groups = enforceQuantity(groups, expectedQuantity);
+
   return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups });
 }
 
@@ -388,10 +438,12 @@ function buildPrompt(input: {
     "Use linguagem clara, objetiva e adequada a concurso.",
     "A justificativa deve explicar de forma didática por que a resposta correta está correta.",
     "Evite temas polêmicos ou desatualizados sem contexto.",
-    GROUP_STRUCTURE_INSTRUCTION,
+    buildGroupStructureInstruction(input.quantity),
     SELF_CONTAINMENT_INSTRUCTION,
     isLanguageSubject(input.subject, input.topic) ? PORTUGUESE_SUPPORT_TEXT_INSTRUCTION : "",
-    input.difficulty === "DIFICIL" ? SUPPORT_TEXT_INSTRUCTION : "",
+    // Abaixo de 3 itens não cabe bloco "texto + vários itens", e a instrução só serviria de
+    // convite para o modelo estourar a contagem.
+    input.difficulty === "DIFICIL" && input.quantity >= 3 ? buildSupportTextInstruction(input.quantity) : "",
     MATH_FORMATTING_INSTRUCTION
   ]
     .filter(Boolean)
