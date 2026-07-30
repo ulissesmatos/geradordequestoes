@@ -685,6 +685,11 @@ model AppSetting {
   trialGenerationsLimit Int  @default(10)
   // Banco público de questões: respostas/dia para quem está no trial (sem assinatura).
   bankDailyAnswersLimitTrial Int @default(10)
+  // Teto de questões POR bloco gerado para quem está no trial. A cota mensal acima limita
+  // quantas vezes ele gera; este campo limita o tamanho de cada geração — sem ele, o visitante
+  // pedia 20 questões e consumia o custo de um assinante em uma única mensagem grátis.
+  // 0 = sem teto (o trial gera blocos do mesmo tamanho que um assinante).
+  trialMaxQuestionsPerGeneration Int @default(5)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -954,6 +959,11 @@ model PaymentTransaction {
   amountCents       Int
   currency          String                   @default("BRL")
   paidAt            DateTime?
+  // Entra ou não no total de "Receita registrada" do painel. Nasce false em transações
+  // MANUAL (cortesia, assinatura liberada pelo admin, teste) porque não houve dinheiro
+  // entrando; o admin também pode virar a chave à mão em Admin → Pagamentos para tirar do
+  // caixa uma cobrança de teste ou estornada fora do gateway.
+  countsAsRevenue   Boolean                  @default(true)
   rawPayload        Json?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt

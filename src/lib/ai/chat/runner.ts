@@ -6,6 +6,7 @@ import { executeToolCall } from "@/lib/ai/chat/executors";
 import { describeToolStart } from "@/lib/ai/chat/progress";
 import { completeChat, streamChat, type CompletionResult, type NeutralMessage } from "@/lib/ai/chat/provider";
 import { chatTools, getNeutralToolSpecs } from "@/lib/ai/chat/tools";
+import { getQuestionQuantityCap } from "@/lib/subscriptions";
 
 const MAX_TOOL_ITERATIONS = 3;
 
@@ -82,9 +83,14 @@ export async function runChatTurn(input: {
     throw new Error(`Configure a chave da ${providerLabel(settings.provider)} no painel admin.`);
   }
 
+  // Teto do plano gratuito resolvido uma vez por turno e repassado: o prompt precisa dele para
+  // não prometer 20 questões, e o texto de progresso para não anunciar mais do que vai chegar.
+  // O corte de verdade acontece na geração (generateAndSaveQuestionSet).
+  const { max: quantityCap } = await getQuestionQuantityCap(input.user);
   const messages: NeutralMessage[] = await buildTurnMessages({
     sessionId: input.sessionId,
-    userId: input.user.id
+    user: input.user,
+    quantityCap
   });
   const tools = getNeutralToolSpecs();
 
@@ -124,7 +130,7 @@ export async function runChatTurn(input: {
     messages.push({ role: "assistant", content: result.assistantText, toolCalls: result.calls });
 
     for (const call of result.calls) {
-      input.onEvent?.({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson) });
+      input.onEvent?.({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap) });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {
@@ -208,9 +214,14 @@ export async function streamChatTurn(input: {
     throw new Error(`Configure a chave da ${providerLabel(settings.provider)} no painel admin.`);
   }
 
+  // Teto do plano gratuito resolvido uma vez por turno e repassado: o prompt precisa dele para
+  // não prometer 20 questões, e o texto de progresso para não anunciar mais do que vai chegar.
+  // O corte de verdade acontece na geração (generateAndSaveQuestionSet).
+  const { max: quantityCap } = await getQuestionQuantityCap(input.user);
   const messages: NeutralMessage[] = await buildTurnMessages({
     sessionId: input.sessionId,
-    userId: input.user.id
+    user: input.user,
+    quantityCap
   });
   const tools = getNeutralToolSpecs();
 
@@ -259,7 +270,7 @@ export async function streamChatTurn(input: {
     messages.push({ role: "assistant", content: completion.assistantText, toolCalls: completion.calls });
 
     for (const call of completion.calls) {
-      input.onEvent({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson) });
+      input.onEvent({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap) });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {

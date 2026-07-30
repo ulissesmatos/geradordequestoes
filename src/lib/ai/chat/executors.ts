@@ -166,6 +166,7 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       format: questionFormatLabel(format),
       difficulty: difficultyLabel(difficulty),
       referenceUsed: questionSet.referenceUsed,
+      ...trialCapPayload(questionSet.trialQuantityCap),
       note: questionSet.referenceUsed
         ? "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links."
         : "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links. Avise brevemente que não havia prova real cadastrada sobre este ponto; as questões seguem o estilo da banca."
@@ -177,9 +178,38 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       difficulty,
       subjectName: subject.name,
       topicName: topic.name,
-      referenceUsed: questionSet.referenceUsed
+      referenceUsed: questionSet.referenceUsed,
+      trialQuantityCap: questionSet.trialQuantityCap
     })
   };
+}
+
+type TrialQuantityCap = { requested: number; applied: number } | null;
+
+/**
+ * Instrução para o modelo quando o teto do plano gratuito cortou o pedido. Vai no resultado da
+ * ferramenta (e não só no prompt) porque é aqui que sabemos o número que o usuário pediu de
+ * fato — sem isso o assistente confirmava "gerei 20 questões" enquanto o bloco tinha 5.
+ */
+function trialCapPayload(cap: TrialQuantityCap) {
+  if (!cap) return {};
+  return {
+    limiteDoPlanoGratuito: {
+      pedido: cap.requested,
+      tetoDoPlano: cap.applied,
+      instrucao: `O usuário pediu ${cap.requested} questões, mas está no plano gratuito, que gera no máximo ${cap.applied} por bloco. Confirme usando o campo "quantity" deste resultado (é o número real de questões do bloco), explique em uma frase que o teto é do plano gratuito e que assinando ele gera blocos maiores. Não prometa as ${cap.requested} nem sugira driblar o limite pedindo vários blocos seguidos.`
+    }
+  };
+}
+
+/**
+ * Frase de corte reaproveitada nas duas ferramentas de geração. Fala do TETO, não de quantas
+ * questões chegaram: o modelo às vezes devolve um item a menos, e a contagem real já aparece
+ * na frase anterior da confirmação.
+ */
+function trialCapSentence(cap: TrialQuantityCap) {
+  if (!cap) return "";
+  return `\n\nObs.: você pediu ${cap.requested} questões, mas o plano gratuito gera até ${cap.applied} por bloco. Assinando um plano, os blocos saem no tamanho que você pedir.`;
 }
 
 async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawArgs: unknown): Promise<ToolExecutionResult> {
@@ -302,6 +332,7 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
       title: questionSet.title,
       quantity: questionSet.quantity,
       focus: `${target.subjectName} / ${target.topicName}`,
+      ...trialCapPayload(questionSet.trialQuantityCap),
       note: "Bloco de revisão salvo na biblioteca. O app mostra o botão 'Responder agora' automaticamente; não invente links."
     }),
     fallbackMessage: [
@@ -309,7 +340,7 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
       "",
       `Foco principal: **${target.subjectName} / ${target.topicName}**.`,
       `O bloco ficou salvo no seu histórico com ${questionSet.quantity} questões. Você pode responder agora ou voltar nele depois.`
-    ].join("\n")
+    ].join("\n") + trialCapSentence(questionSet.trialQuantityCap)
   };
 }
 
@@ -545,6 +576,7 @@ function buildGenerationFallback(input: {
   subjectName: string;
   topicName: string;
   referenceUsed: boolean;
+  trialQuantityCap?: TrialQuantityCap;
 }) {
   const modeLabel = {
     [QuestionSetMode.ESTUDO]: "bloco de estudo",
@@ -552,8 +584,9 @@ function buildGenerationFallback(input: {
     [QuestionSetMode.REVISAO]: "bloco de revisão"
   }[input.mode];
   const base = `Boa. Preparei um ${modeLabel} com ${input.quantity} questões de ${input.subjectName}, em ${questionFormatLabel(input.format)}, no nível ${difficultyLabel(input.difficulty).toLowerCase()}. Usei ${input.topicName} como eixo do bloco e deixei as justificativas prontas para você revisar depois da resposta. O bloco já está salvo no seu histórico. Quando quiser, é só começar por "Responder agora".`;
-  return input.referenceUsed
+  const withReference = input.referenceUsed
     ? base
     : `${base}\n\nObs.: não havia prova real cadastrada sobre este ponto — as questões foram criadas no estilo Cebraspe.`;
+  return withReference + trialCapSentence(input.trialQuantityCap ?? null);
 }
 

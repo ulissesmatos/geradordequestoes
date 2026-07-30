@@ -82,6 +82,12 @@ export async function recordPaymentTransaction(input: {
   paidAt?: Date | null;
   payload?: unknown;
 }) {
+  // Só entra no caixa dinheiro que passou por um gateway. MANUAL é cortesia/liberação feita
+  // pelo admin: registra a transação para o histórico, mas fora do total de receita.
+  // O admin ainda pode virar a chave à mão em Admin → Pagamentos; por isso o campo não é
+  // recalculado no update do upsert (webhook repetido não desfaz a decisão dele).
+  const countsAsRevenue = input.provider !== PaymentProvider.MANUAL;
+
   const transaction = input.externalId
     ? await prisma.paymentTransaction.upsert({
         where: { provider_externalId: { provider: input.provider, externalId: input.externalId } },
@@ -99,6 +105,7 @@ export async function recordPaymentTransaction(input: {
           status: input.status,
           amountCents: input.amountCents,
           paidAt: input.paidAt,
+          countsAsRevenue,
           rawPayload: toJson(input.payload)
         }
       })
@@ -111,6 +118,7 @@ export async function recordPaymentTransaction(input: {
           status: input.status,
           amountCents: input.amountCents,
           paidAt: input.paidAt,
+          countsAsRevenue,
           rawPayload: toJson(input.payload)
         }
       });

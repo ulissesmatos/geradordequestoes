@@ -1,7 +1,9 @@
-import { AiUsageEventStatus, PaymentTransactionStatus, QuestionStatus, SubscriptionStatus } from "@prisma/client";
+import Link from "next/link";
+import { AiUsageEventStatus, QuestionStatus, SubscriptionStatus } from "@prisma/client";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
+import { getRevenueSummary } from "@/lib/revenue";
 
 export default async function AdminHomePage() {
   const [
@@ -26,17 +28,13 @@ export default async function AdminHomePage() {
     prisma.aiUsageEvent.count({ where: { status: AiUsageEventStatus.SUCCESS } }),
     prisma.studyMaterial.count(),
     prisma.paymentTransaction.count(),
-    prisma.paymentTransaction.aggregate({
-      where: { status: PaymentTransactionStatus.APPROVED },
-      _sum: { amountCents: true }
-    }),
+    getRevenueSummary(),
     prisma.aiProviderSetting.findUnique({ where: { id: "default" } })
   ]);
 
   const cards = [
     ["Usuários", users],
     ["Assinantes ativos", activeSubscriptions],
-    ["Receita registrada", formatMoney(revenue._sum.amountCents ?? 0)],
     ["Questões", questions],
     ["Pendentes", pending],
     ["Aprovadas", approved],
@@ -50,6 +48,33 @@ export default async function AdminHomePage() {
     <div className="space-y-6">
       <AdminPageHeader title="Dashboard" description="Visão geral da plataforma." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Receita fora do laço: só ela precisa explicar o que ficou de fora da conta. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{formatMoney(revenue.realCents)}</CardTitle>
+            <CardDescription>
+              Receita registrada
+              <span className="mt-1 block text-xs">
+                {revenue.excludedCount > 0 ? (
+                  <>
+                    Fora da conta: {formatMoney(revenue.excludedCents)} em {revenue.excludedCount}{" "}
+                    {revenue.excludedCount === 1 ? "transação marcada" : "transações marcadas"} como sem receita.{" "}
+                    <Link href="/admin/pagamentos" className="underline">
+                      Revisar
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    Só pagamentos aprovados em gateway.{" "}
+                    <Link href="/admin/pagamentos" className="underline">
+                      Editar o que conta
+                    </Link>
+                  </>
+                )}
+              </span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
         {cards.map(([label, value]) => (
           <Card key={label}>
             <CardHeader>

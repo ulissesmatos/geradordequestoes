@@ -13,6 +13,7 @@ import { generateQuestions, type ReferenceVariantSource } from "@/lib/ai/generat
 import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { formatReferenceContext, getReferenceContext, searchReferenceQuestions } from "@/lib/reference";
 import { deepStripNullBytes, stripNullBytes } from "@/lib/sanitize";
+import { getQuestionQuantityCap } from "@/lib/subscriptions";
 
 export async function generateAndSaveQuestionSet(input: {
   user: Pick<User, "id" | "role">;
@@ -39,17 +40,28 @@ export async function generateAndSaveQuestionSet(input: {
   /** Repassado a generateQuestions para a tela mostrar o que está acontecendo de fato. */
   onProgress?: (label: string) => void;
 }) {
-  const [subject, topic] = await Promise.all([
+  const [subject, topic, quantityCap] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: input.subjectId } }),
-    prisma.topic.findUniqueOrThrow({ where: { id: input.topicId } })
+    prisma.topic.findUniqueOrThrow({ where: { id: input.topicId } }),
+    getQuestionQuantityCap(input.user)
   ]);
+
+  // Teto do trial aplicado AQUI, no funil único de geração: chat, formulário e revisão dos
+  // erros passam todos por esta função, então nenhum caminho novo escapa do limite por
+  // esquecimento. Corta em silêncio para o gerador; quem chamou recebe `trialQuantityCap`
+  // e é quem avisa o usuário.
+  const requestedQuantity = input.quantity;
+  const quantity =
+    quantityCap.max !== null ? Math.min(requestedQuantity, quantityCap.max) : requestedQuantity;
+  const trialQuantityCap =
+    quantity < requestedQuantity ? { requested: requestedQuantity, applied: quantity } : null;
 
   const query = [input.prompt, topic.name, subject.name].filter(Boolean).join(" ");
 
   let variantSources: ReferenceVariantSource[] | undefined;
   let closeVariantFallback = false;
   if (input.closeVariant) {
-    const variantLimit = Math.min(Math.max(input.quantity, 1), 30);
+    const variantLimit = Math.min(Math.max(quantity, 1), 30);
     // O filtro de matéria em searchReferenceQuestions é suave (matéria pedida OU questão sem
     // classificação), então não refazemos sem filtro: gerar "variação fiel" a partir de uma
     // questão de outra matéria produziria item fora do assunto pedido.
@@ -96,7 +108,7 @@ export async function generateAndSaveQuestionSet(input: {
     subject: subject.name,
     topic: topic.name,
     difficulty: input.difficulty,
-    quantity: variantSources?.length ?? input.quantity,
+    quantity: variantSources?.length ?? quantity,
     format: input.format,
     alternativesCount: input.alternativesCount,
     mode: input.mode,
@@ -186,7 +198,10 @@ export async function generateAndSaveQuestionSet(input: {
     closeVariantCount: variantSources?.length ?? 0,
     // true quando o usuário pediu variação fiel mas não havia questões reais cadastradas
     // para essa matéria/assunto — o set foi gerado no modo padrão (âncora de estilo).
-    closeVariantFallback
+    closeVariantFallback,
+    // Preenchido quando o pedido foi cortado pelo teto do trial — quem chamou usa para
+    // explicar ao usuário por que vieram menos questões do que ele pediu.
+    trialQuantityCap
   });
 }
 

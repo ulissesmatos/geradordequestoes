@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { SubscriptionStatus } from "@prisma/client";
 import { AdminPageHeader } from "@/components/admin/page-header";
-import { StatusBadge, statusTone } from "@/components/admin/status-badge";
+import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,15 @@ export default async function UsersPage({
     prisma.user.findMany({
       where,
       include: {
+        // Mesmo recorte de getActiveSubscription (status + vigência). Sem o filtro, a lista
+        // pegava a assinatura mais recente FOSSE QUAL FOSSE o status e estampava o nome do
+        // plano: cancelar alguém no painel deixava a badge "Premium" no ar, contradizendo o
+        // acesso que a pessoa realmente tinha.
         subscriptions: {
+          where: {
+            status: SubscriptionStatus.ACTIVE,
+            OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }]
+          },
           include: { plan: true },
           orderBy: { createdAt: "desc" },
           take: 1
@@ -56,7 +65,8 @@ export default async function UsersPage({
       <Card>
         <CardContent className="divide-y divide-[var(--border)] p-0">
           {users.map((user) => {
-            const subscription = user.subscriptions[0];
+            // Só sobra assinatura vigente aqui — a badge fala do acesso de hoje, não do histórico.
+            const activeSubscription = user.subscriptions[0];
             return (
               <Link
                 key={user.id}
@@ -70,8 +80,8 @@ export default async function UsersPage({
                 <div className="flex shrink-0 items-center gap-2">
                   {user.isBlocked && <StatusBadge tone="danger">Bloqueado</StatusBadge>}
                   {user.role === "ADMIN" && <StatusBadge tone="info">Admin</StatusBadge>}
-                  {subscription ? (
-                    <StatusBadge tone={statusTone(subscription.status)}>{subscription.plan.name}</StatusBadge>
+                  {activeSubscription ? (
+                    <StatusBadge tone="success">{activeSubscription.plan.name}</StatusBadge>
                   ) : (
                     <StatusBadge tone="neutral">Sem plano</StatusBadge>
                   )}

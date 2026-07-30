@@ -66,6 +66,30 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
   };
 }
 
+export type QuestionQuantityCap = {
+  /** true = conta sem assinatura (e não-admin): o teto por bloco se aplica. */
+  isTrial: boolean;
+  /** Máximo de questões por bloco gerado; null = sem teto (assinante, admin ou teto desligado). */
+  max: number | null;
+};
+
+/**
+ * Teto de questões POR bloco gerado. Complementa a cota mensal do trial: `getTrialStatus`
+ * limita QUANTAS vezes o visitante gera, este teto limita o TAMANHO de cada geração.
+ *
+ * Sem ele, uma única mensagem grátis pedindo "20 questões" custava mais caro que um dia
+ * inteiro de assinante — o pedido é atendido, mas cortado no teto, e quem chamou avisa o
+ * usuário (nunca falhamos a geração por causa disso).
+ */
+export async function getQuestionQuantityCap(user: { id: string; role?: Role }): Promise<QuestionQuantityCap> {
+  if (user.role === Role.ADMIN) return { isTrial: false, max: null };
+  if (await getActiveSubscription(user.id)) return { isTrial: false, max: null };
+
+  const settings = await getAppSettings();
+  const max = settings.trialMaxQuestionsPerGeneration;
+  return { isTrial: true, max: max > 0 ? max : null };
+}
+
 export async function requireActiveSubscription(user: { id: string; role?: Role }) {
   if (user.role === Role.ADMIN) return;
   const subscription = await getActiveSubscription(user.id);

@@ -16,7 +16,16 @@ type SubjectWithTopics = {
   topics: { id: string; name: string }[];
 };
 
-export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }) {
+const QUANTITY_OPTIONS = [3, 5, 10, 15];
+
+export function UserGenerateForm({
+  subjects,
+  maxQuantity
+}: {
+  subjects: SubjectWithTopics[];
+  /** Teto de questões por bloco do plano gratuito; null = sem teto. */
+  maxQuantity?: number | null;
+}) {
   const [state, formAction] = useActionState(generateUserQuestionsAction, null);
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
   // Assuntos em cascata: só os da matéria escolhida.
@@ -24,6 +33,12 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
   const studyHref = state?.questionSetId
     ? `/biblioteca?setId=${state.questionSetId}`
     : "";
+  // O teto some do seletor em vez de ser recusado depois do envio: escolher 15 e receber 5
+  // seria pior do que só não ver a opção. O servidor corta de novo, de todo jeito.
+  const quantityOptions = maxQuantity
+    ? [...QUANTITY_OPTIONS.filter((value) => value < maxQuantity), maxQuantity]
+    : QUANTITY_OPTIONS;
+  const defaultQuantity = String(quantityOptions.includes(5) ? 5 : quantityOptions[quantityOptions.length - 1]);
 
   return (
     <Card>
@@ -34,6 +49,16 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
         </CardTitle>
         <CardDescription>
           As questões ficam privadas para você responder. Elas não aparecem para outros alunos sem revisão administrativa.
+          {maxQuantity ? (
+            <>
+              {" "}
+              No plano gratuito cada bloco sai com até <strong>{maxQuantity} questões</strong> —{" "}
+              <Link href="/assinatura" className="underline">
+                assine um plano
+              </Link>{" "}
+              para gerar blocos maiores.
+            </>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -59,8 +84,8 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
               <option value="MEDIO">Médio</option>
               <option value="DIFICIL">Difícil</option>
             </Select>
-            <Select name="quantity" defaultValue="5">
-              {[3, 5, 10, 15].map((value) => (
+            <Select name="quantity" defaultValue={defaultQuantity}>
+              {quantityOptions.map((value) => (
                 <option key={value} value={value}>
                   {value} questões
                 </option>
@@ -92,6 +117,16 @@ export function UserGenerateForm({ subjects }: { subjects: SubjectWithTopics[] }
             Basear-se em provas reais (variações bem próximas das questões do acervo)
           </label>
           {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
+          {state?.ok && state.trialQuantityCap && (
+            <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+              Você pediu {state.trialQuantityCap.requested} questões, mas o plano gratuito gera até{" "}
+              {state.trialQuantityCap.applied} por bloco — foi esse o tamanho gerado.{" "}
+              <Link href="/assinatura" className="font-semibold underline">
+                Assine um plano
+              </Link>{" "}
+              para gerar blocos maiores.
+            </p>
+          )}
           {state?.ok && state.closeVariantFallback && (
             <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
               Ainda não há questões reais cadastradas para esse assunto — geramos no modo padrão (inspirado no estilo da banca).

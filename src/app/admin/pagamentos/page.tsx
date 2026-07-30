@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle } from "lucide-react";
-import { updatePaymentGatewaySettingsAction } from "@/app/admin/admin-actions";
+import { toggleTransactionRevenueAction, updatePaymentGatewaySettingsAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { SecretInput } from "@/components/admin/secret-input";
 import { SubmitButton } from "@/components/submit-button";
@@ -7,25 +7,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
 import { maskSecret } from "@/lib/crypto";
+import { getRevenueSummary } from "@/lib/revenue";
 
 export default async function AdminPaymentsPage() {
-  const [settings, checkouts, transactions, events] = await Promise.all([
+  const [settings, checkouts, transactions, events, revenue] = await Promise.all([
     prisma.paymentGatewaySetting.findUnique({ where: { id: "default" } }),
     prisma.paymentCheckoutSession.findMany({
       include: { user: true, plan: true },
       orderBy: { createdAt: "desc" },
       take: 12
     }),
+    // Take maior que as outras listas: aqui não é só histórico, é onde o admin ajusta
+    // o que conta como receita — uma transação antiga fora da janela ficaria ineditável.
     prisma.paymentTransaction.findMany({
       include: { user: true, plan: true },
       orderBy: { createdAt: "desc" },
-      take: 12
+      take: 40
     }),
     prisma.subscriptionEvent.findMany({
       include: { user: true, subscription: { include: { plan: true } } },
       orderBy: { createdAt: "desc" },
       take: 12
-    })
+    }),
+    getRevenueSummary()
   ]);
 
   const stripeKeyMasked = maskSecret(settings?.stripeSecretKey ?? null);
@@ -176,13 +180,24 @@ export default async function AdminPaymentsPage() {
 
       {/* ── Transações ── */}
       <Card>
-        <CardHeader><CardTitle>Transações</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Transações</CardTitle>
+          <CardDescription>
+            Receita registrada: <strong>{formatMoney(revenue.realCents)}</strong>
+            {revenue.excludedCount > 0 && (
+              <> · fora da conta: {formatMoney(revenue.excludedCents)} em {revenue.excludedCount} transação(ões)</>
+            )}
+            . Use &quot;Tirar do caixa&quot; para não contabilizar cobranças de teste, cortesias ou estornos feitos fora
+            do gateway — a transação continua no histórico, só sai do total. Assinatura liberada manualmente no painel
+            do usuário não gera transação nenhuma e nunca entra aqui.
+          </CardDescription>
+        </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead className="text-left text-xs uppercase text-[var(--muted-foreground)]">
               <tr>
                 <th className="py-2">Usuário</th><th>Plano</th><th>Provedor</th>
-                <th>Status</th><th>Valor</th><th>Pago em</th>
+                <th>Status</th><th>Valor</th><th>Pago em</th><th>Receita</th>
               </tr>
             </thead>
             <tbody>
@@ -192,11 +207,21 @@ export default async function AdminPaymentsPage() {
                   <td>{t.plan.name}</td>
                   <td>{t.provider}</td>
                   <td>{t.status}</td>
-                  <td>{formatMoney(t.amountCents)}</td>
+                  <td className={t.countsAsRevenue ? undefined : "text-[var(--muted-foreground)] line-through"}>
+                    {formatMoney(t.amountCents)}
+                  </td>
                   <td>{t.paidAt ? formatDate(t.paidAt) : "—"}</td>
+                  <td>
+                    <form action={toggleTransactionRevenueAction} className="flex items-center gap-2">
+                      <input type="hidden" name="transactionId" value={t.id} />
+                      <SubmitButton variant="outline" size="sm">
+                        {t.countsAsRevenue ? "Tirar do caixa" : "Voltar ao caixa"}
+                      </SubmitButton>
+                    </form>
+                  </td>
                 </tr>
               ))}
-              {transactions.length === 0 && <EmptyRow colSpan={6} label="Nenhuma transação registrada ainda." />}
+              {transactions.length === 0 && <EmptyRow colSpan={7} label="Nenhuma transação registrada ainda." />}
             </tbody>
           </table>
         </CardContent>

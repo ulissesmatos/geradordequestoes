@@ -55,6 +55,20 @@ export default async function AdminBrandingPage() {
                   Quantas questões do banco público um usuário sem assinatura pode responder por dia.
                 </span>
               </label>
+              <label className="grid gap-1 text-sm font-semibold">
+                Questões por bloco gerado (trial)
+                <Input
+                  name="trialMaxQuestionsPerGeneration"
+                  type="number"
+                  min={0}
+                  defaultValue={settings.trialMaxQuestionsPerGeneration}
+                />
+                <span className="text-xs font-normal text-[var(--muted-foreground)]">
+                  Teto de questões em CADA geração de quem está no trial, mesmo que ele peça mais — vale no chat e no
+                  formulário de gerar questões. Sem isso, uma única mensagem grátis pedindo 20 questões custa mais que um
+                  dia de assinante. 0 = sem teto.
+                </span>
+              </label>
             </div>
             <SubmitButton>Salvar branding</SubmitButton>
           </form>

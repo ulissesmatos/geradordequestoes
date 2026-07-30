@@ -1,4 +1,4 @@
-import { AiChatRole, AttachmentKind } from "@prisma/client";
+import { AiChatRole, AttachmentKind, type Role } from "@prisma/client";
 import { getAppSettings } from "@/lib/app-settings";
 import { prisma } from "@/lib/prisma";
 import { getUserStudySnapshot } from "@/lib/ai/study-tools";
@@ -34,7 +34,13 @@ async function blobToDataUrl(url: string): Promise<string | null> {
   }
 }
 
-export async function buildTurnMessages(input: { sessionId: string; userId: string }): Promise<NeutralMessage[]> {
+export async function buildTurnMessages(input: {
+  sessionId: string;
+  user: { id: string; role: Role };
+  /** Teto de questões por bloco do plano gratuito, já resolvido pelo runner. */
+  quantityCap: number | null;
+}): Promise<NeutralMessage[]> {
+  const userId = input.user.id;
   const [session, subjects, snapshot, userPrefs, referenceCatalog, appSettings] = await Promise.all([
     prisma.aiChatSession.findUnique({
       where: { id: input.sessionId },
@@ -44,9 +50,9 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
       include: { topics: { orderBy: { name: "asc" }, select: { name: true } } },
       orderBy: { name: "asc" }
     }),
-    getUserStudySnapshot(input.userId),
+    getUserStudySnapshot(userId),
     prisma.user.findUnique({
-      where: { id: input.userId },
+      where: { id: userId },
       select: { preferredStates: true }
     }),
     getReferenceCatalog(),
@@ -65,7 +71,9 @@ export async function buildTurnMessages(input: { sessionId: string; userId: stri
     conversationSummary: session?.summary,
     // Só deixa a IA oferecer teste gratuito quando ele existe de fato — com o limite
     // zerado no admin, prometer teste grátis seria uma promessa falsa.
-    trialEnabled: (appSettings.trialGenerationsLimit ?? 0) > 0
+    trialEnabled: (appSettings.trialGenerationsLimit ?? 0) > 0,
+    // Sem isso o assistente prometia as 20 questões pedidas e o bloco chegava com 5.
+    trialQuestionCap: input.quantityCap
   });
 
   const stored = await prisma.aiChatMessage.findMany({

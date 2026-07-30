@@ -496,7 +496,8 @@ export async function updateAppSettingsAction(formData: FormData) {
     ...nullable("dpoEmail"),
     ...nullable("legalVenueCity"),
     ...count("trialGenerationsLimit", 10),
-    ...count("bankDailyAnswersLimitTrial", 10)
+    ...count("bankDailyAnswersLimitTrial", 10),
+    ...count("trialMaxQuestionsPerGeneration", 5)
   };
 
   await prisma.appSetting.upsert({
@@ -509,6 +510,36 @@ export async function updateAppSettingsAction(formData: FormData) {
   revalidatePath("/admin/branding");
   revalidatePath("/termos");
   revalidatePath("/privacidade");
+}
+
+/**
+ * Tira (ou devolve) uma transação do total de "Receita registrada" sem apagar o histórico.
+ *
+ * Serve para cortesia liberada no painel, cobrança de teste e estorno feito fora do gateway:
+ * casos em que a transação existiu, mas o dinheiro não. Apagar a linha esconderia o fato;
+ * a flag mantém o registro e conserta só o caixa.
+ */
+export async function toggleTransactionRevenueAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("transactionId") ?? "");
+
+  const transaction = await prisma.paymentTransaction.findUnique({
+    where: { id },
+    select: { countsAsRevenue: true, amountCents: true, provider: true, user: { select: { email: true } } }
+  });
+  if (!transaction) throw new Error("Transação não encontrada.");
+
+  const countsAsRevenue = !transaction.countsAsRevenue;
+  await prisma.paymentTransaction.update({ where: { id }, data: { countsAsRevenue } });
+
+  await logAdminAction(admin, {
+    action: countsAsRevenue ? "include_in_revenue" : "exclude_from_revenue",
+    entity: "PaymentTransaction",
+    entityId: id,
+    summary: `R$ ${(transaction.amountCents / 100).toFixed(2)} · ${transaction.provider} · ${transaction.user.email}`
+  });
+  revalidatePath("/admin/pagamentos");
+  revalidatePath("/admin");
 }
 
 export async function updatePaymentGatewaySettingsAction(formData: FormData) {

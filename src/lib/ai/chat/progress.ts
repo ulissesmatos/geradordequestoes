@@ -51,14 +51,18 @@ function subjectPath(args: Record<string, unknown>): string | null {
  * payload que vai para o executor, então o que aparece na tela é exatamente o que está
  * sendo feito.
  */
-export function describeToolStart(name: string, argumentsJson: string): string {
-  return normalize(buildLabel(name, parseArgs(argumentsJson)));
+export function describeToolStart(name: string, argumentsJson: string, quantityCap?: number | null): string {
+  return normalize(buildLabel(name, parseArgs(argumentsJson), quantityCap ?? null));
 }
 
-function buildLabel(name: string, args: Record<string, unknown>): string {
+function buildLabel(name: string, args: Record<string, unknown>, quantityCap: number | null): string {
   switch (name) {
     case "generate_questions": {
-      const quantity = typeof args.quantity === "number" ? args.quantity : null;
+      const asked = typeof args.quantity === "number" ? args.quantity : null;
+      // Mesma regra do arquivo: mostrar o número que vai chegar de fato. O teto do plano
+      // gratuito corta o lote lá na geração, então anunciar o pedido original ("Gerando 15…")
+      // viraria mentira na hora em que o bloco aparecesse com 5.
+      const quantity = asked !== null && quantityCap !== null ? Math.min(asked, quantityCap) : asked;
       const path = subjectPath(args);
       const count = quantity ? `${quantity} ${quantity === 1 ? "questão" : "questões"}` : "as questões";
       return path ? `Gerando ${count} de ${short(path)}…` : `Gerando ${count}…`;

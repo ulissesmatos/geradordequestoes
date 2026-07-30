@@ -83,10 +83,19 @@ export async function answerQuestionAction(formData: FormData): Promise<AnswerQu
   return { ok: true };
 }
 
+export type GenerateUserQuestionsState = {
+  ok?: boolean;
+  questionSetId?: string;
+  error?: string;
+  closeVariantFallback?: boolean;
+  /** Preenchido quando o teto do plano gratuito cortou a quantidade pedida. */
+  trialQuantityCap?: { requested: number; applied: number };
+};
+
 export async function generateUserQuestionsAction(
-  _: { ok?: boolean; questionSetId?: string; error?: string; closeVariantFallback?: boolean } | null,
+  _: GenerateUserQuestionsState | null,
   formData: FormData
-) {
+): Promise<GenerateUserQuestionsState> {
   const user = await requireUser();
   const subjectId = String(formData.get("subjectId") ?? "");
   const topicId = String(formData.get("topicId") ?? "");
@@ -125,7 +134,8 @@ export async function generateUserQuestionsAction(
     return {
       ok: true,
       questionSetId: questionSet.id,
-      closeVariantFallback: closeVariant && questionSet.closeVariantFallback
+      closeVariantFallback: closeVariant && questionSet.closeVariantFallback,
+      trialQuantityCap: questionSet.trialQuantityCap ?? undefined
     };
   } catch (error) {
     // Geração não entregou o bloco: devolve a unidade cobrada.
