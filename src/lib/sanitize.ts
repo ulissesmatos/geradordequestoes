@@ -47,6 +47,28 @@ export function cleanExtractedText(value: string): string {
   return value.replace(CONTROL_CHARS, "");
 }
 
+/** Alfanuméricos matemáticos do Unicode (𝐹, 𝑥, 𝟐…), fora do BMP. */
+const MATH_ALPHANUMERIC = /[\u{1D400}-\u{1D7FF}]/gu;
+
+/**
+ * Converte 𝐹/𝑥/𝟐 para F/x/2 e remove caracteres de controle do texto gerado pela IA.
+ *
+ * Os alfanuméricos matemáticos aparecem como caixinha (▯) em qualquer fonte que não traga
+ * esses glifos — e a fonte do app não traz. Como o app já renderiza fórmula de verdade com
+ * KaTeX a partir de LaTeX, esses caracteres não agregam nada: só quebram a leitura.
+ *
+ * NFKD é aplicado APENAS nos caracteres desse bloco, de propósito: normalizar a string
+ * inteira também converteria coisas legítimas de prova, como "m²" virando "m2".
+ */
+export function normalizeDisplayText(value: string): string {
+  return value.replace(MATH_ALPHANUMERIC, (char) => char.normalize("NFKD")).replace(CONTROL_CHARS, "");
+}
+
+/** Versão que preserva null/undefined, para campos opcionais. */
+export function normalizeDisplayTextNullable<T extends string | null | undefined>(value: T): T {
+  return typeof value === "string" ? (normalizeDisplayText(value) as T) : value;
+}
+
 /**
  * Aplica stripNullBytes recursivamente em todas as strings de um objeto/array. Rede de
  * segurança para o payload que vai ao banco: sanear campo por campo é fácil de esquecer

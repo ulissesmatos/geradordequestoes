@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
+import { normalizeDisplayText } from "@/lib/sanitize";
 
 /** Questão real usada como base 1:1 no modo "variação fiel" (perto do enunciado original). */
 export type ReferenceVariantSource = {
@@ -77,8 +78,12 @@ export type GeneratedQuestion = z.infer<typeof generatedItemSchema> & { supportT
  * Usa \( \) / \[ \] em vez de $ $ / $$ $$ porque textos de concurso citam valores em reais (ex.: "R$ 1.000,00"),
  * e um "$" solto quebraria o parser de fórmulas.
  */
-const MATH_FORMATTING_INSTRUCTION =
-  "Notação matemática: sempre que o enunciado, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, matrizes, números complexos, somatórios, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) para fórmulas dentro do texto ou \\[ ... \\] para fórmulas em bloco/destaque. Nunca use apenas $ ou $$ como delimitador (pode ser confundido com valores em reais, ex. \"R$ 10,00\"). Fora desses casos, mantenha texto normal em português.";
+const MATH_FORMATTING_INSTRUCTION = [
+  "Notação matemática: sempre que o enunciado, o texto de apoio, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, integrais, somatórios, matrizes, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) dentro do texto, ou \\[ ... \\] em bloco.",
+  "PROIBIDO deixar comando LaTeX solto fora dos delimitadores. ERRADO: 'vale t^{\\alpha-1} para x>0'. CERTO: 'vale \\(t^{\\alpha-1}\\) para \\(x>0\\)'. Comando cru como \\int, \\frac, \\alpha, \\Gamma ou expoente ^{...} fora de \\( \\) aparece como código na tela do aluno, sem virar fórmula.",
+  "Uma mesma frase NÃO pode ter parte delimitada e parte solta — ou tudo que é fórmula está dentro de \\( \\), ou a questão sai quebrada. Na dúvida, delimite.",
+  "Nunca use $ ou $$ como delimitador (confunde com valores em reais, ex. 'R$ 10,00'), e nunca use caracteres matemáticos Unicode como 𝐹 ou 𝑥 — escreva \\(F\\) e \\(x\\). Fora das fórmulas, mantenha texto normal em português."
+].join("\n");
 
 /**
  * Recebe a quantidade para repetir o número LITERAL. A versão anterior dizia só "exatamente a
@@ -256,6 +261,59 @@ function enforceQuantity(groups: RawGroup[], expected: number): RawGroup[] {
   return trimmed;
 }
 
+/**
+ * Delimitadores que o front-end reconhece (ver src/components/math-text.tsx). Precisa casar
+ * exatamente com MATH_PATTERN de lá: o que estiver fora disso NÃO vira fórmula na tela.
+ */
+const MATH_DELIMITED = /\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
+
+/** Marcas de LaTeX: comando (\int, \frac, \alpha) ou expoente/índice com chaves (^{...}, _{...}). */
+const LATEX_MARKER = /\\[a-zA-Z]{2,}|[\^_]\{/;
+
+/**
+ * Texto com LaTeX FORA de delimitador — o aluno vê "\int_0^\infty" cru na tela em vez da
+ * fórmula. Aconteceu em produção com a mesma frase saindo metade delimitada, metade crua.
+ */
+function hasBareLatex(value: string | null | undefined): boolean {
+  if (!value) return false;
+  // Remove o que já está delimitado e procura marca de LaTeX no que sobrou.
+  return LATEX_MARKER.test(value.replace(MATH_DELIMITED, " "));
+}
+
+/** Campos de uma questão que o aluno lê e que podem conter fórmula. */
+function questionTexts(question: z.infer<typeof generatedItemSchema>, supportText?: string | null) {
+  return [supportText, question.statement, question.explanation, ...question.options.map((o) => o.text)];
+}
+
+type MathViolation = { statement: string; sample: string };
+
+/** Questões com fórmula crua, para o reparo apontar exatamente o problema. */
+function findMathViolations(groups: RawGroup[]): MathViolation[] {
+  const violations: MathViolation[] = [];
+  for (const group of groups) {
+    for (const question of group.questions) {
+      const offender = questionTexts(question, group.supportText).find((text) => hasBareLatex(text));
+      if (offender) {
+        const bare = offender.replace(MATH_DELIMITED, " ").match(LATEX_MARKER)?.[0] ?? "";
+        violations.push({ statement: question.statement, sample: bare });
+      }
+    }
+  }
+  return violations;
+}
+
+function buildMathRepairInstruction(violations: MathViolation[]): string {
+  const list = violations
+    .map((v, i) => `${i + 1}. "${v.statement.slice(0, 160)}" — contém "${v.sample}" fora de \( \).`)
+    .join("\n");
+  return [
+    "CORREÇÃO OBRIGATÓRIA — fórmulas fora dos delimitadores.",
+    "Nestas questões há LaTeX solto, que aparece como código na tela do aluno em vez de virar fórmula:",
+    list,
+    "Gere o lote NOVAMENTE do zero, com a mesma quantidade, formato e dificuldade, garantindo que TODA expressão matemática (em enunciado, texto de apoio, alternativas e justificativa) esteja dentro de \( ... \) ou \[ ... \]. Não deixe nenhum comando LaTeX nem expoente com chaves fora dos delimitadores, e não misture parte delimitada com parte solta na mesma frase."
+  ].join("\n");
+}
+
 function hasUsableSupportText(group: RawGroup): boolean {
   return Boolean(group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH);
 }
@@ -393,9 +451,20 @@ export async function generateQuestions(input: {
   // as questões quebradas em vez de entregá-las ao aluno.
   const checkOptions = { languageSubject: isLanguageSubject(input.subject, input.topic) };
   const orphans = findOrphanQuestions(groups, checkOptions);
-  if (orphans.length > 0) {
+  const mathViolations = findMathViolations(groups);
+  if (orphans.length > 0 || mathViolations.length > 0) {
     input.onProgress?.("Revisando as questões geradas…");
-    const repaired = await runProvider(`${prompt}\n\n${buildSelfContainmentRepairInstruction(orphans)}`);
+    // Os dois contratos compartilham a MESMA rodada de reparo: mesmo quando ambos falham,
+    // o custo extra é de no máximo uma chamada a mais.
+    const fixes = [
+      orphans.length > 0 ? buildSelfContainmentRepairInstruction(orphans) : "",
+      mathViolations.length > 0 ? buildMathRepairInstruction(mathViolations) : ""
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const repaired = await runProvider(`${prompt}\n\n${fixes}`);
+    // Questão órfã é descartada (item impossível de responder é pior que entregar menos).
+    // Fórmula crua NÃO derruba a questão: fica feia, mas continua respondível.
     groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
   }
 
@@ -644,8 +713,19 @@ function normalizeGenerated(result: {
   // texto null/curto demais (placeholder inútil) vira null em vez de "quase vazio".
   const flattened: GeneratedQuestion[] = result.groups.flatMap((group) => {
     const supportText =
-      group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH ? group.supportText.trim() : null;
-    return group.questions.map((question) => ({ ...question, supportText }));
+      group.supportText && group.supportText.trim().length >= MIN_SUPPORT_TEXT_LENGTH
+        ? normalizeDisplayText(group.supportText.trim())
+        : null;
+    // normalizeDisplayText troca 𝐹/𝑥 (alfanumérico matemático Unicode, que vira caixinha na
+    // fonte do app) por F/x e remove caracteres de controle. O modelo emite esses símbolos de
+    // vez em quando, e o app já renderiza fórmula de verdade via KaTeX a partir de LaTeX.
+    return group.questions.map((question) => ({
+      ...question,
+      supportText,
+      statement: normalizeDisplayText(question.statement),
+      explanation: normalizeDisplayText(question.explanation),
+      options: question.options.map((option) => ({ ...option, text: normalizeDisplayText(option.text) }))
+    }));
   });
 
   return {
