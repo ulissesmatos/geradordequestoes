@@ -3,26 +3,29 @@ import { ArrowLeft, BookOpen, Download, Sparkles, Tag } from "lucide-react";
 import { DeleteMaterialButton } from "@/components/delete-material-button";
 import { MaterialEditor } from "@/components/material-editor";
 import { Button } from "@/components/ui/button";
+import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { getActiveSubscription, requireActiveSubscription } from "@/lib/subscriptions";
+import { requireActiveSubscription } from "@/lib/subscriptions";
 
 export default async function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   await requireActiveSubscription(user);
   const { id } = await params;
-  const [material, subscription] = await Promise.all([
+  const [material, entitlements] = await Promise.all([
     prisma.studyMaterial.findFirst({
       where: { id, userId: user.id },
       include: { subject: true, topic: true }
     }),
-    getActiveSubscription(user.id)
+    getEntitlements(user)
   ]);
   if (!material) {
     return <p className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-4">Material não encontrado.</p>;
   }
 
-  const expandAllowed = user.role === "ADMIN" || Boolean(subscription?.plan.materialExpandEnabled);
+  // Espelho da checagem de expandMaterialSectionAction: aqui é só cosmético (esconder o
+  // botão); quem barra de verdade é a action.
+  const expandAllowed = entitlements.can("materialExpand");
 
   const createdAt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(material.createdAt);
 

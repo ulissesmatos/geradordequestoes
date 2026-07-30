@@ -607,8 +607,19 @@ model SubscriptionPlan {
   mercadoPagoReference String?
   priceCents          Int
   aiGenerationsPerDay Int
-  // Habilita o "Aprofundar" de materiais de estudo com IA — diferencial dos planos superiores.
+  // DEPRECADO: migrado para capabilities.materialExpand. Mantido por um release para
+  // permitir rollback; parar de ler quando o medidor novo estiver estável.
   materialExpandEnabled Boolean          @default(false)
+  /**
+   * Liga/desliga de features por plano. As chaves válidas e seus defaults vivem no
+   * registry tipado em src/lib/capabilities.ts, não aqui — feature nova é uma linha lá,
+   * sem migration. Chave desconhecida é ignorada na leitura, então remover uma capability
+   * do registry não quebra planos com JSON antigo.
+   *
+   * Só o liga/desliga mora em JSON; limites numéricos vendidos (cota mensal, teto diário,
+   * tamanho de bloco) são colunas de verdade, porque entram em relatório e ordenação.
+   */
+  capabilities        Json               @default("{}")
   isActive            Boolean            @default(true)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
@@ -690,6 +701,9 @@ model AppSetting {
   // pedia 20 questões e consumia o custo de um assinante em uma única mensagem grátis.
   // 0 = sem teto (o trial gera blocos do mesmo tamanho que um assinante).
   trialMaxQuestionsPerGeneration Int @default(5)
+  // Mesmo formato de SubscriptionPlan.capabilities, aplicado a quem não tem assinatura.
+  // É aqui que se decide o que a conta gratuita enxerga do produto.
+  trialCapabilities Json @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

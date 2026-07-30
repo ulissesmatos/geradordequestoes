@@ -1,11 +1,13 @@
 import { createCouponAction, createPlanAction, deleteCouponAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
+import { PlanCapabilitiesFieldset } from "@/components/admin/plan-capabilities-fieldset";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { parseCapabilities } from "@/lib/capabilities";
 import { defaultPlanFeatures, getPricingContent } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
@@ -65,8 +67,8 @@ export default async function AdminPlansPage() {
             <div className="flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked /> Ativo</label>
               <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" /> Destacar como popular</label>
-              <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" /> Aprofundar materiais (IA)</label>
             </div>
+            <PlanCapabilitiesFieldset values={parseCapabilities({}, "plan")} />
             <SubmitButton>Criar plano</SubmitButton>
           </form>
         </CardContent>
@@ -114,8 +116,8 @@ export default async function AdminPlansPage() {
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo</label>
                   <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" defaultChecked={plan.isHighlighted} /> Destacado</label>
-                  <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" defaultChecked={plan.materialExpandEnabled} /> Aprofundar materiais (IA)</label>
                 </div>
+                <PlanCapabilitiesFieldset values={parseCapabilities(plan.capabilities, "plan")} />
                 <SubmitButton className="w-full">Salvar plano</SubmitButton>
               </form>
             </CardContent>

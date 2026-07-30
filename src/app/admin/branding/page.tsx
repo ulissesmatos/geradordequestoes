@@ -1,10 +1,12 @@
 import { updateAppSettingsAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
+import { PlanCapabilitiesFieldset } from "@/components/admin/plan-capabilities-fieldset";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { getAppSettings } from "@/lib/app-settings";
+import { parseCapabilities } from "@/lib/capabilities";
 
 export default async function AdminBrandingPage() {
   const settings = await getAppSettings();
@@ -71,6 +73,24 @@ export default async function AdminBrandingPage() {
               </label>
             </div>
             <SubmitButton>Salvar branding</SubmitButton>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* ── O que a conta gratuita enxerga ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Funcionalidades no plano gratuito</CardTitle>
+          <CardDescription>
+            O que quem ainda não assinou consegue usar. Desmarcar aqui transforma a funcionalidade em argumento de
+            venda — ela passa a aparecer com convite para assinar em vez de simplesmente sumir. As mesmas chaves são
+            configuradas por plano pago em <strong>Planos &amp; Pricing</strong>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form key={`trial-${settings.updatedAt.getTime()}`} action={updateAppSettingsAction} className="grid gap-4">
+            <PlanCapabilitiesFieldset values={parseCapabilities(settings.trialCapabilities, "trial")} />
+            <SubmitButton>Salvar plano gratuito</SubmitButton>
           </form>
         </CardContent>
       </Card>
