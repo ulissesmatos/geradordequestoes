@@ -1,0 +1,296 @@
+import { Role, UsageKind, UsageMeter } from "@prisma/client";
+import { getAppSettings } from "@/lib/app-settings";
+import { startOfDayInBrazil, startOfNextDayInBrazil } from "@/lib/dates";
+import { prisma } from "@/lib/prisma";
+import { getActiveSubscription } from "@/lib/subscriptions";
+import { resolveUsagePeriod, type UsagePeriod } from "@/lib/usage/period";
+
+/**
+ * Livro-caixa de consumo: reserva antes, acerta depois.
+ *
+ * Duas decisões que valem explicação, porque são o que faz este arquivo existir:
+ *
+ * 1. RESERVA E ACERTO. O número real de questões só se conhece DEPOIS da chamada — o modelo
+ *    às vezes devolve um item a menos. Cobrar no fim, porém, reabriria a corrida que o
+ *    livro-caixa do trial já documentava: com o rate limit de 10/min, dez pedidos paralelos
+ *    leriam o saldo ainda zerado e passariam todos. Então reservamos o pedido inteiro na
+ *    entrada e ajustamos para baixo quando o resultado chega.
+ *
+ * 2. INSERT-THEN-CHECK. Ler o saldo e só então inserir é TOCTOU. Aqui a linha entra primeiro
+ *    e a soma é feita JÁ CONTANDO a própria linha; se estourou, estorna e recusa. O pior caso
+ *    passa a ser um bloco além do teto, em vez de dez.
+ */
+
+export class UsageLimitError extends Error {
+  constructor(
+    message: string,
+    readonly meter: UsageMeter,
+    readonly scope: "day" | "month"
+  ) {
+    super(message);
+    this.name = "UsageLimitError";
+  }
+}
+
+export type MeterLimits = {
+  /** null = ilimitado. */
+  perMonth: number | null;
+  perDay: number | null;
+};
+
+export type ResolvedLimits = {
+  kind: "ADMIN" | "PAID" | "TRIAL";
+  questions: MeterLimits;
+  chat: MeterLimits;
+  /** Teto de questões por bloco gerado. null = sem teto. */
+  maxQuestionsPerGeneration: number | null;
+  period: UsagePeriod;
+  subscriptionId: string | null;
+  planId: string | null;
+  /** false = modo sombra: mede e mostra, mas não bloqueia. */
+  enforcement: boolean;
+};
+
+const UNLIMITED: MeterLimits = { perMonth: null, perDay: null };
+
+/** Lê um inteiro positivo do JSON de override; qualquer outra coisa devolve undefined. */
+function overrideInt(raw: unknown, key: string): number | null | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const value = (raw as Record<string, unknown>)[key];
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return Math.trunc(value);
+  return undefined;
+}
+
+export async function resolveLimits(user: { id: string; role?: Role }): Promise<ResolvedLimits> {
+  const settings = await getAppSettings();
+  const enforcement = settings.usageEnforcementEnabled;
+
+  if (user.role === Role.ADMIN) {
+    return {
+      kind: "ADMIN",
+      questions: UNLIMITED,
+      chat: UNLIMITED,
+      maxQuestionsPerGeneration: null,
+      period: resolveUsagePeriod(null),
+      subscriptionId: null,
+      planId: null,
+      enforcement
+    };
+  }
+
+  const subscription = await getActiveSubscription(user.id);
+
+  if (subscription) {
+    const plan = subscription.plan;
+    const override = subscription.limitsOverride;
+    // Override do cliente vence o plano; ausente cai no plano. Serve para quem já consumia
+    // acima de um teto novo manter o que tinha, sem precisar de um plano só para ele.
+    const pick = (key: string, planValue: number | null) => {
+      const fromOverride = overrideInt(override, key);
+      return fromOverride === undefined ? planValue : fromOverride;
+    };
+
+    return {
+      kind: "PAID",
+      questions: {
+        perMonth: pick("questionsPerMonth", plan.questionsPerMonth),
+        perDay: pick("questionsPerDay", plan.questionsPerDay)
+      },
+      chat: { perMonth: null, perDay: pick("chatMessagesPerDay", plan.chatMessagesPerDay) },
+      maxQuestionsPerGeneration: pick("maxQuestionsPerGeneration", plan.maxQuestionsPerGeneration),
+      period: resolveUsagePeriod(subscription),
+      subscriptionId: subscription.id,
+      planId: plan.id,
+      enforcement
+    };
+  }
+
+  // Trial. `trialGenerationsLimit` continua sendo a chave-mestra: em 0 o trial está desligado
+  // e o app volta a exigir assinatura (ver getTrialStatus/requireActiveSubscription).
+  return {
+    kind: "TRIAL",
+    questions: { perMonth: settings.trialQuestionsPerMonth, perDay: null },
+    chat: { perMonth: settings.trialGenerationsLimit, perDay: null },
+    maxQuestionsPerGeneration:
+      settings.trialMaxQuestionsPerGeneration > 0 ? settings.trialMaxQuestionsPerGeneration : null,
+    period: resolveUsagePeriod(null),
+    subscriptionId: null,
+    planId: null,
+    enforcement
+  };
+}
+
+async function sumUsage(userId: string, meter: UsageMeter, since: Date): Promise<number> {
+  const result = await prisma.usageLedger.aggregate({
+    where: { userId, meter, refundedAt: null, createdAt: { gte: since } },
+    _sum: { costUnits: true }
+  });
+  return result._sum.costUnits ?? 0;
+}
+
+export type MeterStatus = {
+  limits: MeterLimits;
+  usedMonth: number;
+  usedToday: number;
+  /** Quanto ainda cabe considerando os dois tetos. null = ilimitado. */
+  remaining: number | null;
+  /** 0-100 do teto mais apertado — o que a barra da tela mostra. */
+  percent: number;
+  /** Quando o teto que está travando reseta (ISO). null = sem teto. */
+  resetsAt: string | null;
+};
+
+function buildMeterStatus(limits: MeterLimits, usedMonth: number, usedToday: number, period: UsagePeriod): MeterStatus {
+  const remainingMonth = limits.perMonth === null ? null : Math.max(0, limits.perMonth - usedMonth);
+  const remainingDay = limits.perDay === null ? null : Math.max(0, limits.perDay - usedToday);
+
+  const candidates = [remainingMonth, remainingDay].filter((value): value is number => value !== null);
+  const remaining = candidates.length ? Math.min(...candidates) : null;
+
+  const monthPercent = limits.perMonth ? (usedMonth / limits.perMonth) * 100 : 0;
+  const dayPercent = limits.perDay ? (usedToday / limits.perDay) * 100 : 0;
+  const percent = Math.min(100, Math.round(Math.max(monthPercent, dayPercent)));
+
+  // Informa o reset do teto que está efetivamente travando: dizer "renova dia 1º" para quem
+  // esbarrou na rajada diária mandaria a pessoa esperar 20 dias por engano.
+  const dayIsBinding = remainingDay !== null && (remainingMonth === null || remainingDay <= remainingMonth);
+  const resetsAt =
+    remaining === null
+      ? null
+      : dayIsBinding
+        ? startOfNextDayInBrazil().toISOString()
+        : period.end.toISOString();
+
+  return { limits, usedMonth, usedToday, remaining, percent, resetsAt };
+}
+
+export async function getMeterStatus(
+  user: { id: string; role?: Role },
+  meter: UsageMeter,
+  limits?: ResolvedLimits
+): Promise<MeterStatus> {
+  const resolved = limits ?? (await resolveLimits(user));
+  const meterLimits = meter === UsageMeter.QUESTIONS ? resolved.questions : resolved.chat;
+  const [usedMonth, usedToday] = await Promise.all([
+    sumUsage(user.id, meter, resolved.period.start),
+    sumUsage(user.id, meter, startOfDayInBrazil())
+  ]);
+  return buildMeterStatus(meterLimits, usedMonth, usedToday, resolved.period);
+}
+
+export type UsageSummary = {
+  kind: ResolvedLimits["kind"];
+  enforcement: boolean;
+  questions: MeterStatus;
+  chat: MeterStatus;
+  maxQuestionsPerGeneration: number | null;
+  period: UsagePeriod;
+};
+
+export async function getUsageSummary(user: { id: string; role?: Role }): Promise<UsageSummary> {
+  const limits = await resolveLimits(user);
+  const [questions, chat] = await Promise.all([
+    getMeterStatus(user, UsageMeter.QUESTIONS, limits),
+    getMeterStatus(user, UsageMeter.CHAT, limits)
+  ]);
+  return {
+    kind: limits.kind,
+    enforcement: limits.enforcement,
+    questions,
+    chat,
+    maxQuestionsPerGeneration: limits.maxQuestionsPerGeneration,
+    period: limits.period
+  };
+}
+
+function limitMessage(meter: UsageMeter, scope: "day" | "month", kind: ResolvedLimits["kind"]): string {
+  const assine =
+    kind === "TRIAL"
+      ? "Assine um plano para continuar."
+      : "Faça upgrade de plano para liberar mais.";
+  if (meter === UsageMeter.CHAT) {
+    return scope === "day"
+      ? `Você atingiu o limite de mensagens de hoje. ${assine}`
+      : `Você atingiu o limite de mensagens deste ciclo. ${assine}`;
+  }
+  return scope === "day"
+    ? `Você atingiu o limite de questões de hoje. Amanhã libera de novo — ou ${assine.toLowerCase()}`
+    : `Você atingiu o limite de questões deste ciclo. ${assine}`;
+}
+
+/**
+ * Reserva `units` do medidor. Devolve o id da linha (para acertar/estornar) ou null quando
+ * não há o que cobrar (admin).
+ *
+ * Lança `UsageLimitError` quando estoura E o enforcement está ligado. Em modo sombra a linha
+ * é gravada do mesmo jeito — é isso que permite observar o consumo real antes de bloquear.
+ */
+export async function reserveUsage(input: {
+  user: { id: string; role?: Role };
+  meter: UsageMeter;
+  kind: UsageKind;
+  units: number;
+  limits?: ResolvedLimits;
+}): Promise<string | null> {
+  const limits = input.limits ?? (await resolveLimits(input.user));
+  if (limits.kind === "ADMIN") return null;
+
+  const units = Math.max(1, Math.trunc(input.units));
+  const meterLimits = input.meter === UsageMeter.QUESTIONS ? limits.questions : limits.chat;
+
+  const entry = await prisma.usageLedger.create({
+    data: {
+      userId: input.user.id,
+      meter: input.meter,
+      kind: input.kind,
+      costUnits: units,
+      subscriptionId: limits.subscriptionId,
+      planId: limits.planId
+    },
+    select: { id: true }
+  });
+
+  // Sem teto ou em modo sombra não há o que verificar — a linha já cumpriu seu papel.
+  if ((meterLimits.perMonth === null && meterLimits.perDay === null) || !limits.enforcement) {
+    return entry.id;
+  }
+
+  const [usedMonth, usedToday] = await Promise.all([
+    sumUsage(input.user.id, input.meter, limits.period.start),
+    sumUsage(input.user.id, input.meter, startOfDayInBrazil())
+  ]);
+
+  const overMonth = meterLimits.perMonth !== null && usedMonth > meterLimits.perMonth;
+  const overDay = meterLimits.perDay !== null && usedToday > meterLimits.perDay;
+
+  if (overMonth || overDay) {
+    await refundUsage(entry.id);
+    const scope = overDay ? "day" : "month";
+    throw new UsageLimitError(limitMessage(input.meter, scope, limits.kind), input.meter, scope);
+  }
+
+  return entry.id;
+}
+
+/** Ajusta a reserva para o consumo real (só para baixo — reserva é o teto do que foi pedido). */
+export async function settleUsage(ledgerId: string | null, actualUnits: number): Promise<void> {
+  if (!ledgerId) return;
+  const units = Math.max(0, Math.trunc(actualUnits));
+  await prisma.usageLedger
+    .updateMany({ where: { id: ledgerId, costUnits: { gt: units } }, data: { costUnits: units } })
+    .catch(() => undefined);
+}
+
+/**
+ * Devolve a reserva quando a ação não entregou resultado.
+ *
+ * Estorno é soft e best-effort: marcar `refundedAt` é idempotente por construção, e falhar
+ * aqui nunca pode derrubar o tratamento de erro que está em andamento.
+ */
+export async function refundUsage(ledgerId: string | null): Promise<void> {
+  if (!ledgerId) return;
+  await prisma.usageLedger
+    .updateMany({ where: { id: ledgerId, refundedAt: null }, data: { refundedAt: new Date() } })
+    .catch(() => undefined);
+}

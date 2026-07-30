@@ -170,6 +170,7 @@ model User {
   aiLogs            AiGenerationLog[]
   aiUsageEvents     AiUsageEvent[]
   trialUsageEvents  TrialUsageEvent[]
+  usageLedger       UsageLedger[]
   questionSets      QuestionSet[]
   aiChatSessions    AiChatSession[]
   subscriptions     UserSubscription[]
@@ -425,6 +426,61 @@ model TrialUsageEvent {
   @@index([userId, createdAt])
 }
 
+/**
+ * Medidores cobrados. Deliberadamente DOIS, e não um saldo único de "créditos":
+ *
+ * - Uma moeda única obrigaria pesar chat contra geração ("1 questão = 1, 1 mensagem = 3"),
+ *   o que canibaliza — quem conversa muito perde capacidade de gerar — e não vende:
+ *   "você usou 143 de 600 créditos" não significa nada para o aluno.
+ * - Separados, cada um vira um número honesto no card: "N questões/mês" e "M mensagens/dia".
+ *
+ * O ganho decisivo, porém, é técnico. Com um medidor só, cobrar dentro do funil de geração
+ * E no ponto de entrada do chat cobraria duas vezes a mesma mensagem — foi exatamente o bug
+ * que existia com AiUsageEvent. Com medidores distintos, a mensagem debita CHAT no entry
+ * point e a geração debita QUESTIONS dentro de generateAndSaveQuestionSet, que é o único
+ * lugar por onde TODOS os caminhos de geração passam.
+ *
+ * Material não tem medidor próprio: gerar/aprofundar material é uma ação de IA como uma
+ * mensagem, então debita CHAT. O `kind` preserva a distinção para auditoria, sem criar um
+ * terceiro número para vender.
+ */
+enum UsageMeter {
+  QUESTIONS
+  CHAT
+}
+
+enum UsageKind {
+  CHAT_MESSAGE
+  QUESTION_GENERATION
+  MATERIAL_GENERATION
+  MATERIAL_EXPAND
+}
+
+/**
+ * Livro-caixa único de consumo — trial e assinante no mesmo lugar (TrialUsageEvent cobria
+ * só o trial; quem pagava não tinha registro nenhum de consumo por ação).
+ *
+ * Estorno é SOFT (`refundedAt`), não delete: a linha nunca some, então "cobrei e devolvi"
+ * continua auditável quando um cliente reclama, e chamar o estorno duas vezes é inofensivo
+ * por construção — antes era inofensivo só por acidente.
+ */
+model UsageLedger {
+  id             String     @id @default(cuid())
+  userId         String
+  meter          UsageMeter
+  kind           UsageKind
+  /** Unidades cobradas. Em QUESTIONS é o número de questões; em CHAT é sempre 1. */
+  costUnits      Int        @default(1)
+  /** null = consumo do trial. Preenchido permite auditar por ciclo e por plano. */
+  subscriptionId String?
+  planId         String?
+  refundedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, meter, createdAt])
+}
+
 model QuestionSet {
   id                String            @id @default(cuid())
   userId            String
@@ -606,7 +662,18 @@ model SubscriptionPlan {
   stripePriceId       String?
   mercadoPagoReference String?
   priceCents          Int
+  // DEPRECADO: contava CHAMADAS ao provedor, não questões — uma mensagem de chat e um bloco
+  // de 15 questões custavam a mesma unidade. Substituído pelas cotas abaixo; mantido por um
+  // release para permitir rollback enquanto o modo sombra roda.
   aiGenerationsPerDay Int
+  /** Cota principal vendida: questões geradas por ciclo. null = ilimitado. */
+  questionsPerMonth   Int?
+  /** Rajada diária: trava anti-abuso e, de quebra, motivo para voltar amanhã. null = sem teto. */
+  questionsPerDay     Int?
+  /** Teto de questões em CADA bloco — o diferencial mais direto entre planos. null = sem teto. */
+  maxQuestionsPerGeneration Int?
+  /** Generoso de propósito: conversar é barato perto de gerar questão. null = ilimitado. */
+  chatMessagesPerDay  Int?
   // DEPRECADO: migrado para capabilities.materialExpand. Mantido por um release para
   // permitir rollback; parar de ler quando o medidor novo estiver estável.
   materialExpandEnabled Boolean          @default(false)
@@ -638,6 +705,13 @@ model UserSubscription {
   startsAt  DateTime           @default(now())
   endsAt    DateTime?
   reminderSentAt DateTime?
+  /**
+   * Grandfathering nominal: sobrescreve as cotas do plano para UM cliente. Mesmas chaves de
+   * SubscriptionPlan (questionsPerMonth, questionsPerDay, maxQuestionsPerGeneration,
+   * chatMessagesPerDay). Serve para quem já consumia acima do teto novo manter o que tinha
+   * até cancelar — nenhuma mudança de plano deve reduzir acesso de assinatura vigente.
+   */
+  limitsOverride Json?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -704,6 +778,17 @@ model AppSetting {
   // Mesmo formato de SubscriptionPlan.capabilities, aplicado a quem não tem assinatura.
   // É aqui que se decide o que a conta gratuita enxerga do produto.
   trialCapabilities Json @default("{}")
+  // Cota de QUESTÕES do trial. Complementa trialGenerationsLimit, que segue medindo as
+  // ações de IA (mensagens de chat e materiais) e continua sendo a chave-mestra: em 0, o
+  // trial inteiro fica desligado e o app volta a exigir assinatura.
+  trialQuestionsPerMonth Int @default(30)
+  /**
+   * Modo sombra do medidor novo. Em `false` (padrão), o livro-caixa grava e os painéis
+   * mostram, mas quem BLOQUEIA continua sendo o limite antigo — dá para observar o consumo
+   * real por semanas antes de arriscar cortar um cliente pagante por um número mal calibrado.
+   * Vire para `true` só depois de conferir os números em produção.
+   */
+  usageEnforcementEnabled Boolean @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
