@@ -8,7 +8,7 @@ import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
-import { parseAttachments } from "@/lib/chat-attachments";
+import { resolveAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
@@ -30,7 +30,7 @@ export async function sendChatMessageAction(
   const user = await requireUser();
   const prompt = String(formData.get("prompt") ?? "").trim();
   const sessionId = String(formData.get("sessionId") ?? "");
-  const attachments = parseAttachments(formData.get("attachments"));
+  const attachments = await resolveAttachments(formData.get("attachments"));
   if (!prompt && attachments.length === 0) return { error: "Digite uma mensagem." };
 
   let session: { id: string } | null = null;
@@ -50,7 +50,8 @@ export async function sendChatMessageAction(
           name: attachment.name,
           mimeType: attachment.mimeType,
           size: attachment.size,
-          // Defensivo: o valor chega do cliente, então não confiamos na limpeza da origem.
+          // Já vem relido do blob e limpo por resolveAttachments; o strip aqui é a última
+          // barreira contra NUL, que o Postgres rejeita em coluna text.
           extractedText: stripNullBytesNullable(attachment.extractedText)
         }))
       });

@@ -5,7 +5,7 @@ import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
-import { parseAttachments } from "@/lib/chat-attachments";
+import { resolveAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const prompt = String(body?.prompt ?? "").trim();
   const sessionId = String(body?.sessionId ?? "");
-  const attachments = parseAttachments(body?.attachments);
+  const attachments = await resolveAttachments(body?.attachments);
   if (!prompt && attachments.length === 0) {
     return Response.json({ error: "Digite uma mensagem." }, { status: 400 });
   }
