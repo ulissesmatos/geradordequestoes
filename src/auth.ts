@@ -88,7 +88,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name,
             email,
             image,
-            emailVerified: new Date()
+            emailVerified: new Date(),
+            // Aceite registrado na criação: a tela de cadastro avisa, junto ao botão do
+            // Google, que continuar implica concordar com os Termos e a Política.
+            termsAcceptedAt: new Date()
           },
           select: { id: true, role: true, isBlocked: true }
         });

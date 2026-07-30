@@ -29,6 +29,16 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             Continuar com Google
           </button>
         </form>
+        {/* O botão do Google fica fora do formulário de cadastro, então quem entra por aqui
+            não veria referência a Termos/Privacidade em nenhum momento. */}
+        {mode === "register" && (
+          <p className="mt-2 text-center text-xs text-[var(--muted-foreground)]">
+            Ao continuar com o Google, você concorda com os{" "}
+            <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
+            e a{" "}
+            <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
+          </p>
+        )}
         <div className="my-4 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
           <span className="h-px flex-1 bg-[var(--border)]" />
           ou {mode === "login" ? "entre" : "cadastre-se"} com e-mail
@@ -56,16 +66,26 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
               </Link>
             </p>
           )}
+          {/* Checkbox obrigatório (era apenas texto informativo). O aceite é gravado com
+              data/hora no usuário — é o que serve de prova de consentimento numa disputa. */}
+          {mode === "register" && (
+            <label className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
+              <input
+                type="checkbox"
+                name="acceptTerms"
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+              />
+              <span>
+                Li e concordo com os{" "}
+                <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
+                e a{" "}
+                <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
+              </span>
+            </label>
+          )}
           {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
           <SubmitButton className="w-full">{mode === "login" ? "Entrar" : "Cadastrar"}</SubmitButton>
-          {mode === "register" && (
-            <p className="text-center text-xs text-[var(--muted-foreground)]">
-              Ao criar conta, você concorda com os{" "}
-              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos">Termos de Uso</Link>{" "}
-              e a{" "}
-              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade">Política de Privacidade</Link>.
-            </p>
-          )}
         </form>
         <p className="mt-4 text-center text-sm text-[var(--muted-foreground)]">
           {mode === "login" ? "Ainda não tem conta?" : "Já tem conta?"}{" "}

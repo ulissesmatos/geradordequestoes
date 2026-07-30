@@ -44,6 +44,12 @@ export async function registerAction(_: unknown, formData: FormData) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
+  // O checkbox é `required` no HTML, mas isso é só no cliente — revalidamos aqui porque o
+  // aceite é a prova de consentimento que vamos gravar.
+  if (formData.get("acceptTerms") !== "on") {
+    return { error: "É necessário aceitar os Termos de Uso e a Política de Privacidade." };
+  }
+
   const exists = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   if (exists) return { error: "Este e-mail já está cadastrado." };
 
@@ -51,7 +57,8 @@ export async function registerAction(_: unknown, formData: FormData) {
     data: {
       name: parsed.data.name,
       email: parsed.data.email,
-      passwordHash: await bcrypt.hash(parsed.data.password, 12)
+      passwordHash: await bcrypt.hash(parsed.data.password, 12),
+      termsAcceptedAt: new Date()
     }
   });
 

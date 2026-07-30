@@ -150,6 +150,9 @@ model User {
   isBlocked         Boolean            @default(false)
   stripeCustomerId  String?
   trialGenerationsUsed Int             @default(0)
+  // Prova de consentimento: quando o usuário aceitou os Termos e a Política de Privacidade.
+  // Nulo em contas criadas antes deste registro existir.
+  termsAcceptedAt   DateTime?
   preferredStates   String[]           @default([])
   // Revisão espaçada: opt-out do lembrete diário e idempotência do cron de envio.
   reviewReminderOptOut Boolean         @default(false)
@@ -641,6 +644,14 @@ model AppSetting {
   privacyUrl        String?
   termsContent      String?
   privacyContent    String?
+  // Identificação legal usada nos Termos e na Política de Privacidade. Campo vazio OMITE a
+  // frase/seção correspondente no texto — nunca publicar placeholder entre colchetes.
+  legalEntityName   String?
+  legalEntityCnpj   String?
+  supportEmail      String?
+  dpoName           String?
+  dpoEmail          String?
+  legalVenueCity    String?
   trialGenerationsLimit Int  @default(10)
   // Banco público de questões: respostas/dia para quem está no trial (sem assinatura).
   bankDailyAnswersLimitTrial Int @default(10)

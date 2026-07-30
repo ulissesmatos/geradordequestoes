@@ -460,24 +460,45 @@ export async function updatePricingContentAction(formData: FormData) {
   revalidatePath("/assinatura");
 }
 
+/**
+ * Update PARCIAL: só grava os campos presentes no FormData. A página de branding tem vários
+ * formulários que postam para esta mesma action; antes, cada um precisava reenviar todos os
+ * outros campos como <input type="hidden"> para não zerá-los — um formulário novo que
+ * esquecesse um hidden apagava a configuração silenciosamente. Com `has()`, cada formulário
+ * cuida apenas dos seus campos.
+ */
 export async function updateAppSettingsAction(formData: FormData) {
   await requireAdmin();
+
+  const text = (key: string, fallback: string) =>
+    formData.has(key) ? { [key]: String(formData.get(key) || fallback) } : {};
+  const nullable = (key: string) => (formData.has(key) ? { [key]: String(formData.get(key) || "").trim() || null } : {});
+  const count = (key: string, fallback: number) =>
+    formData.has(key) ? { [key]: Math.max(0, Number(formData.get(key) ?? fallback) || 0) } : {};
+
   const fields = {
-    appName: String(formData.get("appName") || "Gerador de Questões"),
-    logoUrl: String(formData.get("logoUrl") || "/brand/logo.png"),
-    faviconUrl: String(formData.get("faviconUrl") || "/brand/favicon.png"),
-    primaryColor: String(formData.get("primaryColor") || "#13666a"),
-    accentColor: String(formData.get("accentColor") || "#f6d979"),
-    publicUrl: String(formData.get("publicUrl") || "") || null,
-    adminEmails: String(formData.get("adminEmails") || ""),
-    institutionalText: String(formData.get("institutionalText") || ""),
-    termsUrl: String(formData.get("termsUrl") || "") || null,
-    privacyUrl: String(formData.get("privacyUrl") || "") || null,
-    termsContent: String(formData.get("termsContent") || "") || null,
-    privacyContent: String(formData.get("privacyContent") || "") || null,
-    trialGenerationsLimit: Math.max(0, Number(formData.get("trialGenerationsLimit") ?? 10) || 0),
-    bankDailyAnswersLimitTrial: Math.max(0, Number(formData.get("bankDailyAnswersLimitTrial") ?? 10) || 0)
+    ...text("appName", "Gerador de Questões"),
+    ...text("logoUrl", "/brand/logo.png"),
+    ...text("faviconUrl", "/brand/favicon.png"),
+    ...text("primaryColor", "#13666a"),
+    ...text("accentColor", "#f6d979"),
+    ...text("adminEmails", ""),
+    ...text("institutionalText", ""),
+    ...nullable("publicUrl"),
+    ...nullable("termsUrl"),
+    ...nullable("privacyUrl"),
+    ...nullable("termsContent"),
+    ...nullable("privacyContent"),
+    ...nullable("legalEntityName"),
+    ...nullable("legalEntityCnpj"),
+    ...nullable("supportEmail"),
+    ...nullable("dpoName"),
+    ...nullable("dpoEmail"),
+    ...nullable("legalVenueCity"),
+    ...count("trialGenerationsLimit", 10),
+    ...count("bankDailyAnswersLimitTrial", 10)
   };
+
   await prisma.appSetting.upsert({
     where: { id: "default" },
     update: fields,
