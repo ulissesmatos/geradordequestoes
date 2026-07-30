@@ -1,10 +1,10 @@
 "use server";
 
-import { AiUsageEventStatus, AiUsageEventType } from "@prisma/client";
+import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { expandStudyMaterialSection } from "@/lib/ai/generateStudyMaterial";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
-import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
 import { requireUser } from "@/lib/guards";
 import { findSection, insertIntoSection, type SectionRef } from "@/lib/markdown-sections";
 import { prisma } from "@/lib/prisma";
@@ -83,8 +83,11 @@ export async function expandMaterialSectionAction(input: {
     return { ok: false, error: "Seção não encontrada. Recarregue a página e tente novamente." };
   }
 
+  // Cota do trial cobrada na entrada e estornada nos caminhos que não entregam conteúdo.
+  let trialChargeId: string | null = null;
   try {
     await assertCanGenerateWithAi(user);
+    trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.MATERIAL_EXPAND });
 
     const generated = await expandStudyMaterialSection({
       materialTitle: material.title,
@@ -116,6 +119,7 @@ export async function expandMaterialSectionAction(input: {
     }
 
     if (newContent === null) {
+      await refundTrialUsage(trialChargeId);
       await recordAiUsageEvent({
         user,
         type: AiUsageEventType.CHAT_RESPONSE,
@@ -137,6 +141,7 @@ export async function expandMaterialSectionAction(input: {
     revalidatePath(`/materiais/${input.materialId}`);
     return { ok: true, content: newContent };
   } catch (error) {
+    await refundTrialUsage(trialChargeId);
     await recordAiUsageEvent({
       user,
       type: AiUsageEventType.CHAT_RESPONSE,

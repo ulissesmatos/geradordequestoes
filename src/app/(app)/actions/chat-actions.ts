@@ -1,12 +1,12 @@
 "use server";
 
-import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma } from "@prisma/client";
+import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma, TrialUsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
-import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
 import { parseAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +33,8 @@ export async function sendChatMessageAction(
   if (!prompt && attachments.length === 0) return { error: "Digite uma mensagem." };
 
   let session: { id: string } | null = null;
+  // Cota do trial cobrada na entrada e estornada se o turno falhar.
+  let trialChargeId: string | null = null;
   try {
     session = await getOrCreateChatSession(user.id, prompt || "Anexo enviado", sessionId || undefined);
     const userMessage = await prisma.aiChatMessage.create({
@@ -53,6 +55,8 @@ export async function sendChatMessageAction(
     }
 
     await assertCanGenerateWithAi(user);
+    // 1 mensagem = 1 unidade, independente das chamadas de LLM internas do turno.
+    trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.CHAT_MESSAGE });
     const turn = await runChatTurn({ user, sessionId: session.id, prompt });
 
     const assistant = await prisma.aiChatMessage.create({
@@ -89,6 +93,8 @@ export async function sendChatMessageAction(
       studyMaterialId: turn.studyMaterialId
     };
   } catch (error) {
+    // Turno não entregou resultado: devolve a unidade cobrada na entrada.
+    await refundTrialUsage(trialChargeId);
     await recordAiUsageEvent({
       user,
       type: AiUsageEventType.CHAT_RESPONSE,

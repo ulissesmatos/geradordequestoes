@@ -1,8 +1,9 @@
 "use server";
 
-import { Difficulty, FeedbackType, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus } from "@prisma/client";
+import { Difficulty, FeedbackType, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus, TrialUsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { chargeTrialUsage, refundTrialUsage } from "@/lib/ai/usage";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getTrialBankStatus } from "@/lib/question-bank";
@@ -99,8 +100,11 @@ export async function generateUserQuestionsAction(
   const context = String(formData.get("context") || "");
   const closeVariant = formData.get("closeVariant") === "on";
 
+  // Cota do trial cobrada na entrada e estornada se a geração falhar.
+  let trialChargeId: string | null = null;
   try {
     await assertCanGenerateWithAi(user);
+    trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.QUESTION_GENERATION });
     const questionSet = await generateAndSaveQuestionSet({
       user,
       subjectId,
@@ -124,6 +128,8 @@ export async function generateUserQuestionsAction(
       closeVariantFallback: closeVariant && questionSet.closeVariantFallback
     };
   } catch (error) {
+    // Geração não entregou o bloco: devolve a unidade cobrada.
+    await refundTrialUsage(trialChargeId);
     await prisma.aiGenerationLog
       .create({
         data: {

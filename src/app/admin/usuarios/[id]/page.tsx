@@ -114,7 +114,9 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
           <CardHeader>
             <CardTitle>Conta & uso</CardTitle>
             <CardDescription>
-              Uso de IA hoje: <strong>{usage.used}</strong>
+              {/* Janela diferente por tipo de conta: assinante tem limite diário; quem está no
+                  trial tem cota mensal. O rótulo fixo "hoje" fazia parecer que reseta amanhã. */}
+              {usage.isTrial ? "Uso de IA neste mês (trial)" : "Uso de IA hoje"}: <strong>{usage.used}</strong>
               {usage.limit !== null ? ` / ${usage.limit}` : " (admin, sem limite)"}
             </CardDescription>
           </CardHeader>

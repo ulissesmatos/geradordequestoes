@@ -169,6 +169,7 @@ model User {
   favorites         FavoriteQuestion[]
   aiLogs            AiGenerationLog[]
   aiUsageEvents     AiUsageEvent[]
+  trialUsageEvents  TrialUsageEvent[]
   questionSets      QuestionSet[]
   aiChatSessions    AiChatSession[]
   subscriptions     UserSubscription[]
@@ -383,6 +384,12 @@ model AiGenerationLog {
   topic        Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
 
+/**
+ * Log BRUTO de chamadas de IA: uma linha por chamada ao provedor. Alimenta /admin/logs-ia e o
+ * limite DIÁRIO dos planos pagos. Não serve para medir a cota do trial — uma única mensagem do
+ * usuário pode gerar várias linhas aqui (resposta do chat + geração de questões, por exemplo).
+ * A cota do trial é contada em TrialUsageEvent.
+ */
 model AiUsageEvent {
   id           String             @id @default(cuid())
   userId       String
@@ -393,6 +400,29 @@ model AiUsageEvent {
   errorMessage String?
   createdAt    DateTime           @default(now())
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum TrialUsageKind {
+  CHAT_MESSAGE
+  QUESTION_GENERATION
+  MATERIAL_EXPAND
+}
+
+/**
+ * Livro-caixa da cota do TRIAL: uma linha por AÇÃO do usuário, não por chamada de IA. Uma
+ * mensagem no chat que dispara tool de geração + várias iterações de tool consome 1 linha aqui.
+ * Vive separado de AiUsageEvent de propósito: o limite diário dos planos pagos continua lendo
+ * AiUsageEvent sem nenhuma alteração, e código compartilhado (generateAndSaveQuestionSet, que
+ * roda em 4 contextos diferentes) não precisa saber se aquela chamada "conta" ou não.
+ */
+model TrialUsageEvent {
+  id        String         @id @default(cuid())
+  userId    String
+  kind      TrialUsageKind
+  createdAt DateTime       @default(now())
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model QuestionSet {

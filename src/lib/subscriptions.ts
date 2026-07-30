@@ -44,16 +44,18 @@ function nextMonthlyReset() {
 }
 
 /**
- * Estado do trial (N gerações/mensagens grátis POR MÊS, resetando todo dia 1º)
- * de quem não tem assinatura. Conta pelo AiUsageEvent (mesmo padrão do limite
- * diário dos planos pagos) em vez de um contador vitalício — assim o trial
- * realmente "recarrega" a cada mês em vez de acabar uma única vez para sempre.
+ * Estado do trial: N AÇÕES grátis por mês, resetando todo dia 1º.
+ *
+ * Conta TrialUsageEvent (uma linha por ação do usuário), não AiUsageEvent (uma linha por
+ * chamada ao provedor). A diferença é o ponto: uma única mensagem que dispara geração de
+ * questões produz 2 linhas em AiUsageEvent e consumia 2 unidades — com limite de 3, o visitante
+ * gastava a cota inteira em duas mensagens sem entender por quê.
  */
 export async function getTrialStatus(userId: string): Promise<TrialStatus> {
   const settings = await getAppSettings();
   const limit = settings.trialGenerationsLimit ?? 0;
-  const used = await prisma.aiUsageEvent.count({
-    where: { userId, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfCurrentMonth() } }
+  const used = await prisma.trialUsageEvent.count({
+    where: { userId, createdAt: { gte: startOfCurrentMonth() } }
   });
   return {
     used,

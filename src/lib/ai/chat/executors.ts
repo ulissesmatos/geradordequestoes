@@ -13,7 +13,6 @@ import { recordAiUsageEvent } from "@/lib/ai/usage";
 import { difficultyLabel, questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { inferMaterialTaxonomy, materialTitleFromPrompt } from "@/lib/materials";
 import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/question-sets";
-import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 import { searchReferenceChunks, searchReferenceQuestions, searchWithinDocument } from "@/lib/reference";
@@ -118,8 +117,6 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
   // If the AI requested a topic that doesn't match a DB topic, preserve its label in the title
   const displayTopicName = args.topicName || topic.name;
 
-  await assertCanGenerateWithAi(user);
-
   const [recentContext, attachmentText, performanceContext] = await Promise.all([
     getRecentConversationText(sessionId),
     getRecentAttachmentText(sessionId),
@@ -186,8 +183,6 @@ async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawAr
   const parsed = parseArgs(chatTools.generate_study_material.schema, rawArgs);
   if (!parsed.ok) return parsed.result;
   const args = parsed.args;
-
-  await assertCanGenerateWithAi(user);
 
   const materialPrompt = [args.topic, args.focus].filter(Boolean).join(" — ");
   const [recentContext, performanceContext] = await Promise.all([
@@ -278,8 +273,6 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
   if (target.kind === "message") {
     return { resultForModel: target.message };
   }
-
-  await assertCanGenerateWithAi(user);
 
   const defaults = reviewDefaults();
   const format = (args.format as QuestionFormat | undefined) ?? defaults.format;

@@ -1,9 +1,9 @@
-import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma } from "@prisma/client";
+import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma, TrialUsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
-import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
 import { parseAttachments } from "@/lib/chat-attachments";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -39,6 +39,8 @@ export async function POST(request: Request) {
       };
 
       let session: { id: string } | null = null;
+      // Cota do trial cobrada na entrada e estornada se o turno falhar (ver chargeTrialUsage).
+      let trialChargeId: string | null = null;
       try {
         session = await getOrCreateChatSession(user.id, prompt || "Anexo enviado", sessionId || undefined);
         send("session", { sessionId: session.id });
@@ -61,6 +63,9 @@ export async function POST(request: Request) {
         }
 
         await assertCanGenerateWithAi(user);
+        // 1 mensagem = 1 unidade, independente de quantas chamadas de LLM o turno fizer
+        // (loop de tools, geração de questões, material, sumarização).
+        trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.CHAT_MESSAGE });
 
         const turn = await streamChatTurn({
           user,
@@ -114,6 +119,8 @@ export async function POST(request: Request) {
         // Sumarização (chamada de IA extra) roda em segundo plano — nunca atrasa o turno.
         await summarizeSessionIfNeeded(session.id).catch(() => undefined);
       } catch (error) {
+        // Turno não entregou resultado: devolve a unidade cobrada na entrada.
+        await refundTrialUsage(trialChargeId);
         await recordAiUsageEvent({
           user,
           type: AiUsageEventType.CHAT_RESPONSE,
