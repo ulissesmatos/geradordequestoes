@@ -378,6 +378,19 @@ export async function deleteUserAction(formData: FormData) {
   redirect("/admin/usuarios");
 }
 
+/**
+ * Cota opcional do plano: campo vazio significa ILIMITADO (null), não zero.
+ *
+ * A distinção importa — zero bloquearia o plano inteiro, e é fácil um formulário mandar
+ * string vazia sem querer dizer "proibido tudo".
+ */
+function optionalQuota(formData: FormData, key: string): number | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  if (!raw) return null;
+  const parsed = Math.trunc(Number(raw));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 export async function createPlanAction(formData: FormData) {
   await requireAdmin();
   const name = String(formData.get("name") ?? "");
@@ -395,6 +408,10 @@ export async function createPlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
+      questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
+      questionsPerDay: optionalQuota(formData, "questionsPerDay"),
+      maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
+      chatMessagesPerDay: optionalQuota(formData, "chatMessagesPerDay"),
       capabilities: readCapabilitiesFromForm(formData) ?? {},
       isActive: formData.get("isActive") === "on"
     }
@@ -431,6 +448,10 @@ export async function updatePlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
+      questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
+      questionsPerDay: optionalQuota(formData, "questionsPerDay"),
+      maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
+      chatMessagesPerDay: optionalQuota(formData, "chatMessagesPerDay"),
       isActive: formData.get("isActive") === "on"
     }
   });

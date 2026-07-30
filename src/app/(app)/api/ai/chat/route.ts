@@ -6,6 +6,7 @@ import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
+import { getEntitlements, upgradeRequiredResponse } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -30,6 +31,15 @@ export async function POST(request: Request) {
   const attachments = await resolveAttachments(body?.attachments);
   if (!prompt && attachments.length === 0) {
     return Response.json({ error: "Digite uma mensagem." }, { status: 400 });
+  }
+
+  // Segundo gate, além do de /api/uploads: um anexo pode chegar aqui de uma requisição
+  // forjada ou de um plano que mudou no meio da sessão. Barra antes de abrir o stream.
+  if (attachments.length > 0 && !(await getEntitlements(user)).can("chatAttachments")) {
+    return upgradeRequiredResponse(
+      "chatAttachments",
+      "Enviar arquivos no chat está disponível nos planos pagos. Assine para gerar questões a partir do seu próprio material."
+    );
   }
 
   const encoder = new TextEncoder();
@@ -58,7 +68,8 @@ export async function POST(request: Request) {
               name: attachment.name,
               mimeType: attachment.mimeType,
               size: attachment.size,
-              // Defensivo: o valor chega do cliente, então não confiamos na limpeza da origem.
+              // Já vem relido do blob e limpo por resolveAttachments; o strip aqui é a última
+              // barreira contra NUL, que o Postgres rejeita em coluna text.
               extractedText: stripNullBytesNullable(attachment.extractedText)
             }))
           });

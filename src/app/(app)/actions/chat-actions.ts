@@ -9,6 +9,7 @@ import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
+import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
@@ -32,6 +33,16 @@ export async function sendChatMessageAction(
   const sessionId = String(formData.get("sessionId") ?? "");
   const attachments = await resolveAttachments(formData.get("attachments"));
   if (!prompt && attachments.length === 0) return { error: "Digite uma mensagem." };
+
+  // Segundo gate, além do de /api/uploads: um anexo pode chegar aqui de uma requisição
+  // forjada ou de um plano que mudou no meio da sessão. Falha alto em vez de ignorar em
+  // silêncio — o usuário anexou um arquivo e precisa saber que ele não foi usado.
+  if (attachments.length > 0 && !(await getEntitlements(user)).can("chatAttachments")) {
+    return {
+      error:
+        "Enviar arquivos no chat está disponível nos planos pagos. Assine para gerar questões a partir do seu próprio material."
+    };
+  }
 
   let session: { id: string } | null = null;
   // Cobrado na entrada e estornado se o turno falhar.

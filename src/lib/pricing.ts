@@ -6,11 +6,45 @@ import { prisma } from "@/lib/prisma";
  * DIFERENCIA um plano do outro é derivado das capabilities, automaticamente.
  */
 export const defaultPlanFeatures = [
-  "Até {limit} usos de IA por dia",
+  "{questoesMes} questões geradas por mês",
+  "Blocos de até {questoesBloco} questões de uma vez",
   "Chat para gerar questões, simulados, revisões e materiais",
   "Histórico salvo com blocos gerados",
   "Revisão com base em erros e favoritos"
 ];
+
+type PlanQuotas = {
+  questionsPerMonth?: number | null;
+  questionsPerDay?: number | null;
+  maxQuestionsPerGeneration?: number | null;
+  chatMessagesPerDay?: number | null;
+};
+
+/**
+ * Substitui os marcadores de cota no texto do bullet.
+ *
+ * Linha com marcador de cota ILIMITADA é removida em vez de virar "ilimitado questões por
+ * mês": um plano sem teto não deve anunciar um número, e frase quebrada no card de preço
+ * custa mais confiança do que o bullet ganharia.
+ */
+function applyQuotaPlaceholders(feature: string, plan: PlanQuotas & { aiGenerationsPerDay: number }): string | null {
+  const values: Record<string, number | null | undefined> = {
+    "{questoesMes}": plan.questionsPerMonth,
+    "{questoesDia}": plan.questionsPerDay,
+    "{questoesBloco}": plan.maxQuestionsPerGeneration,
+    "{mensagensDia}": plan.chatMessagesPerDay,
+    // Compatibilidade com bullets antigos gravados no banco.
+    "{limit}": plan.questionsPerMonth ?? plan.aiGenerationsPerDay
+  };
+
+  let result = feature;
+  for (const [token, value] of Object.entries(values)) {
+    if (!result.includes(token)) continue;
+    if (value === null || value === undefined) return null;
+    result = result.replaceAll(token, String(value));
+  }
+  return result;
+}
 
 export async function getPricingContent() {
   return (
@@ -69,10 +103,12 @@ function derivedCapabilityBullets(rawCapabilities: unknown): string[] {
  * para "Simulados cronometrados" escrito à mão suprimir "Simulados cronometrados com nota
  * líquida" — senão o card repetiria a mesma promessa em duas linhas.
  */
-export function planFeatures(plan: { features: string[]; aiGenerationsPerDay: number; capabilities?: unknown }) {
+export function planFeatures(
+  plan: PlanQuotas & { features: string[]; aiGenerationsPerDay: number; capabilities?: unknown }
+) {
   const manual = (plan.features.length ? plan.features : defaultPlanFeatures)
-    .map((feature) => feature.replaceAll("{limit}", String(plan.aiGenerationsPerDay)).trim())
-    .filter(Boolean);
+    .map((feature) => applyQuotaPlaceholders(feature, plan)?.trim())
+    .filter((feature): feature is string => Boolean(feature));
 
   const manualNormalized = manual.map(normalizeForCompare);
   const derived = derivedCapabilityBullets(plan.capabilities).filter((bullet) => {
