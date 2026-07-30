@@ -413,6 +413,15 @@ export function AiChatDashboard({
             if (data.sessionId && !currentSessionId) {
               window.history.replaceState(null, "", `/ai?sessionId=${data.sessionId}`);
             }
+          } else if (event === "discard") {
+            // O texto transmitido era o modelo narrando o que ia fazer antes de chamar a
+            // ferramenta, não a resposta. Sem limpar, essa narração ficava colada na resposta
+            // final na tela — e sumia ao recarregar, porque não é ela que fica salva.
+            setTypedResponse("");
+            setIsSubmitting(true);
+            // O primeiro delta zerou o cronômetro (chegou texto = parou de esperar); como
+            // voltamos a esperar, retoma sem perder a contagem original quando ela existir.
+            setTurnStartedAt((previous) => previous ?? Date.now());
           } else if (event === "tool") {
             // O servidor manda a frase pronta com os argumentos reais da ferramenta
             // ("Gerando 20 questões de Direito Constitucional…"). TOOL_LABELS só cobre

@@ -19,7 +19,14 @@ export type ToolTraceEntry = {
 export type ChatTurnEvent =
   /** `label` e a frase pronta mostrada ao usuario, montada a partir dos argumentos REAIS da ferramenta. */
   | { type: "tool_started"; name: string; label: string }
-  | { type: "delta"; text: string };
+  | { type: "delta"; text: string }
+  /**
+   * O texto transmitido nesta rodada era só o modelo narrando a intenção ANTES de chamar a
+   * ferramenta ("Beleza! Gere mais um bloco com 10 questões…") — não é a resposta final.
+   * O cliente precisa descartar o que já mostrou, senão essa narração fica colada na resposta
+   * de verdade. Como só `finalText` é salvo, sem isso a tela ao vivo diverge do histórico.
+   */
+  | { type: "draft_discarded" };
 
 export type ChatSource = { title: string; url: string };
 
@@ -227,8 +234,13 @@ export async function streamChatTurn(input: {
     }
 
     let completion: CompletionResult | null = null;
+    // Só sabemos se a rodada é "resposta final" ou "chamada de ferramenta" quando ela termina,
+    // mas os tokens precisam ir para a tela na hora para manter a sensação de streaming. Então
+    // transmitimos e, se no fim virar chamada de ferramenta, mandamos o cliente descartar.
+    let streamedDraft = false;
     for await (const event of streamChat({ settings, messages, tools: exhausted ? [] : tools, maxOutputTokens: 900 })) {
       if (event.type === "delta") {
+        streamedDraft = true;
         input.onEvent({ type: "delta", text: event.text });
       } else {
         completion = event.result;
@@ -240,6 +252,9 @@ export async function streamChatTurn(input: {
       finalText = completion.text;
       break;
     }
+
+    // Rodada de ferramenta: o que foi transmitido era narração de intenção, não resposta.
+    if (streamedDraft) input.onEvent({ type: "draft_discarded" });
 
     messages.push({ role: "assistant", content: completion.assistantText, toolCalls: completion.calls });
 
