@@ -525,7 +525,11 @@ export async function updateAppSettingsAction(formData: FormData) {
     ...count("bankDailyAnswersLimitTrial", 10),
     ...count("trialMaxQuestionsPerGeneration", 5),
     // Mesma regra parcial dos demais campos: só grava se o formulário trouxe o fieldset.
-    ...(trialCapabilities ? { trialCapabilities } : {})
+    ...(trialCapabilities ? { trialCapabilities } : {}),
+    // Checkbox precisa do marcador para "desmarcado" ser distinguível de "não veio no form".
+    ...(formData.has("usageEnforcementSubmitted")
+      ? { usageEnforcementEnabled: formData.get("usageEnforcementEnabled") === "on" }
+      : {})
   };
 
   await prisma.appSetting.upsert({

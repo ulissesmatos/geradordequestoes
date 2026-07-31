@@ -77,6 +77,52 @@ export default async function AdminBrandingPage() {
         </CardContent>
       </Card>
 
+      {/* ── Medidor de consumo ── */}
+      <Card className={settings.usageEnforcementEnabled ? undefined : "border-[var(--warning)]"}>
+        <CardHeader>
+          <CardTitle>Medidor de consumo</CardTitle>
+          <CardDescription>
+            {settings.usageEnforcementEnabled ? (
+              <>
+                <strong>Cotas valendo.</strong> Quem estourar questões/mês, questões/dia ou mensagens/dia é
+                bloqueado pelos limites configurados em Planos &amp; Pricing.
+              </>
+            ) : (
+              <>
+                <strong>Modo sombra ligado.</strong> O consumo está sendo medido e aparece nos painéis, mas quem
+                bloqueia ainda é o limite antigo (gerações/dia). Deixe assim por algumas semanas, confira o
+                consumo real e ajuste as cotas em Planos &amp; Pricing — as atuais vieram de uma conversão
+                automática folgada, feita para ninguém perder acesso. Só então ligue as cotas.
+              </>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form key={`usage-${settings.updatedAt.getTime()}`} action={updateAppSettingsAction} className="grid gap-3">
+            {/* Par hidden+checkbox: checkbox desmarcado não é postado, então sem o hidden a
+                action não conseguiria distinguir "desliguei" de "este formulário não trata
+                do campo" — e nunca daria para voltar ao modo sombra. */}
+            <input type="hidden" name="usageEnforcementSubmitted" value="1" />
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                name="usageEnforcementEnabled"
+                type="checkbox"
+                defaultChecked={settings.usageEnforcementEnabled}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                <span className="font-semibold">Aplicar as cotas novas (questões/mês, questões/dia, chat/dia)</span>
+                <span className="block text-xs font-normal text-[var(--muted-foreground)]">
+                  Desmarcado, o app segue medindo sem bloquear ninguém. O teto de questões por bloco vale nos dois
+                  casos — é regra de plano, não de consumo.
+                </span>
+              </span>
+            </label>
+            <SubmitButton>Salvar medidor</SubmitButton>
+          </form>
+        </CardContent>
+      </Card>
+
       {/* ── O que a conta gratuita enxerga ── */}
       <Card>
         <CardHeader>
