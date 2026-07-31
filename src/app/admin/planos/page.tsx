@@ -1,11 +1,14 @@
 import { createCouponAction, createPlanAction, deleteCouponAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
+import { PlanCapabilitiesFieldset } from "@/components/admin/plan-capabilities-fieldset";
+import { PlanQuotaFields } from "@/components/admin/plan-quota-fields";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { parseCapabilities } from "@/lib/capabilities";
 import { defaultPlanFeatures, getPricingContent } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
@@ -43,12 +46,13 @@ export default async function AdminPlansPage() {
         </CardHeader>
         <CardContent>
           <form action={createPlanAction} className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-3">
               <Input name="name" placeholder="Nome" required />
               <Input name="price" type="number" step="0.01" min="0" placeholder="Preço mensal" required />
-              <Input name="aiGenerationsPerDay" type="number" min="1" placeholder="Gerações/dia" required />
               <Input name="displayOrder" type="number" defaultValue={plans.length + 1} placeholder="Ordem" />
             </div>
+            <PlanQuotaFields />
+            <input type="hidden" name="aiGenerationsPerDay" value={20} />
             <div className="grid gap-3 md:grid-cols-2">
               <Input name="marketingSubtitle" placeholder="Subtítulo comercial" />
               <Input name="ctaText" defaultValue="Assinar com cartão" placeholder="Texto do botão principal" />
@@ -65,8 +69,8 @@ export default async function AdminPlansPage() {
             <div className="flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked /> Ativo</label>
               <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" /> Destacar como popular</label>
-              <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" /> Aprofundar materiais (IA)</label>
             </div>
+            <PlanCapabilitiesFieldset values={parseCapabilities({}, "plan")} />
             <SubmitButton>Criar plano</SubmitButton>
           </form>
         </CardContent>
@@ -86,10 +90,11 @@ export default async function AdminPlansPage() {
                   <Input name="name" defaultValue={plan.name} required />
                   <Input name="displayOrder" type="number" defaultValue={plan.displayOrder} />
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
-                  <Input name="aiGenerationsPerDay" type="number" min="1" defaultValue={plan.aiGenerationsPerDay} required />
-                </div>
+                <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
+                <PlanQuotaFields values={plan} />
+                {/* Limite antigo (contava chamadas): não é mais editável, mas segue gravado
+                    para permitir rollback enquanto o modo sombra roda. */}
+                <input type="hidden" name="aiGenerationsPerDay" value={plan.aiGenerationsPerDay} />
                 <Input name="marketingSubtitle" defaultValue={plan.marketingSubtitle ?? ""} placeholder="Subtítulo comercial" />
                 <Input name="ctaText" defaultValue={plan.ctaText} placeholder="Texto do botão principal" />
                 <Textarea name="description" defaultValue={plan.description ?? ""} placeholder="Descrição" />
@@ -114,8 +119,8 @@ export default async function AdminPlansPage() {
                 <div className="flex flex-wrap gap-4 text-sm">
                   <label className="flex items-center gap-2"><input name="isActive" type="checkbox" defaultChecked={plan.isActive} /> Ativo</label>
                   <label className="flex items-center gap-2"><input name="isHighlighted" type="checkbox" defaultChecked={plan.isHighlighted} /> Destacado</label>
-                  <label className="flex items-center gap-2"><input name="materialExpandEnabled" type="checkbox" defaultChecked={plan.materialExpandEnabled} /> Aprofundar materiais (IA)</label>
                 </div>
+                <PlanCapabilitiesFieldset values={parseCapabilities(plan.capabilities, "plan")} />
                 <SubmitButton className="w-full">Salvar plano</SubmitButton>
               </form>
             </CardContent>

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { logAdminAction } from "@/lib/audit";
+import { readCapabilitiesFromForm } from "@/lib/capabilities";
 import { resolveSecretUpdate } from "@/lib/crypto";
 import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
@@ -377,6 +378,19 @@ export async function deleteUserAction(formData: FormData) {
   redirect("/admin/usuarios");
 }
 
+/**
+ * Cota opcional do plano: campo vazio significa ILIMITADO (null), não zero.
+ *
+ * A distinção importa — zero bloquearia o plano inteiro, e é fácil um formulário mandar
+ * string vazia sem querer dizer "proibido tudo".
+ */
+function optionalQuota(formData: FormData, key: string): number | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  if (!raw) return null;
+  const parsed = Math.trunc(Number(raw));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 export async function createPlanAction(formData: FormData) {
   await requireAdmin();
   const name = String(formData.get("name") ?? "");
@@ -394,7 +408,11 @@ export async function createPlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
-      materialExpandEnabled: formData.get("materialExpandEnabled") === "on",
+      questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
+      questionsPerDay: optionalQuota(formData, "questionsPerDay"),
+      maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
+      chatMessagesPerDay: optionalQuota(formData, "chatMessagesPerDay"),
+      capabilities: readCapabilitiesFromForm(formData) ?? {},
       isActive: formData.get("isActive") === "on"
     }
   });
@@ -411,9 +429,13 @@ export async function updatePlanAction(formData: FormData) {
   const current = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
   if (!current) throw new Error("Plano não encontrado.");
 
+  // Formulário sem o fieldset preserva o que já estava gravado (ver readCapabilitiesFromForm).
+  const capabilities = readCapabilitiesFromForm(formData);
+
   await prisma.subscriptionPlan.update({
     where: { id: planId },
     data: {
+      ...(capabilities ? { capabilities } : {}),
       name,
       slug: name !== current.name ? await uniquePlanSlug(name, planId) : current.slug,
       description: String(formData.get("description") ?? ""),
@@ -426,7 +448,10 @@ export async function updatePlanAction(formData: FormData) {
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
       aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
-      materialExpandEnabled: formData.get("materialExpandEnabled") === "on",
+      questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
+      questionsPerDay: optionalQuota(formData, "questionsPerDay"),
+      maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
+      chatMessagesPerDay: optionalQuota(formData, "chatMessagesPerDay"),
       isActive: formData.get("isActive") === "on"
     }
   });
@@ -475,6 +500,7 @@ export async function updateAppSettingsAction(formData: FormData) {
   const nullable = (key: string) => (formData.has(key) ? { [key]: String(formData.get(key) || "").trim() || null } : {});
   const count = (key: string, fallback: number) =>
     formData.has(key) ? { [key]: Math.max(0, Number(formData.get(key) ?? fallback) || 0) } : {};
+  const trialCapabilities = readCapabilitiesFromForm(formData, "trial");
 
   const fields = {
     ...text("appName", "Gerador de Questões"),
@@ -497,7 +523,13 @@ export async function updateAppSettingsAction(formData: FormData) {
     ...nullable("legalVenueCity"),
     ...count("trialGenerationsLimit", 10),
     ...count("bankDailyAnswersLimitTrial", 10),
-    ...count("trialMaxQuestionsPerGeneration", 5)
+    ...count("trialMaxQuestionsPerGeneration", 5),
+    // Mesma regra parcial dos demais campos: só grava se o formulário trouxe o fieldset.
+    ...(trialCapabilities ? { trialCapabilities } : {}),
+    // Checkbox precisa do marcador para "desmarcado" ser distinguível de "não veio no form".
+    ...(formData.has("usageEnforcementSubmitted")
+      ? { usageEnforcementEnabled: formData.get("usageEnforcementEnabled") === "on" }
+      : {})
   };
 
   await prisma.appSetting.upsert({

@@ -2,6 +2,7 @@ import { AiUsageEventStatus, Role, SubscriptionStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/app-settings";
+import { startOfDayInBrazil, startOfMonthInBrazil, startOfNextDayInBrazil, startOfNextMonthInBrazil } from "@/lib/dates";
 
 export async function getActiveSubscription(userId: string) {
   return prisma.userSubscription.findFirst({
@@ -28,19 +29,9 @@ export type TrialStatus = {
   exhausted: boolean;
 };
 
-/** Início do mês corrente no fuso do servidor — janela de reset do trial. */
-function startOfCurrentMonth() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(1);
-  return start;
-}
-
-/** Início do próximo mês — usado para informar quando o trial reseta. */
+/** Início do próximo mês em Brasília — usado para informar quando o trial reseta. */
 function nextMonthlyReset() {
-  const start = startOfCurrentMonth();
-  start.setMonth(start.getMonth() + 1);
-  return start.toISOString();
+  return startOfNextMonthInBrazil().toISOString();
 }
 
 /**
@@ -55,7 +46,7 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
   const settings = await getAppSettings();
   const limit = settings.trialGenerationsLimit ?? 0;
   const used = await prisma.trialUsageEvent.count({
-    where: { userId, createdAt: { gte: startOfCurrentMonth() } }
+    where: { userId, createdAt: { gte: startOfMonthInBrazil() } }
   });
   return {
     used,
@@ -64,30 +55,6 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
     enabled: limit > 0,
     exhausted: used >= limit
   };
-}
-
-export type QuestionQuantityCap = {
-  /** true = conta sem assinatura (e não-admin): o teto por bloco se aplica. */
-  isTrial: boolean;
-  /** Máximo de questões por bloco gerado; null = sem teto (assinante, admin ou teto desligado). */
-  max: number | null;
-};
-
-/**
- * Teto de questões POR bloco gerado. Complementa a cota mensal do trial: `getTrialStatus`
- * limita QUANTAS vezes o visitante gera, este teto limita o TAMANHO de cada geração.
- *
- * Sem ele, uma única mensagem grátis pedindo "20 questões" custava mais caro que um dia
- * inteiro de assinante — o pedido é atendido, mas cortado no teto, e quem chamou avisa o
- * usuário (nunca falhamos a geração por causa disso).
- */
-export async function getQuestionQuantityCap(user: { id: string; role?: Role }): Promise<QuestionQuantityCap> {
-  if (user.role === Role.ADMIN) return { isTrial: false, max: null };
-  if (await getActiveSubscription(user.id)) return { isTrial: false, max: null };
-
-  const settings = await getAppSettings();
-  const max = settings.trialMaxQuestionsPerGeneration;
-  return { isTrial: true, max: max > 0 ? max : null };
 }
 
 export async function requireActiveSubscription(user: { id: string; role?: Role }) {
@@ -101,15 +68,30 @@ export async function requireActiveSubscription(user: { id: string; role?: Role 
   redirect("/assinatura");
 }
 
+/**
+ * Portão HERDADO de uso de IA, baseado em `AiUsageEvent` (chamadas ao provedor).
+ *
+ * Está errado por construção e é por isso que existe o medidor novo: uma mensagem de chat que
+ * dispara geração grava DOIS eventos — um CHAT_RESPONSE no entry point e um
+ * QUESTION_GENERATION dentro do funil — então "gere 15 questões" consumia 2 das 20 unidades
+ * do plano Essencial. O trial nunca sofreu disso porque tem livro-caixa próprio; só quem
+ * pagava era penalizado.
+ *
+ * Continua ligado enquanto `usageEnforcementEnabled` estiver em false (modo sombra), para não
+ * existir janela sem limite nenhum enquanto as cotas novas são calibradas. Com o enforcement
+ * ligado, quem bloqueia são os medidores de UsageLedger e esta função sai do caminho.
+ */
 export async function assertCanGenerateWithAi(user: { id: string; role?: Role }) {
   if (user.role === Role.ADMIN) return;
+
+  const settings = await getAppSettings();
+  if (settings.usageEnforcementEnabled) return;
+
   const subscription = await getActiveSubscription(user.id);
 
   if (subscription) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const usage = await prisma.aiUsageEvent.count({
-      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: today } }
+      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfDayInBrazil() } }
     });
     if (usage >= subscription.plan.aiGenerationsPerDay) {
       throw new Error("Seu limite diário de uso da IA foi atingido.");
@@ -128,12 +110,9 @@ export async function assertCanGenerateWithAi(user: { id: string; role?: Role })
   }
 }
 
-/** Próxima meia-noite no fuso do servidor — mesmo corte usado na contagem diária. */
+/** Próxima meia-noite em Brasília — mesmo corte usado na contagem diária. */
 function nextUsageReset() {
-  const reset = new Date();
-  reset.setHours(0, 0, 0, 0);
-  reset.setDate(reset.getDate() + 1);
-  return reset.toISOString();
+  return startOfNextDayInBrazil().toISOString();
 }
 
 export type AiUsageStatus = {
@@ -151,10 +130,8 @@ export async function getAiUsageStatus(user: { id: string; role?: Role }): Promi
 
   const subscription = await getActiveSubscription(user.id);
   if (subscription) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const used = await prisma.aiUsageEvent.count({
-      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: today } }
+      where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: startOfDayInBrazil() } }
     });
     const limit = subscription.plan.aiGenerationsPerDay;
     return {

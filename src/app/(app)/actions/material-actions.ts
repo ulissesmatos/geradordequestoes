@@ -1,15 +1,17 @@
 "use server";
 
-import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind } from "@prisma/client";
+import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind, UsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { expandStudyMaterialSection } from "@/lib/ai/generateStudyMaterial";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
-import { chargeTrialUsage, recordAiUsageEvent, refundTrialUsage } from "@/lib/ai/usage";
+import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
+import type { CapabilityKey } from "@/lib/capabilities";
+import { getEntitlements, upgradeRequired } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { findSection, insertIntoSection, type SectionRef } from "@/lib/markdown-sections";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { assertCanGenerateWithAi, getActiveSubscription } from "@/lib/subscriptions";
+import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export async function updateStudyMaterialAction(id: string, content: string) {
   const user = await requireUser();
@@ -30,11 +32,11 @@ export async function deleteStudyMaterialAction(id: string) {
 
 export type ExpandSectionResult =
   | { ok: true; content: string }
-  | { ok: false; error: string; upgrade?: boolean };
+  | { ok: false; error: string; upgrade?: boolean; capability?: CapabilityKey };
 
 /**
  * "Aprofundar": gera conteúdo extra para UMA seção do material e insere no fim
- * dela. Recurso habilitado por plano (materialExpandEnabled) — o gate é
+ * dela. Recurso habilitado por plano (capability `materialExpand`) — o gate é
  * re-checado aqui no servidor, não só na UI.
  */
 export async function expandMaterialSectionAction(input: {
@@ -55,15 +57,14 @@ export async function expandMaterialSectionAction(input: {
     return { ok: false, error: "Requisição inválida." };
   }
 
-  if (user.role !== "ADMIN") {
-    const subscription = await getActiveSubscription(user.id);
-    if (!subscription?.plan.materialExpandEnabled) {
-      return {
-        ok: false,
-        error: "O aprofundamento de materiais com IA está disponível nos planos superiores.",
-        upgrade: true
-      };
-    }
+  // Bypass de admin e leitura do plano ficam concentrados em getEntitlements — nenhum gate
+  // reimplementa a regra de quem passa por cima do plano.
+  const entitlements = await getEntitlements(user);
+  if (!entitlements.can("materialExpand")) {
+    return upgradeRequired(
+      "materialExpand",
+      "O aprofundamento de materiais com IA está disponível nos planos superiores."
+    );
   }
 
   const rate = checkRateLimit(`material-expand:${user.id}`, RATE_LIMITS.materialExpand);
@@ -83,11 +84,13 @@ export async function expandMaterialSectionAction(input: {
     return { ok: false, error: "Seção não encontrada. Recarregue a página e tente novamente." };
   }
 
-  // Cota do trial cobrada na entrada e estornada nos caminhos que não entregam conteúdo.
-  let trialChargeId: string | null = null;
+  // Cobrado na entrada e estornado nos caminhos que não entregam conteúdo.
+  let charge: AiActionCharge | null = null;
   try {
     await assertCanGenerateWithAi(user);
-    trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.MATERIAL_EXPAND });
+    // Vai para o medidor CHAT: aprofundar é uma ação de IA como uma mensagem, não geração
+    // de questões. O `kind` preserva a distinção para auditoria.
+    charge = await chargeAiAction({ user, kind: TrialUsageKind.MATERIAL_EXPAND, ledgerKind: UsageKind.MATERIAL_EXPAND });
 
     const generated = await expandStudyMaterialSection({
       materialTitle: material.title,
@@ -119,7 +122,7 @@ export async function expandMaterialSectionAction(input: {
     }
 
     if (newContent === null) {
-      await refundTrialUsage(trialChargeId);
+      await refundAiAction(charge);
       await recordAiUsageEvent({
         user,
         type: AiUsageEventType.CHAT_RESPONSE,
@@ -141,7 +144,7 @@ export async function expandMaterialSectionAction(input: {
     revalidatePath(`/materiais/${input.materialId}`);
     return { ok: true, content: newContent };
   } catch (error) {
-    await refundTrialUsage(trialChargeId);
+    await refundAiAction(charge);
     await recordAiUsageEvent({
       user,
       type: AiUsageEventType.CHAT_RESPONSE,

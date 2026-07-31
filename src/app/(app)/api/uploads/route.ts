@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { cleanExtractedText } from "@/lib/sanitize";
 import { put } from "@vercel/blob";
+import { getEntitlements, upgradeRequiredResponse } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { ATTACHMENT_LIMITS, attachmentKindFromMime } from "@/lib/uploads";
@@ -40,6 +41,16 @@ async function extractPdfText(buffer: Uint8Array): Promise<string> {
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+
+    // Gate de plano ANTES do rate limit e do processamento: anexo custa visão, extração e
+    // storage. Só barrar na UI não adiantaria — esta rota é chamável direto.
+    const entitlements = await getEntitlements(user);
+    if (!entitlements.can("chatAttachments")) {
+      return upgradeRequiredResponse(
+        "chatAttachments",
+        "Enviar arquivos no chat está disponível nos planos pagos. Assine para gerar questões a partir do seu próprio material."
+      );
+    }
 
     const rate = checkRateLimit(`uploads:${user.id}`, RATE_LIMITS.uploads);
     if (!rate.ok) {

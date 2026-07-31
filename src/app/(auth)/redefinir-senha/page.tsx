@@ -8,7 +8,7 @@ export default async function RedefinirSenhaPage({
   searchParams: Promise<{ email?: string }>;
 }) {
   const session = await auth();
-  if (session?.user) redirect("/ai");
+  if (session?.user) redirect("/desempenho");
   const { email } = await searchParams;
 
   return <ResetPasswordForm defaultEmail={email ?? ""} />;

@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
+import { dayKeyInBrazil } from "@/lib/dates";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +118,7 @@ export function AiChatDashboard({
   initialPrompt,
   subjectNames,
   isAdmin = false,
+  canAttach = true,
   initialSidebarOpen = true,
   banner
 }: {
@@ -128,6 +130,8 @@ export function AiChatDashboard({
   initialPrompt?: string;
   subjectNames?: string[];
   isAdmin?: boolean;
+  /** Capability `chatAttachments`. Cosmético — quem barra de verdade é o servidor. */
+  canAttach?: boolean;
   initialSidebarOpen?: boolean;
   banner?: React.ReactNode;
 }) {
@@ -726,15 +730,28 @@ export function AiChatDashboard({
                 className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
               />
               <div className="flex items-center justify-between px-3 pb-3">
-                <button
-                  type="button"
-                  aria-label="Anexar imagem ou PDF"
-                  title="Anexar imagem ou PDF"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </button>
+                {canAttach ? (
+                  <button
+                    type="button"
+                    aria-label="Anexar imagem ou PDF"
+                    title="Anexar imagem ou PDF"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </button>
+                ) : (
+                  // Vira convite em vez de sumir: a pessoa precisa descobrir que a
+                  // funcionalidade existe para querer assinar por ela.
+                  <Link
+                    href="/assinatura"
+                    title="Enviar PDF ou imagem está disponível nos planos pagos"
+                    className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    Anexar arquivo (planos pagos)
+                  </Link>
+                )}
                 <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
               </div>
             </div>
@@ -889,8 +906,9 @@ function hoursUntil(iso: string | undefined) {
 }
 
 function usageDismissKey() {
-  // Chave por dia (UTC, mesmo corte do reset) para a dispensa não vazar para o dia seguinte.
-  return `ai-usage-notice-dismissed:${new Date().toISOString().slice(0, 10)}`;
+  // Chave por dia de Brasília, mesmo corte do reset da cota — com o dia em UTC o aviso
+  // reaparecia às 21h, no meio da noite de estudo, sem a cota ter virado.
+  return `ai-usage-notice-dismissed:${dayKeyInBrazil()}`;
 }
 
 function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean } }) {

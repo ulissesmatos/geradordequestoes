@@ -18,6 +18,7 @@ import { getPerformanceContext, getRecentAttachmentText, getRecentConversationTe
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 import { searchReferenceChunks, searchReferenceQuestions, searchWithinDocument } from "@/lib/reference";
 import { matchByName } from "@/lib/taxonomy";
+import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { webSearch } from "@/lib/ai/web-search";
 
 export type ToolSource = { title: string; url: string };
@@ -166,7 +167,7 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       format: questionFormatLabel(format),
       difficulty: difficultyLabel(difficulty),
       referenceUsed: questionSet.referenceUsed,
-      ...trialCapPayload(questionSet.trialQuantityCap),
+      ...quantityCapPayload(questionSet.quantityCap),
       note: questionSet.referenceUsed
         ? "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links."
         : "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links. Avise brevemente que não havia prova real cadastrada sobre este ponto; as questões seguem o estilo da banca."
@@ -179,25 +180,59 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       subjectName: subject.name,
       topicName: topic.name,
       referenceUsed: questionSet.referenceUsed,
-      trialQuantityCap: questionSet.trialQuantityCap
+      quantityCap: questionSet.quantityCap
     })
   };
 }
 
-type TrialQuantityCap = { requested: number; applied: number } | null;
+type QuantityCap = { requested: number; applied: number; reason: QuantityCapReason | null } | null;
 
 /**
- * Instrução para o modelo quando o teto do plano gratuito cortou o pedido. Vai no resultado da
- * ferramenta (e não só no prompt) porque é aqui que sabemos o número que o usuário pediu de
- * fato — sem isso o assistente confirmava "gerei 20 questões" enquanto o bloco tinha 5.
+ * Explicação do corte, na voz do motivo CERTO.
+ *
+ * Antes toda mensagem culpava o "plano gratuito" — o que virou mentira quando assinante passou
+ * a poder esbarrar na rajada diária ou na cota do ciclo. Cada motivo tem um desfecho diferente:
+ * teto de bloco se resolve assinando, rajada diária se resolve amanhã.
  */
-function trialCapPayload(cap: TrialQuantityCap) {
+function capExplanation(cap: NonNullable<QuantityCap>): { curta: string; saida: string } {
+  switch (cap.reason) {
+    case "COTA_DIARIA":
+      return {
+        curta: `sua cota de questões de hoje só permitia ${cap.applied}`,
+        saida: "A cota diária renova amanhã; se precisar de mais volume hoje, dá para fazer upgrade de plano."
+      };
+    case "COTA_MENSAL":
+      return {
+        curta: `sua cota de questões deste ciclo só permitia ${cap.applied}`,
+        saida: "A cota renova na virada do seu ciclo; para gerar mais agora, o caminho é o upgrade de plano."
+      };
+    case "TAMANHO_DO_BLOCO":
+      return {
+        curta: `seu plano gera até ${cap.applied} questões por bloco`,
+        saida: "Planos superiores geram blocos maiores de uma vez."
+      };
+    default:
+      return {
+        curta: `o plano gratuito gera até ${cap.applied} questões por bloco`,
+        saida: "Assinando um plano, os blocos saem no tamanho que você pedir."
+      };
+  }
+}
+
+/**
+ * Instrução para o modelo quando o pedido foi cortado. Vai no resultado da ferramenta (e não só
+ * no prompt) porque é aqui que sabemos o número que o usuário pediu de fato — sem isso o
+ * assistente confirmava "gerei 20 questões" enquanto o bloco tinha 5.
+ */
+function quantityCapPayload(cap: QuantityCap) {
   if (!cap) return {};
+  const { curta, saida } = capExplanation(cap);
   return {
-    limiteDoPlanoGratuito: {
+    limiteAplicado: {
       pedido: cap.requested,
-      tetoDoPlano: cap.applied,
-      instrucao: `O usuário pediu ${cap.requested} questões, mas está no plano gratuito, que gera no máximo ${cap.applied} por bloco. Confirme usando o campo "quantity" deste resultado (é o número real de questões do bloco), explique em uma frase que o teto é do plano gratuito e que assinando ele gera blocos maiores. Não prometa as ${cap.requested} nem sugira driblar o limite pedindo vários blocos seguidos.`
+      teto: cap.applied,
+      motivo: cap.reason ?? "PLANO_GRATUITO",
+      instrucao: `O usuário pediu ${cap.requested} questões, mas ${curta}. Confirme usando o campo "quantity" deste resultado (é o número real de questões do bloco) e explique o motivo em uma frase: ${saida} Não prometa as ${cap.requested} nem sugira driblar o limite pedindo vários blocos seguidos.`
     }
   };
 }
@@ -207,9 +242,10 @@ function trialCapPayload(cap: TrialQuantityCap) {
  * questões chegaram: o modelo às vezes devolve um item a menos, e a contagem real já aparece
  * na frase anterior da confirmação.
  */
-function trialCapSentence(cap: TrialQuantityCap) {
+function quantityCapSentence(cap: QuantityCap) {
   if (!cap) return "";
-  return `\n\nObs.: você pediu ${cap.requested} questões, mas o plano gratuito gera até ${cap.applied} por bloco. Assinando um plano, os blocos saem no tamanho que você pedir.`;
+  const { curta, saida } = capExplanation(cap);
+  return `\n\nObs.: você pediu ${cap.requested} questões, mas ${curta}. ${saida}`;
 }
 
 async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawArgs: unknown): Promise<ToolExecutionResult> {
@@ -227,6 +263,10 @@ async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawAr
     .join("\n\n")
     .slice(0, 5200);
 
+  // NÃO cobra o medidor CHAT aqui: esta ferramenta só roda dentro de um turno de chat, que
+  // já debitou 1 unidade no ponto de entrada. Cobrar de novo seria exatamente a dupla
+  // cobrança que o medidor novo veio corrigir. O AiUsageEvent abaixo é log bruto por chamada
+  // ao provedor, não livro-caixa.
   const generated = await generateStudyMaterial({ prompt: materialPrompt, context });
   await recordAiUsageEvent({
     user,
@@ -332,7 +372,7 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
       title: questionSet.title,
       quantity: questionSet.quantity,
       focus: `${target.subjectName} / ${target.topicName}`,
-      ...trialCapPayload(questionSet.trialQuantityCap),
+      ...quantityCapPayload(questionSet.quantityCap),
       note: "Bloco de revisão salvo na biblioteca. O app mostra o botão 'Responder agora' automaticamente; não invente links."
     }),
     fallbackMessage: [
@@ -340,7 +380,7 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
       "",
       `Foco principal: **${target.subjectName} / ${target.topicName}**.`,
       `O bloco ficou salvo no seu histórico com ${questionSet.quantity} questões. Você pode responder agora ou voltar nele depois.`
-    ].join("\n") + trialCapSentence(questionSet.trialQuantityCap)
+    ].join("\n") + quantityCapSentence(questionSet.quantityCap)
   };
 }
 
@@ -576,7 +616,7 @@ function buildGenerationFallback(input: {
   subjectName: string;
   topicName: string;
   referenceUsed: boolean;
-  trialQuantityCap?: TrialQuantityCap;
+  quantityCap?: QuantityCap;
 }) {
   const modeLabel = {
     [QuestionSetMode.ESTUDO]: "bloco de estudo",
@@ -587,6 +627,6 @@ function buildGenerationFallback(input: {
   const withReference = input.referenceUsed
     ? base
     : `${base}\n\nObs.: não havia prova real cadastrada sobre este ponto — as questões foram criadas no estilo Cebraspe.`;
-  return withReference + trialCapSentence(input.trialQuantityCap ?? null);
+  return withReference + quantityCapSentence(input.quantityCap ?? null);
 }
 

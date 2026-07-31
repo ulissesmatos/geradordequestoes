@@ -5,6 +5,7 @@ import {
   BarChart3,
   BookOpen,
   CalendarClock,
+  Flame,
   FolderOpen,
   GraduationCap,
   ListChecks,
@@ -33,6 +34,8 @@ type NavItem =
   | { label: string; icon: LucideIcon; href?: never; children: NavLeaf[] };
 
 const navItems: NavItem[] = [
+  // Painel primeiro: é a tela inicial pós-login e o ponto de partida do dia.
+  { label: "Painel", icon: BarChart3, href: "/desempenho" },
   { label: "Chat IA", icon: Sparkles, href: "/ai" },
   {
     label: "Estudar",
@@ -50,8 +53,7 @@ const navItems: NavItem[] = [
       { href: "/biblioteca", label: "Biblioteca", icon: FolderOpen, description: "Blocos gerados e favoritos" },
       { href: "/materiais", label: "Materiais", icon: BookOpen, description: "Materiais de estudo da IA" }
     ]
-  },
-  { label: "Desempenho", icon: BarChart3, href: "/desempenho" }
+  }
 ];
 
 // Uma única fonte de estilo para TODOS os itens do nível superior.
@@ -83,16 +85,21 @@ function PanelLink({ href, label, description, icon: Icon }: NavLeaf) {
 export function AppNav({
   isAdmin = false,
   logoUrl = "/brand/logo.png",
-  appName = "Gerador de Questões"
+  appName = "Gerador de Questões",
+  streak,
+  streakActiveToday = false
 }: {
   isAdmin?: boolean;
   logoUrl?: string;
   appName?: string;
+  /** Dias seguidos de estudo. undefined esconde o badge. */
+  streak?: number;
+  streakActiveToday?: boolean;
 }) {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
       <div className="relative flex w-full items-center justify-between gap-3 px-4 py-3 md:px-6">
-        <Link className="flex items-center" href="/ai">
+        <Link className="flex items-center" href="/desempenho">
           <Image
             src={logoUrl}
             alt={appName}
@@ -148,6 +155,26 @@ export function AppNav({
 
         {/* ── Desktop: itens simples e dropdowns com estilo único ── */}
         <nav className="hidden flex-wrap items-center gap-1 md:flex">
+          {/* Sequência sempre à vista: escondida numa aba, ela não sustenta hábito nenhum. */}
+          {streak !== undefined && streak > 0 && (
+            <Link
+              href="/desempenho"
+              title={
+                streakActiveToday
+                  ? `${streak} dias seguidos de estudo`
+                  : `${streak} dias seguidos — responda hoje para não perder`
+              }
+              className={cn(
+                "mr-1 flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold tabular-nums transition",
+                streakActiveToday
+                  ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                  : "bg-[var(--muted)] text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)]"
+              )}
+            >
+              <Flame className="h-4 w-4" />
+              {streak}
+            </Link>
+          )}
           {navItems.map((item) =>
             item.children ? (
               <NavDropdown

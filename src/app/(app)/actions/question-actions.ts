@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getTrialBankStatus } from "@/lib/question-bank";
 import { generateAndSaveQuestionSet } from "@/lib/question-sets";
+import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { applyAttemptToReviewState } from "@/lib/review";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
@@ -88,8 +89,8 @@ export type GenerateUserQuestionsState = {
   questionSetId?: string;
   error?: string;
   closeVariantFallback?: boolean;
-  /** Preenchido quando o teto do plano gratuito cortou a quantidade pedida. */
-  trialQuantityCap?: { requested: number; applied: number };
+  /** Preenchido quando algum limite cortou a quantidade pedida; `reason` diz qual. */
+  quantityCap?: { requested: number; applied: number; reason: QuantityCapReason | null };
 };
 
 export async function generateUserQuestionsAction(
@@ -109,7 +110,10 @@ export async function generateUserQuestionsAction(
   const context = String(formData.get("context") || "");
   const closeVariant = formData.get("closeVariant") === "on";
 
-  // Cota do trial cobrada na entrada e estornada se a geração falhar.
+  // Só o livro-caixa LEGADO é cobrado aqui — ele é quem ainda bloqueia enquanto o
+  // enforcement novo estiver desligado. As questões em si são medidas dentro de
+  // generateAndSaveQuestionSet (medidor QUESTIONS); cobrar as duas coisas aqui repetiria a
+  // dupla cobrança que estamos corrigindo.
   let trialChargeId: string | null = null;
   try {
     await assertCanGenerateWithAi(user);
@@ -135,7 +139,7 @@ export async function generateUserQuestionsAction(
       ok: true,
       questionSetId: questionSet.id,
       closeVariantFallback: closeVariant && questionSet.closeVariantFallback,
-      trialQuantityCap: questionSet.trialQuantityCap ?? undefined
+      quantityCap: questionSet.quantityCap ?? undefined
     };
   } catch (error) {
     // Geração não entregou o bloco: devolve a unidade cobrada.

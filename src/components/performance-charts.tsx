@@ -1,3 +1,4 @@
+import { dayKeyInBrazil, shiftDayKey } from "@/lib/dates";
 import type { DailyActivityRow, SubjectBreakdownRow } from "@/lib/performance";
 
 /**
@@ -55,17 +56,23 @@ export function SubjectAccuracyBars({ rows }: { rows: SubjectBreakdownRow[] }) {
  */
 export function DailyActivityChart({ rows, days = 30 }: { rows: DailyActivityRow[]; days?: number }) {
   // Preenche dias sem atividade com zero para o eixo do tempo ser contínuo.
+  // As chaves vêm agrupadas por dia do calendário brasileiro (getDailyActivity), então o
+  // eixo tem que ser montado com a mesma régua — remontar com "agora menos N × 24h" em UTC
+  // desalinhava as barras em uma casa durante as 3 primeiras horas de cada dia.
   const byDay = new Map(rows.map((row) => [row.day, row]));
   const series: Array<{ day: string; label: string; correct: number; wrong: number }> = [];
+  const today = dayKeyInBrazil();
   for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const key = date.toISOString().slice(0, 10);
+    const key = shiftDayKey(today, -i);
     const row = byDay.get(key);
     const total = row?.total ?? 0;
     const correct = row?.correct ?? 0;
+    const [year, month, day] = key.split("-").map(Number);
     series.push({
       day: key,
-      label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(date),
+      label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }).format(
+        new Date(Date.UTC(year, month - 1, day))
+      ),
       correct,
       wrong: total - correct
     });

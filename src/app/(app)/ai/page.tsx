@@ -5,6 +5,7 @@ import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt"
 import { StudyStatesPrompt } from "@/components/study-states-prompt";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
+import { getEntitlements } from "@/lib/entitlements";
 import { getAiUsageStatus, getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
 
 export default async function AiChatPage({
@@ -21,14 +22,15 @@ export default async function AiChatPage({
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialSidebarOpen = cookieStore.get("ai-sidebar")?.value !== "0";
-  const [sessions, usage, subjects] = await Promise.all([
+  const [sessions, usage, subjects, entitlements] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
       take: 30
     }),
     getAiUsageStatus(user),
-    prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 })
+    prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 }),
+    getEntitlements(user)
   ]);
 
   const selectedSessionId = params.new ? null : params.sessionId ?? sessions[0]?.id ?? null;
@@ -68,6 +70,7 @@ export default async function AiChatPage({
         currentSessionId={session?.id ?? null}
         usage={usage}
         isAdmin={user.role === "ADMIN"}
+        canAttach={entitlements.can("chatAttachments")}
         initialSidebarOpen={initialSidebarOpen}
         subjectNames={subjects.map((subject) => subject.name)}
         initialPrompt={params.prompt ? params.prompt.slice(0, 500) : undefined}

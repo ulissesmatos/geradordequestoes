@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { getAppSettings } from "@/lib/app-settings";
+import { startOfWeekInBrazil } from "@/lib/dates";
 import { sendEmail } from "@/lib/email/send";
 import { weeklySummaryTemplate } from "@/lib/email/templates";
 import { appUrl } from "@/lib/payments";
@@ -29,10 +30,9 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  // Segunda-feira 0h da semana corrente (getDay: 0 = domingo).
-  const weekStart = new Date(now);
-  weekStart.setHours(0, 0, 0, 0);
-  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  // Semana do aluno (segunda 0h de Brasília), a mesma régua do streak no painel —
+  // senão o resumo cobre uma janela diferente da que ele vê na tela.
+  const weekStart = startOfWeekInBrazil(now);
 
   // Candidatos: estudaram nos últimos 7 dias.
   const active = await prisma.questionAttempt.groupBy({

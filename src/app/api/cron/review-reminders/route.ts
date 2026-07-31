@@ -1,4 +1,5 @@
 import { getAppSettings } from "@/lib/app-settings";
+import { startOfDayInBrazil } from "@/lib/dates";
 import { sendEmail } from "@/lib/email/send";
 import { reviewReminderTemplate } from "@/lib/email/templates";
 import { appUrl } from "@/lib/payments";
@@ -25,8 +26,9 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  // "Hoje" é o dia do aluno, não o do servidor: a idempotência do envio precisa virar
+  // à meia-noite de Brasília, senão o lembrete pode sair duas vezes na mesma noite.
+  const todayStart = startOfDayInBrazil(now);
 
   // Quantas questões vencidas cada usuário tem hoje.
   const dueByUser = await prisma.questionReviewState.groupBy({
