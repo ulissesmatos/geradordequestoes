@@ -186,6 +186,8 @@ model User {
   reviewStates       QuestionReviewState[]
   affiliateProfile   AffiliateProfile?
   referredBy         AffiliateReferral?
+  chatShares         ChatShare[]
+  questionSetShares  QuestionSetShare[]
 }
 
 model EmailVerificationCode {
@@ -505,6 +507,23 @@ model QuestionSet {
   questions         Question[]
   messages          AiChatMessage[]
   mockExam          MockExam?
+  share             QuestionSetShare?
+}
+
+/**
+ * Link público de um bloco de questões (estilo "share" do ChatGPT), com acesso em camadas
+ * resolvido em answerQuestionAction: visitante anônimo só vê a 1ª questão (sem gabarito,
+ * omitido já na consulta); logado sem plano responde tudo com CTA de assinar; assinante
+ * responde sem fricção. `id` é o próprio token da URL (/q/<id>).
+ */
+model QuestionSetShare {
+  id            String      @id @default(cuid())
+  questionSetId String      @unique
+  userId        String
+  createdAt     DateTime    @default(now())
+  revokedAt     DateTime?
+  questionSet   QuestionSet @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum MockExamStatus {
@@ -586,6 +605,7 @@ model AiChatSession {
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages        AiChatMessage[]
   questionSets    QuestionSet[]
+  share           ChatShare?
 }
 
 model AiChatMessage {
@@ -621,6 +641,28 @@ model AiChatMessageAttachment {
   message       AiChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
+}
+
+/**
+ * Link público de uma conversa (estilo "share" do ChatGPT): cópia estática, congelada no
+ * momento do compartilhamento — não uma sessão viva. `id` é o próprio token da URL
+ * (/c/<id>), mesma entropia de cuid já usada como token não adivinhável em outros links
+ * públicos do projeto (ver TeamCharge/cobrança).
+ */
+model ChatShare {
+  id        String        @id @default(cuid())
+  sessionId String        @unique
+  userId    String
+  /**
+   * Cutoff do congelamento: só mensagens com createdAt <= este instante aparecem no link.
+   * Atualizado sempre que o dono (re)compartilha, inclusive ao reativar um link revogado —
+   * então reativar passa a incluir as mensagens novas desde a revogação, de propósito.
+   */
+  sharedUpTo DateTime
+  createdAt DateTime      @default(now())
+  revokedAt DateTime?
+  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AdminAuditLog {
