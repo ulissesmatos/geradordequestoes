@@ -8,6 +8,12 @@ import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getTrialBankStatus } from "@/lib/question-bank";
 import { generateAndSaveQuestionSet } from "@/lib/question-sets";
+import {
+  createOrReactivateQuestionSetShare,
+  revokeQuestionSetShare,
+  type RevokeActionResult,
+  type ShareActionResult
+} from "@/lib/question-set-share";
 import { QUESTION_LIMITS } from "@/lib/question-limits";
 import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { applyAttemptToReviewState } from "@/lib/review";
@@ -38,14 +44,22 @@ export async function answerQuestionAction(formData: FormData): Promise<AnswerQu
   const question = await prisma.question.findFirst({
     where: {
       id: parsed.questionId,
-      OR: [{ status: QuestionStatus.APPROVED }, { createdById: user.id }]
+      OR: [
+        { status: QuestionStatus.APPROVED },
+        { createdById: user.id },
+        // Bloco compartilhado por outro usuário via link público (/q/<id>) e ainda ativo.
+        // Filtro de relação: se a questão não tem questionSet, ou o set não tem share, ou o
+        // share está revogado, a condição não bate — nenhum caso quebra, só não autoriza.
+        { questionSet: { share: { revokedAt: null } } }
+      ]
     },
     include: { options: true }
   });
   if (!question) return { ok: false, error: "Questão não encontrada ou indisponível." };
 
-  // Limite diário do trial no banco público: só para questões da plataforma
-  // (as próprias já são limitadas pelo trial de geração de IA).
+  // Limite diário do trial no banco público: já cobre questão compartilhada de outro usuário
+  // por construção — `createdById` continua sendo o dono ORIGINAL, então essa condição dispara
+  // tanto para o banco público quanto para um bloco alheio recém-liberado pelo OR acima.
   if (question.createdById !== user.id) {
     const bankStatus = await getTrialBankStatus(user);
     if (bankStatus.isTrial && bankStatus.remaining !== null && bankStatus.remaining <= 0) {
@@ -215,4 +229,22 @@ export async function archiveQuestionSetAction(formData: FormData) {
     data: { status: "ARCHIVED" }
   });
   revalidatePath("/biblioteca");
+}
+
+/**
+ * Sem FormData de propósito: chamadas diretamente pelo ShareLinkModal via
+ * `.bind(null, questionSetId)` no server component que o renderiza — dispensa hidden input.
+ */
+export async function shareQuestionSetAction(questionSetId: string): Promise<ShareActionResult> {
+  const user = await requireUser();
+  const result = await createOrReactivateQuestionSetShare(user.id, questionSetId);
+  if (result.ok) revalidatePath("/biblioteca");
+  return result;
+}
+
+export async function revokeQuestionSetShareAction(questionSetId: string): Promise<RevokeActionResult> {
+  const user = await requireUser();
+  const result = await revokeQuestionSetShare(user.id, questionSetId);
+  if (result.ok) revalidatePath("/biblioteca");
+  return result;
 }

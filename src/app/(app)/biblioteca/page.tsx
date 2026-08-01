@@ -3,14 +3,16 @@ import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } fr
 import { QuestionSetMode, QuestionSetStatus } from "@prisma/client";
 import { FavoriteDetailGrid } from "@/components/favorite-detail-grid";
 import { QuestionRunner } from "@/components/question-runner";
+import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/guards";
 import { questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { prisma } from "@/lib/prisma";
+import { questionSetShareUrl } from "@/lib/question-set-share";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 import { cn } from "@/lib/utils";
-import { archiveQuestionSetAction } from "@/app/(app)/actions/question-actions";
+import { archiveQuestionSetAction, revokeQuestionSetShareAction, shareQuestionSetAction } from "@/app/(app)/actions/question-actions";
 
 function modeMeta(mode: QuestionSetMode) {
   if (mode === QuestionSetMode.SIMULADO) {
@@ -88,7 +90,8 @@ export default async function LibraryPage({
             options: { orderBy: { order: "asc" } }
           },
           orderBy: { orderInSet: "asc" }
-        }
+        },
+        share: { select: { id: true, revokedAt: true } }
       }
     });
 
@@ -156,9 +159,23 @@ export default async function LibraryPage({
 
     return (
       <div className="space-y-4">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/biblioteca">Voltar para biblioteca</Link>
-        </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/biblioteca">Voltar para biblioteca</Link>
+          </Button>
+          <ShareLinkModal
+            title="Compartilhar bloco de questões"
+            description="Qualquer pessoa com o link vê a primeira questão. Quem criar conta consegue responder o bloco inteiro."
+            revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+            initialShareUrl={
+              selectedSet.share && !selectedSet.share.revokedAt
+                ? questionSetShareUrl(selectedSet.share.id)
+                : null
+            }
+            createAction={shareQuestionSetAction.bind(null, selectedSet.id)}
+            revokeAction={revokeQuestionSetShareAction.bind(null, selectedSet.id)}
+          />
+        </div>
         <QuestionRunner
           questions={questionsWithMeta}
           mode={selectedSet.mode === QuestionSetMode.SIMULADO ? "simulado" : "study"}
