@@ -12,16 +12,27 @@ export function DropdownMenu({
   children,
   triggerClassName,
   panelClassName,
-  ariaLabel
+  ariaLabel,
+  open: openProp,
+  onOpenChange
 }: {
   trigger: ReactNode;
   children: ReactNode;
   triggerClassName?: string;
   panelClassName?: string;
   ariaLabel?: string;
+  /** Não controlado por padrão; passe junto com `onOpenChange` para controlar de fora (ex.: manter o gatilho visível enquanto aberto). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
   const rootRef = useRef<HTMLDivElement>(null);
+
+  function setOpen(value: boolean) {
+    setUncontrolledOpen(value);
+    onOpenChange?.(value);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -50,7 +61,7 @@ export function DropdownMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={ariaLabel}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className={triggerClassName}
       >
         {trigger}

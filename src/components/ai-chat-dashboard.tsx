@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
@@ -10,6 +10,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
@@ -109,6 +110,33 @@ const TOOL_LABELS: Record<string, string> = {
   ask_clarifying_question: "Preparando uma pergunta…"
 };
 
+/**
+ * Compartilha o link de uma conversa: share sheet nativo quando disponível, senão copia
+ * o link. Se o usuário cancelar o share sheet (AbortError), não cai no fallback de cópia —
+ * cancelar não deveria copiar nada silenciosamente para a área de transferência.
+ */
+async function shareSessionLink(sessionId: string, title: string): Promise<"shared" | "copied" | "failed"> {
+  if (typeof window === "undefined") return "failed";
+  const shareUrl = `${window.location.origin}/ai?sessionId=${sessionId}`;
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title, text: `Veja esta conversa: ${title}`, url: shareUrl });
+      return "shared";
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return "shared";
+      // segue para o fallback de cópia abaixo
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(shareUrl);
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}
+
 export function AiChatDashboard({
   userName,
   currentSessionId,
@@ -157,6 +185,7 @@ export function AiChatDashboard({
   const [streamSessionId, setStreamSessionId] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(loadingLabels[0]);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMessage | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -194,6 +223,18 @@ export function AiChatDashboard({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, toolStatus, streamError]);
+
+  useEffect(() => {
+    if (!shareNotice) return;
+    const timer = window.setTimeout(() => setShareNotice(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [shareNotice]);
+
+  async function handleShareSession(sessionId: string, title: string) {
+    const result = await shareSessionLink(sessionId, title);
+    if (result === "copied") setShareNotice("Link copiado!");
+    else if (result === "failed") setShareNotice("Não foi possível compartilhar.");
+  }
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -464,11 +505,14 @@ export function AiChatDashboard({
     }
   }
 
+  const activeSessionTitle = sessions.find((item) => item.id === activeSessionId)?.title ?? "Chat IA";
+
   const sessionList = (
     <SessionList
       sessions={sessions}
       activeSessionId={activeSessionId}
       onNavigate={() => setMobileMenuOpen(false)}
+      onShare={handleShareSession}
     />
   );
 
@@ -553,27 +597,51 @@ export function AiChatDashboard({
             <p className="text-sm font-semibold text-[var(--primary-soft-foreground)]">Solte imagens ou PDFs para anexar</p>
           </div>
         )}
-        {/* Mini-header mobile (estilo ChatGPT): menu + título + novo chat */}
-        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
+        {/* Mini-header mobile (estilo ChatGPT): menu + título + compartilhar + novo chat */}
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
           <button
             type="button"
             aria-label="Abrir menu"
             onClick={() => setMobileMenuOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">
-            {sessions.find((item) => item.id === activeSessionId)?.title ?? "Chat IA"}
+          <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-[var(--foreground)]">
+            {activeSessionTitle}
           </span>
-          <Link
-            href="/ai?new=1"
-            aria-label="Novo chat"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-          >
-            <MessageSquarePlus className="h-5 w-5" />
-          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            {activeSessionId && (
+              <button
+                type="button"
+                aria-label="Compartilhar conversa"
+                title="Compartilhar conversa"
+                onClick={() => void handleShareSession(activeSessionId, activeSessionTitle)}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+              >
+                <Share2 className="h-5 w-5" />
+              </button>
+            )}
+            <Link
+              href="/ai?new=1"
+              aria-label="Novo chat"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+            >
+              <MessageSquarePlus className="h-5 w-5" />
+            </Link>
+          </div>
         </div>
+
+        {/* Header desktop: só aparece com uma conversa ativa, para dar destaque ao botão de compartilhar. */}
+        {activeSessionId && (
+          <div className="hidden h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 md:flex">
+            <span className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{activeSessionTitle}</span>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handleShareSession(activeSessionId, activeSessionTitle)}>
+              <Share2 className="h-4 w-4" />
+              Compartilhar
+            </Button>
+          </div>
+        )}
 
         {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
 
@@ -758,6 +826,12 @@ export function AiChatDashboard({
           </form>
         </div>
       </main>
+
+      {shareNotice && (
+        <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] shadow-lg animate-fade-in md:bottom-8">
+          {shareNotice}
+        </div>
+      )}
     </div>
   );
 }
@@ -785,191 +859,137 @@ function DrawerNavLink({
   );
 }
 
-function DeleteChatButton({ sessionId, isActive, label = "Excluir", className }: { sessionId: string; isActive: boolean; label?: string; className?: string }) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
+function SessionRow({
+  session,
+  isActive,
+  onNavigate,
+  onShare
+}: {
+  session: ChatSessionSummary;
+  isActive: boolean;
+  onNavigate?: () => void;
+  onShare: (sessionId: string, title: string) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(session.title);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePending, startDeleteTransition] = useTransition();
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
-  function handleConfirm() {
-    startTransition(async () => {
+  useEffect(() => {
+    if (renaming) renameInputRef.current?.select();
+  }, [renaming]);
+
+  function cancelRenaming() {
+    setRenaming(false);
+    setDraftTitle(session.title);
+  }
+
+  function handleDeleteConfirm() {
+    startDeleteTransition(async () => {
       const formData = new FormData();
-      formData.set("sessionId", sessionId);
+      formData.set("sessionId", session.id);
       formData.set("isActive", isActive ? "true" : "false");
       await deleteChatSessionAction(formData);
-      setOpen(false);
+      setDeleteOpen(false);
     });
   }
 
   return (
-    <>
-      <button
-        type="button"
-        title="Excluir chat"
-        className={cn("flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]", className)}
-        onClick={() => setOpen(true)}
-      >
-        <Trash2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-        <span>{label}</span>
-      </button>
+    <div className={cn("group rounded-md border border-transparent", isActive && "border-[var(--border)] bg-[var(--muted)]")}>
+      {renaming ? (
+        <form action={renameChatSessionAction} className="flex items-center gap-1 p-1" onSubmit={() => setRenaming(false)}>
+          <input type="hidden" name="sessionId" value={session.id} />
+          <input
+            ref={renameInputRef}
+            name="title"
+            autoFocus
+            value={draftTitle}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              cancelRenaming();
+            }}
+            className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm outline-none focus:border-[var(--primary)]"
+          />
+          <button type="submit" title="Salvar" aria-label="Salvar novo título" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface)]">
+            <Check className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            title="Cancelar"
+            aria-label="Cancelar renomeação"
+            onClick={cancelRenaming}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--surface)]"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </form>
+      ) : (
+        <div className="flex items-center gap-1">
+          <Link
+            href={`/ai?sessionId=${session.id}`}
+            onClick={onNavigate}
+            className="block min-w-0 flex-1 rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+          >
+            <span className="block truncate">{session.title}</span>
+          </Link>
+          <DropdownMenu
+            ariaLabel="Mais opções da conversa"
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+            trigger={<MoreHorizontal className="h-3.5 w-3.5" />}
+            triggerClassName={cn(
+              "shrink-0 rounded-md p-2 text-[var(--muted-foreground)] transition-opacity hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
+              "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
+              (isActive || menuOpen) && "md:opacity-100"
+            )}
+            panelClassName="absolute right-0 top-9 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setDraftTitle(session.title);
+                setRenaming(true);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+            >
+              <Pencil className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <span>Renomear</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onShare(session.id, session.title)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+            >
+              <Share2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <span>Compartilhar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+            >
+              <Trash2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+              <span>Excluir</span>
+            </button>
+          </DropdownMenu>
+        </div>
+      )}
+
+      {/* Fora do painel do dropdown de propósito: se ficasse dentro, fechar o menu
+          desmontaria a confirmação antes do clique em "Excluir" ser processado. */}
       <ConfirmDialog
-        open={open}
-        onClose={() => setOpen(false)}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
         title="Excluir chat"
         description="Os blocos e questões gerados serão mantidos no histórico."
         confirmLabel="Excluir"
-        onConfirm={handleConfirm}
-        pending={pending}
+        onConfirm={handleDeleteConfirm}
+        pending={deletePending}
       />
-    </>
-  );
-}
-
-function SessionActionsMenu({
-  session,
-  isActive,
-  isOpen,
-  onOpenChange
-}: {
-  session: ChatSessionSummary;
-  isActive: boolean;
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draftTitle, setDraftTitle] = useState(session.title);
-  const [shareState, setShareState] = useState<"idle" | "copied">("idle");
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
-  }, []);
-
-  async function handleShare() {
-    if (typeof window === "undefined") return;
-
-    const shareUrl = `${window.location.origin}/ai?sessionId=${session.id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: session.title, text: `Veja esta conversa: ${session.title}`, url: shareUrl });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        setShareState("copied");
-      }
-      onOpenChange(false);
-    } catch {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        setShareState("copied");
-      }
-      onOpenChange(false);
-    }
-  }
-
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent | TouchEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onOpenChange(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("touchstart", handlePointerDown);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("touchstart", handlePointerDown);
-    };
-  }, [onOpenChange]);
-
-  return (
-    <div ref={menuRef} className="relative">
-      {!isTouchDevice && (
-        <button
-          type="button"
-          aria-label="Mais opções da conversa"
-          title="Mais opções"
-          onClick={() => onOpenChange(!isOpen)}
-          className="rounded-md p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-        >
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      {isOpen && (
-        <div
-          onClick={(event) => event.stopPropagation()}
-          className="absolute right-0 top-9 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(true);
-              setDraftTitle(session.title);
-            }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
-          >
-            <Pencil className="h-4 w-4 text-[var(--muted-foreground)]" />
-            <span>Editar</span>
-          </button>
-
-          {editing && (
-            <div className="mt-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
-              <form
-                action={renameChatSessionAction}
-                className="space-y-2"
-                onSubmit={() => {
-                  onOpenChange(false);
-                  setEditing(false);
-                }}
-              >
-                <input type="hidden" name="sessionId" value={session.id} />
-                <input
-                  name="title"
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm outline-none focus:border-[var(--primary)]"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" type="submit" className="flex-1">
-                    Salvar
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditing(false);
-                      setDraftTitle(session.title);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => {
-              setShareState("idle");
-              void handleShare();
-            }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
-          >
-            <Share2 className="h-4 w-4 text-[var(--muted-foreground)]" />
-            <span>{shareState === "copied" ? "Link copiado" : "Compartilhar"}</span>
-          </button>
-
-          <DeleteChatButton
-            sessionId={session.id}
-            isActive={isActive}
-            label="Excluir"
-            className="w-full"
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -977,95 +997,28 @@ function SessionActionsMenu({
 function SessionList({
   sessions,
   activeSessionId,
-  onNavigate
+  onNavigate,
+  onShare
 }: {
   sessions: ChatSessionSummary[];
   activeSessionId: string | null;
   onNavigate?: () => void;
+  onShare: (sessionId: string, title: string) => void;
 }) {
-  const [openSessionId, setOpenSessionId] = useState<string | null>(null);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const longPressTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
-  }, []);
-
-  function clearLongPressTimer() {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }
-
-  function handleTouchStart(sessionId: string, event: React.TouchEvent<HTMLDivElement>) {
-    if (!isTouchDevice) return;
-
-    const target = event.target as HTMLElement;
-    if (target.closest("button, a, input")) return;
-
-    clearLongPressTimer();
-    longPressTimerRef.current = window.setTimeout(() => {
-      setOpenSessionId((current) => (current === sessionId ? null : sessionId));
-    }, 360);
-  }
-
-  function handleTouchEnd() {
-    clearLongPressTimer();
-  }
-
-  function handleContextMenu(event: React.MouseEvent<HTMLDivElement>, sessionId: string) {
-    event.preventDefault();
-    if (isTouchDevice) {
-      setOpenSessionId((current) => (current === sessionId ? null : sessionId));
-    }
-  }
-
   return (
     <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
       {sessions.length === 0 && (
         <p className="px-2 py-3 text-xs text-[var(--muted-foreground)]">Nenhum chat ainda. Comece uma conversa.</p>
       )}
-      {sessions.map((session) => {
-        const isMenuOpen = openSessionId === session.id;
-
-        return (
-          <div
-            key={session.id}
-            className={cn(
-              "group rounded-md border border-transparent",
-              activeSessionId === session.id && "border-[var(--border)] bg-[var(--muted)]"
-            )}
-          >
-            <div
-              className="flex items-center gap-1"
-              onTouchStart={(event) => handleTouchStart(session.id, event)}
-              onTouchEnd={handleTouchEnd}
-              onTouchCancel={handleTouchEnd}
-              onContextMenu={(event) => handleContextMenu(event, session.id)}
-            >
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/ai?sessionId=${session.id}`}
-                  onClick={onNavigate}
-                  className="block rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
-                >
-                  <span className="block truncate">{session.title}</span>
-                </Link>
-              </div>
-              <div data-session-actions>
-                <SessionActionsMenu
-                  session={session}
-                  isActive={activeSessionId === session.id}
-                  isOpen={isMenuOpen}
-                  onOpenChange={(open) => setOpenSessionId(open ? session.id : null)}
-                />
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      {sessions.map((session) => (
+        <SessionRow
+          key={session.id}
+          session={session}
+          isActive={activeSessionId === session.id}
+          onNavigate={onNavigate}
+          onShare={onShare}
+        />
+      ))}
     </div>
   );
 }
