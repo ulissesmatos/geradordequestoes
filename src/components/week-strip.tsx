@@ -44,7 +44,10 @@ export function WeekStrip({ rows }: { rows: DailyActivityRow[] }) {
               day.isToday && "ring-2 ring-[var(--primary)] ring-offset-2 ring-offset-[var(--card)]"
             )}
           >
-            {day.total > 0 ? day.total : day.dayOfMonth}
+            {/* Sempre o dia do mês: alternar pra contagem de questões quando > 0 fazia o
+                mesmo número mudar de significado célula a célula (data vs. quantidade),
+                sem nenhuma pista visual da troca. A contagem já está no title (hover). */}
+            {day.dayOfMonth}
           </div>
         </div>
       ))}
