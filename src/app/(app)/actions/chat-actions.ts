@@ -8,6 +8,14 @@ import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
+import {
+  cloneSharedChatSession,
+  createOrReactivateChatShare,
+  revokeChatShare,
+  type CloneChatResult,
+  type RevokeActionResult,
+  type ShareActionResult
+} from "@/lib/chat-share";
 import { resolveAttachments } from "@/lib/chat-attachments";
 import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
@@ -166,4 +174,30 @@ export async function deleteChatSessionAction(formData: FormData) {
   revalidatePath("/biblioteca");
 
   if (isActive) redirect("/ai?new=1");
+}
+
+/**
+ * Sem FormData de propósito: chamadas diretamente pelo ShareLinkModal via
+ * `.bind(null, sessionId)` no server component que o renderiza.
+ */
+export async function shareChatSessionAction(sessionId: string): Promise<ShareActionResult> {
+  const user = await requireUser();
+  const result = await createOrReactivateChatShare(user.id, sessionId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
+}
+
+export async function revokeChatShareAction(sessionId: string): Promise<RevokeActionResult> {
+  const user = await requireUser();
+  const result = await revokeChatShare(user.id, sessionId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
+}
+
+/** Chamada pelo botão "Continuar esta conversa" na página pública /c/[shareId]. */
+export async function cloneSharedChatAction(shareId: string): Promise<CloneChatResult> {
+  const user = await requireUser();
+  const result = await cloneSharedChatSession(user, shareId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
 }
