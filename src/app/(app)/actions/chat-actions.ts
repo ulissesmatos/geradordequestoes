@@ -5,9 +5,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
-import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
+import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
+import {
+  cloneSharedChatSession,
+  createOrReactivateChatShare,
+  revokeChatShare,
+  type CloneChatResult,
+  type RevokeActionResult,
+  type ShareActionResult
+} from "@/lib/chat-share";
 import { resolveAttachments } from "@/lib/chat-attachments";
 import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
@@ -74,6 +82,10 @@ export async function sendChatMessageAction(
     // QUESTIONS, dentro de generateAndSaveQuestionSet — medidores diferentes, sem dupla
     // cobrança da mesma mensagem.
     charge = await chargeAiAction({ user, kind: TrialUsageKind.CHAT_MESSAGE, ledgerKind: UsageKind.CHAT_MESSAGE });
+
+    // Título da conversa em paralelo ao turno (ver generateSessionTitle): pô-lo na frente
+    // atrasaria a resposta de todo chat novo para melhorar um texto da barra lateral.
+    const titlePromise = generateSessionTitle(session.id, prompt).catch(() => undefined);
     const turn = await runChatTurn({ user, sessionId: session.id, prompt });
 
     const assistant = await prisma.aiChatMessage.create({
@@ -96,6 +108,7 @@ export async function sendChatMessageAction(
       prompt
     });
     await summarizeSessionIfNeeded(session.id).catch(() => undefined);
+    await titlePromise;
 
     revalidatePath("/ai");
     if (turn.questionSetId) revalidatePath("/biblioteca");
@@ -161,4 +174,30 @@ export async function deleteChatSessionAction(formData: FormData) {
   revalidatePath("/biblioteca");
 
   if (isActive) redirect("/ai?new=1");
+}
+
+/**
+ * Sem FormData de propósito: chamadas diretamente pelo ShareLinkModal via
+ * `.bind(null, sessionId)` no server component que o renderiza.
+ */
+export async function shareChatSessionAction(sessionId: string): Promise<ShareActionResult> {
+  const user = await requireUser();
+  const result = await createOrReactivateChatShare(user.id, sessionId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
+}
+
+export async function revokeChatShareAction(sessionId: string): Promise<RevokeActionResult> {
+  const user = await requireUser();
+  const result = await revokeChatShare(user.id, sessionId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
+}
+
+/** Chamada pelo botão "Continuar esta conversa" na página pública /c/[shareId]. */
+export async function cloneSharedChatAction(shareId: string): Promise<CloneChatResult> {
+  const user = await requireUser();
+  const result = await cloneSharedChatSession(user, shareId);
+  if (result.ok) revalidatePath("/ai");
+  return result;
 }

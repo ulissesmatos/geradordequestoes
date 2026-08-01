@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QUESTION_LIMITS } from "@/lib/question-limits";
 
 export const chatTools = {
   generate_questions: {
@@ -7,7 +8,22 @@ export const chatTools = {
     schema: z.object({
       subjectName: z.string().describe("Nome da matéria, ex.: Português. Use uma matéria da lista de matérias cadastradas."),
       topicName: z.string().optional().describe("Assunto dentro da matéria, se o usuário citar (ex.: Crase)."),
-      quantity: z.number().int().min(1).max(15).default(5).describe("Quantidade de questões (1 a 15)."),
+      /*
+       * O máximo aqui é o teto ABSOLUTO do produto, não o do plano do usuário. É de
+       * propósito: informe sempre a quantidade que o ALUNO pediu (até este teto) e deixe o
+       * sistema cortar. O resultado da ferramenta devolve quantas questões saíram de fato e
+       * por quê — se a ferramenta já recebesse o número cortado, o aluno pediria 40, receberia
+       * 10 e ninguém teria como explicar o motivo.
+       */
+      quantity: z
+        .number()
+        .int()
+        .min(1)
+        .max(QUESTION_LIMITS.maxPerBlock)
+        .default(5)
+        .describe(
+          `Quantidade de questões que o usuário pediu, de 1 a ${QUESTION_LIMITS.maxPerBlock}. Se ele pedir mais que ${QUESTION_LIMITS.maxPerBlock}, use ${QUESTION_LIMITS.maxPerBlock}. Nunca reduza por conta própria achando que o plano dele não permite — o sistema corta e avisa.`
+        ),
       difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]).default("MEDIO"),
       format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]).default("CERTO_ERRADO").describe("Certo/Errado é o padrão do Cebraspe."),
       alternativesCount: z.number().int().min(2).max(5).optional().describe("Número de alternativas quando o formato é múltipla escolha."),
@@ -43,7 +59,7 @@ export const chatTools = {
       "Gera e salva um bloco de revisão personalizado baseado nos erros recentes do usuário. Use quando o usuário pedir revisão dos erros, treino dos pontos fracos ou revisão personalizada.",
     schema: z.object({
       subjectName: z.string().optional().describe("Restringe a revisão a uma matéria, se o usuário citar."),
-      quantity: z.number().int().min(1).max(15).optional(),
+      quantity: z.number().int().min(1).max(QUESTION_LIMITS.maxPerBlock).optional(),
       format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]).optional()
     })
   },

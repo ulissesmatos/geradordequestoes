@@ -4,11 +4,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
-import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
+import {
+  deleteChatSessionAction,
+  renameChatSessionAction,
+  revokeChatShareAction,
+  shareChatSessionAction
+} from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
-import { Button } from "@/components/ui/button";
+import { ShareLinkModal } from "@/components/share-link-modal";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -54,10 +60,21 @@ type FileAttachment = {
   error?: string;
 };
 
+type UploadResponsePayload = {
+  url?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  extractedText?: string;
+  error?: string;
+};
+
 type ChatSessionSummary = {
   id: string;
   title: string;
   updatedAt: string;
+  /** Link ativo de compartilhamento desta sessão, se houver (já computado no servidor). */
+  shareUrl: string | null;
 };
 
 const FALLBACK_SUBJECTS = ["Português", "Informática", "Direito Constitucional", "Raciocínio Lógico", "Direito Administrativo"];
@@ -92,6 +109,19 @@ function buildPlaceholders(subjectNames: string[] | undefined) {
 
 const loadingLabels = ["Pensando...", "Consultando...", "Preparando a resposta...", "Quase lá...", "Organizando as ideias...", "Só um momento...", "Analisando os detalhes...", "Processando a informação...", "Ajustando os parâmetros...", "Refletindo sobre a melhor resposta..."];
 
+async function readUploadResponse(response: Response): Promise<UploadResponsePayload> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json().catch(() => ({}))) as UploadResponsePayload;
+  }
+
+  await response.text().catch(() => "");
+  if (response.status >= 500) {
+    return { error: "Falha interna no upload. Tente novamente em instantes." };
+  }
+  return { error: "Falha no upload. Tente enviar o arquivo novamente." };
+}
+
 /**
  * Fallback: hoje o servidor envia a frase pronta (com matéria/assunto/termo de busca reais)
  * no campo `label`. Este mapa cobre o caso de um cliente aberto durante um deploy, quando o
@@ -109,33 +139,6 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: "Buscando informações atualizadas na web…",
   ask_clarifying_question: "Preparando uma pergunta…"
 };
-
-/**
- * Compartilha o link de uma conversa: share sheet nativo quando disponível, senão copia
- * o link. Se o usuário cancelar o share sheet (AbortError), não cai no fallback de cópia —
- * cancelar não deveria copiar nada silenciosamente para a área de transferência.
- */
-async function shareSessionLink(sessionId: string, title: string): Promise<"shared" | "copied" | "failed"> {
-  if (typeof window === "undefined") return "failed";
-  const shareUrl = `${window.location.origin}/ai?sessionId=${sessionId}`;
-
-  if (navigator.share) {
-    try {
-      await navigator.share({ title, text: `Veja esta conversa: ${title}`, url: shareUrl });
-      return "shared";
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return "shared";
-      // segue para o fallback de cópia abaixo
-    }
-  }
-
-  try {
-    await navigator.clipboard.writeText(shareUrl);
-    return "copied";
-  } catch {
-    return "failed";
-  }
-}
 
 export function AiChatDashboard({
   userName,
@@ -178,14 +181,20 @@ export function AiChatDashboard({
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
   const [typedClarification, setTypedClarification] = useState<Clarification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  /**
+   * Progresso do turno: a TAREFA em andamento e os PASSOS já percorridos dentro dela.
+   *
+   * São coisas diferentes e misturá-las invertia o sentido: "Gerando 10 questões" ganhava um
+   * check assim que o primeiro passo chegava, ou seja, aparecia como concluída antes de
+   * qualquer questão existir. A tarefa fica no topo, rodando; os passos entram abaixo dela.
+   */
+  const [progress, setProgress] = useState<{ task: string | null; steps: string[] }>({ task: null, steps: [] });
   /** Instante em que o turno começou, para o contador de tempo decorrido. */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [streamSessionId, setStreamSessionId] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(loadingLabels[0]);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMessage | null>(null);
-  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -222,19 +231,8 @@ export function AiChatDashboard({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, toolStatus, streamError]);
+  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, progress, streamError]);
 
-  useEffect(() => {
-    if (!shareNotice) return;
-    const timer = window.setTimeout(() => setShareNotice(null), 2200);
-    return () => window.clearTimeout(timer);
-  }, [shareNotice]);
-
-  async function handleShareSession(sessionId: string, title: string) {
-    const result = await shareSessionLink(sessionId, title);
-    if (result === "copied") setShareNotice("Link copiado!");
-    else if (result === "failed") setShareNotice("Não foi possível compartilhar.");
-  }
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -261,7 +259,7 @@ export function AiChatDashboard({
     setFileAttachments([]);
     setIsSubmitting(false);
     setTurnStartedAt(null);
-    setToolStatus(null);
+    setProgress({ task: null, steps: [] });
     setStreamError(null);
     setStreamSessionId(null);
     setOptimisticMessage(null);
@@ -324,12 +322,21 @@ export function AiChatDashboard({
       const body = new FormData();
       body.append("file", file);
       const response = await fetch("/api/uploads", { method: "POST", body });
-      const data = await response.json();
+      const data = await readUploadResponse(response);
       if (!response.ok) throw new Error(data?.error ?? "Falha no upload.");
+      if (!data.url) throw new Error("Upload concluído sem URL do arquivo.");
       setFileAttachments((items) =>
         items.map((item) =>
           item.id === localId
-            ? { ...item, status: "ready", url: data.url, extractedText: data.extractedText, name: data.name ?? item.name }
+            ? {
+                ...item,
+                status: "ready",
+                url: data.url,
+                extractedText: data.extractedText,
+                name: data.name ?? item.name,
+                mimeType: data.mimeType ?? item.mimeType,
+                size: data.size ?? item.size
+              }
             : item
         )
       );
@@ -412,7 +419,7 @@ export function AiChatDashboard({
     setTypedMessageId(null);
     setTypedClarification(null);
     setStreamError(null);
-    setToolStatus(null);
+    setProgress({ task: null, steps: [] });
     setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
     setTurnStartedAt(Date.now());
     setIsSubmitting(true);
@@ -471,13 +478,21 @@ export function AiChatDashboard({
             // O servidor manda a frase pronta com os argumentos reais da ferramenta
             // ("Gerando 20 questões de Direito Constitucional…"). TOOL_LABELS só cobre
             // versão antiga do backend, que não enviava label.
-            setToolStatus(
-              (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…"
-            );
+            const label =
+              (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…";
+            setProgress((previous) => {
+              // Tarefa nova zera os passos: são os passos DAQUELA tarefa. Backend antigo (sem
+              // `phase`) cai aqui e continua funcionando como antes.
+              if (data.phase !== "step") return { task: label, steps: [] };
+              // Passo repetido não vira linha nova: a lista conta o que MUDOU, não quantos
+              // eventos chegaram.
+              if (previous.steps[previous.steps.length - 1] === label) return previous;
+              return { ...previous, steps: [...previous.steps, label] };
+            });
           } else if (event === "delta") {
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgress({ task: null, steps: [] });
             setTypedResponse((previous) => previous + String(data.text ?? ""));
           } else if (event === "done") {
             setTypedSetId((data.questionSetId as string | null) ?? null);
@@ -487,13 +502,13 @@ export function AiChatDashboard({
             setTypedClarification((data.clarification as Clarification | null) ?? null);
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgress({ task: null, steps: [] });
             router.refresh();
           } else if (event === "error") {
             setStreamError(String(data.error ?? "Erro ao enviar a mensagem."));
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgress({ task: null, steps: [] });
           }
         }
       }
@@ -501,18 +516,19 @@ export function AiChatDashboard({
       setStreamError(error instanceof Error ? error.message : "Erro ao enviar a mensagem.");
       setIsSubmitting(false);
       setTurnStartedAt(null);
-      setToolStatus(null);
+      setProgress({ task: null, steps: [] });
     }
   }
 
-  const activeSessionTitle = sessions.find((item) => item.id === activeSessionId)?.title ?? "Chat IA";
+  const activeSession = sessions.find((item) => item.id === activeSessionId);
+  const activeSessionTitle = activeSession?.title ?? "Chat IA";
+  const activeSessionShareUrl = activeSession?.shareUrl ?? null;
 
   const sessionList = (
     <SessionList
       sessions={sessions}
       activeSessionId={activeSessionId}
       onNavigate={() => setMobileMenuOpen(false)}
-      onShare={handleShareSession}
     />
   );
 
@@ -612,15 +628,17 @@ export function AiChatDashboard({
           </span>
           <div className="flex shrink-0 items-center gap-1">
             {activeSessionId && (
-              <button
-                type="button"
-                aria-label="Compartilhar conversa"
+              <ShareLinkModal
+                triggerLabel="Compartilhar conversa"
+                trigger={<Share2 className="h-5 w-5" />}
+                triggerClassName="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
                 title="Compartilhar conversa"
-                onClick={() => void handleShareSession(activeSessionId, activeSessionTitle)}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-              >
-                <Share2 className="h-5 w-5" />
-              </button>
+                description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
+                revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+                initialShareUrl={activeSessionShareUrl}
+                createAction={shareChatSessionAction.bind(null, activeSessionId)}
+                revokeAction={revokeChatShareAction.bind(null, activeSessionId)}
+              />
             )}
             <Link
               href="/ai?new=1"
@@ -636,10 +654,16 @@ export function AiChatDashboard({
         {activeSessionId && (
           <div className="hidden h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 md:flex">
             <span className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{activeSessionTitle}</span>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handleShareSession(activeSessionId, activeSessionTitle)}>
-              <Share2 className="h-4 w-4" />
-              Compartilhar
-            </Button>
+            <ShareLinkModal
+              triggerLabel="Compartilhar"
+              triggerClassName={buttonVariants({ variant: "outline", size: "sm", className: "gap-1.5" })}
+              title="Compartilhar conversa"
+              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
+              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+              initialShareUrl={activeSessionShareUrl}
+              createAction={shareChatSessionAction.bind(null, activeSessionId)}
+              revokeAction={revokeChatShareAction.bind(null, activeSessionId)}
+            />
           </div>
         )}
 
@@ -694,10 +718,11 @@ export function AiChatDashboard({
               {isSubmitting && (
                 <div className="flex items-start justify-start gap-2.5">
                   <BotAvatar />
-                  <div className="flex max-w-[88%] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-[var(--shadow-sm)]">
-                    <ShiningText text={toolStatus ?? loadingText} />
-                    {turnStartedAt !== null && <ElapsedTime startedAt={turnStartedAt} />}
-                  </div>
+                  <ProgressSteps
+                    task={progress.task ?? loadingText}
+                    steps={progress.steps}
+                    startedAt={turnStartedAt}
+                  />
                 </div>
               )}
               {streamError && !isSubmitting && (
@@ -741,7 +766,7 @@ export function AiChatDashboard({
                     <span
                       key={attachment.id}
                       className={cn(
-                        "animate-fade-in flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+                        "animate-fade-in flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
                         attachment.status === "error"
                           ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
                           : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
@@ -757,7 +782,11 @@ export function AiChatDashboard({
                       )}
                       <span className="max-w-[140px] truncate">{attachment.name}</span>
                       {attachment.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--muted-foreground)]" />}
-                      {attachment.status === "error" && <span className="text-[10px]">{attachment.error}</span>}
+                      {attachment.status === "error" && (
+                        <span className="max-w-[220px] truncate text-[10px]" title={attachment.error}>
+                          {attachment.error}
+                        </span>
+                      )}
                       <button
                         type="button"
                         aria-label="Remover anexo"
@@ -826,12 +855,6 @@ export function AiChatDashboard({
           </form>
         </div>
       </main>
-
-      {shareNotice && (
-        <div className="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[var(--foreground)] px-4 py-2 text-xs font-medium text-[var(--background)] shadow-lg animate-fade-in md:bottom-8">
-          {shareNotice}
-        </div>
-      )}
     </div>
   );
 }
@@ -862,18 +885,17 @@ function DrawerNavLink({
 function SessionRow({
   session,
   isActive,
-  onNavigate,
-  onShare
+  onNavigate
 }: {
   session: ChatSessionSummary;
   isActive: boolean;
   onNavigate?: () => void;
-  onShare: (sessionId: string, title: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [deletePending, startDeleteTransition] = useTransition();
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -961,7 +983,7 @@ function SessionRow({
             </button>
             <button
               type="button"
-              onClick={() => onShare(session.id, session.title)}
+              onClick={() => setShareOpen(true)}
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
             >
               <Share2 className="h-4 w-4 text-[var(--muted-foreground)]" />
@@ -980,7 +1002,7 @@ function SessionRow({
       )}
 
       {/* Fora do painel do dropdown de propósito: se ficasse dentro, fechar o menu
-          desmontaria a confirmação antes do clique em "Excluir" ser processado. */}
+          desmontaria a confirmação/o modal de compartilhar antes do clique ser processado. */}
       <ConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
@@ -990,6 +1012,17 @@ function SessionRow({
         onConfirm={handleDeleteConfirm}
         pending={deletePending}
       />
+
+      <ShareLinkModal
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        title="Compartilhar conversa"
+        description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
+        revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+        initialShareUrl={session.shareUrl}
+        createAction={shareChatSessionAction.bind(null, session.id)}
+        revokeAction={revokeChatShareAction.bind(null, session.id)}
+      />
     </div>
   );
 }
@@ -997,13 +1030,11 @@ function SessionRow({
 function SessionList({
   sessions,
   activeSessionId,
-  onNavigate,
-  onShare
+  onNavigate
 }: {
   sessions: ChatSessionSummary[];
   activeSessionId: string | null;
   onNavigate?: () => void;
-  onShare: (sessionId: string, title: string) => void;
 }) {
   return (
     <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-4">
@@ -1016,7 +1047,6 @@ function SessionList({
           session={session}
           isActive={activeSessionId === session.id}
           onNavigate={onNavigate}
-          onShare={onShare}
         />
       ))}
     </div>
@@ -1031,6 +1061,56 @@ function SessionList({
  * Não é barra de progresso de propósito: o modelo devolve o lote inteiro numa resposta só, então
  * não existe percentual real para mostrar — e inventar um seria mentir para o usuário.
  */
+/**
+ * Passos do turno em lista acumulada, no lugar de uma frase que se substitui.
+ *
+ * Numa geração longa (bloco de 50 leva ~2 min) a frase única parecia tela travada: ela
+ * trocava a cada 20-30s e o que já tinha acontecido sumia. Com a lista, o usuário vê o
+ * caminho percorrido — é isso que comunica que há trabalho em andamento.
+ *
+ * Todo passo vem de fato do servidor (argumentos reais da ferramenta, lote atual, acervo
+ * consultado). Nada é inventado no cliente, e nada é gerado por IA só para preencher tela.
+ */
+function ProgressSteps({ task, steps, startedAt }: { task: string; steps: string[]; startedAt: number | null }) {
+  const lastIndex = steps.length - 1;
+
+  return (
+    <div className="max-w-[88%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 shadow-[var(--shadow-sm)]">
+      {/* A TAREFA sempre roda: ela só termina quando o card inteiro some, dando lugar à
+          resposta. Marcá-la com check enquanto os passos correm era o que invertia o sentido. */}
+      <div className="flex items-start gap-2">
+        <Loader2 className="mt-[5px] h-3.5 w-3.5 shrink-0 animate-spin text-[var(--primary)]" />
+        <span className="flex flex-wrap items-center gap-2">
+          <ShiningText text={task} />
+          {startedAt !== null && <ElapsedTime startedAt={startedAt} />}
+        </span>
+      </div>
+
+      {steps.length > 0 && (
+        <ul className="mt-1.5 space-y-1 border-l border-[var(--border)] pl-4">
+          {steps.map((step, index) => {
+            const isCurrent = index === lastIndex;
+            return (
+              <li key={`${index}-${step}`} className="flex items-start gap-2 text-xs">
+                <span className="mt-[5px] flex h-3 w-3 shrink-0 items-center justify-center">
+                  {isCurrent ? (
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
+                  ) : (
+                    <Check className="h-3 w-3 text-[var(--success)]" />
+                  )}
+                </span>
+                <span className={isCurrent ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>
+                  {step}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ElapsedTime({ startedAt }: { startedAt: number }) {
   const DELAY_MS = 6000;
   const [seconds, setSeconds] = useState(() => Math.floor((Date.now() - startedAt) / 1000));

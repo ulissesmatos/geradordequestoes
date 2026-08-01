@@ -3,6 +3,7 @@ import { AiChatDashboard } from "@/components/ai-chat-dashboard";
 import { Paywall } from "@/components/paywall";
 import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt";
 import { StudyStatesPrompt } from "@/components/study-states-prompt";
+import { chatShareUrl } from "@/lib/chat-share";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getEntitlements } from "@/lib/entitlements";
@@ -26,7 +27,8 @@ export default async function AiChatPage({
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
-      take: 30
+      take: 30,
+      include: { share: { select: { id: true, revokedAt: true } } }
     }),
     getAiUsageStatus(user),
     prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 }),
@@ -77,7 +79,8 @@ export default async function AiChatPage({
         sessions={sessions.map((item) => ({
           id: item.id,
           title: item.title,
-          updatedAt: item.updatedAt.toISOString()
+          updatedAt: item.updatedAt.toISOString(),
+          shareUrl: item.share && !item.share.revokedAt ? chatShareUrl(item.share.id) : null
         }))}
         messages={(session?.messages ?? []).map((message) => ({
           id: message.id,
