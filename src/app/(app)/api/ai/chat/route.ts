@@ -14,6 +14,19 @@ import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
 
+/**
+ * Duração máxima da função, em segundos.
+ *
+ * Estava implícita — herdando o padrão da plataforma — enquanto um bloco de 50 questões leva
+ * ~2 minutos (5 lotes sequenciais, mais uma rodada de reparo no pior caso). Sem declarar, a
+ * geração longa é cortada no meio pela Vercel e o aluno perde tudo, sem erro que explique.
+ *
+ * 300s é o teto do plano Pro. Se o projeto estiver no Hobby, este número é reduzido pela
+ * plataforma e blocos grandes continuarão sendo cortados — nesse caso, o caminho é baixar
+ * QUESTION_LIMITS.maxPerBlock ou mover a geração para segundo plano.
+ */
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const user = await requireUser();
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
@@ -150,7 +150,9 @@ export function AiChatDashboard({
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
   const [typedClarification, setTypedClarification] = useState<Clarification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
+  // Acumula os passos do turno em vez de guardar só o último: numa geração de 2 minutos, ver
+  // o que JÁ aconteceu é o que diferencia "está trabalhando" de "travou".
+  const [progressSteps, setProgressSteps] = useState<string[]>([]);
   /** Instante em que o turno começou, para o contador de tempo decorrido. */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export function AiChatDashboard({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, toolStatus, streamError]);
+  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, progressSteps, streamError]);
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -220,7 +222,7 @@ export function AiChatDashboard({
     setFileAttachments([]);
     setIsSubmitting(false);
     setTurnStartedAt(null);
-    setToolStatus(null);
+    setProgressSteps([]);
     setStreamError(null);
     setStreamSessionId(null);
     setOptimisticMessage(null);
@@ -371,7 +373,7 @@ export function AiChatDashboard({
     setTypedMessageId(null);
     setTypedClarification(null);
     setStreamError(null);
-    setToolStatus(null);
+    setProgressSteps([]);
     setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
     setTurnStartedAt(Date.now());
     setIsSubmitting(true);
@@ -430,13 +432,17 @@ export function AiChatDashboard({
             // O servidor manda a frase pronta com os argumentos reais da ferramenta
             // ("Gerando 20 questões de Direito Constitucional…"). TOOL_LABELS só cobre
             // versão antiga do backend, que não enviava label.
-            setToolStatus(
-              (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…"
+            const label =
+              (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…";
+            // Label repetido não vira linha nova: a lista conta o que MUDOU, não quantos
+            // eventos chegaram (o servidor reemite o mesmo texto ao trocar de fase).
+            setProgressSteps((previous) =>
+              previous[previous.length - 1] === label ? previous : [...previous, label]
             );
           } else if (event === "delta") {
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgressSteps([]);
             setTypedResponse((previous) => previous + String(data.text ?? ""));
           } else if (event === "done") {
             setTypedSetId((data.questionSetId as string | null) ?? null);
@@ -446,13 +452,13 @@ export function AiChatDashboard({
             setTypedClarification((data.clarification as Clarification | null) ?? null);
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgressSteps([]);
             router.refresh();
           } else if (event === "error") {
             setStreamError(String(data.error ?? "Erro ao enviar a mensagem."));
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setToolStatus(null);
+            setProgressSteps([]);
           }
         }
       }
@@ -460,7 +466,7 @@ export function AiChatDashboard({
       setStreamError(error instanceof Error ? error.message : "Erro ao enviar a mensagem.");
       setIsSubmitting(false);
       setTurnStartedAt(null);
-      setToolStatus(null);
+      setProgressSteps([]);
     }
   }
 
@@ -626,10 +632,7 @@ export function AiChatDashboard({
               {isSubmitting && (
                 <div className="flex items-start justify-start gap-2.5">
                   <BotAvatar />
-                  <div className="flex max-w-[88%] items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--foreground)] shadow-[var(--shadow-sm)]">
-                    <ShiningText text={toolStatus ?? loadingText} />
-                    {turnStartedAt !== null && <ElapsedTime startedAt={turnStartedAt} />}
-                  </div>
+                  <ProgressSteps steps={progressSteps} fallback={loadingText} startedAt={turnStartedAt} />
                 </div>
               )}
               {streamError && !isSubmitting && (
@@ -884,6 +887,58 @@ function SessionList({
  * Não é barra de progresso de propósito: o modelo devolve o lote inteiro numa resposta só, então
  * não existe percentual real para mostrar — e inventar um seria mentir para o usuário.
  */
+/**
+ * Passos do turno em lista acumulada, no lugar de uma frase que se substitui.
+ *
+ * Numa geração longa (bloco de 50 leva ~2 min) a frase única parecia tela travada: ela
+ * trocava a cada 20-30s e o que já tinha acontecido sumia. Com a lista, o usuário vê o
+ * caminho percorrido — é isso que comunica que há trabalho em andamento.
+ *
+ * Todo passo vem de fato do servidor (argumentos reais da ferramenta, lote atual, acervo
+ * consultado). Nada é inventado no cliente, e nada é gerado por IA só para preencher tela.
+ */
+function ProgressSteps({
+  steps,
+  fallback,
+  startedAt
+}: {
+  steps: string[];
+  fallback: string;
+  startedAt: number | null;
+}) {
+  const visible = steps.length > 0 ? steps : [fallback];
+  const lastIndex = visible.length - 1;
+
+  return (
+    <div className="max-w-[88%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 shadow-[var(--shadow-sm)]">
+      <ul className="space-y-1.5">
+        {visible.map((step, index) => {
+          const isCurrent = index === lastIndex;
+          return (
+            <li key={`${index}-${step}`} className="flex items-start gap-2">
+              <span className="mt-[7px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                {isCurrent ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--primary)]" />
+                ) : (
+                  <Check className="h-3.5 w-3.5 text-[var(--success)]" />
+                )}
+              </span>
+              {isCurrent ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  <ShiningText text={step} />
+                  {startedAt !== null && <ElapsedTime startedAt={startedAt} />}
+                </span>
+              ) : (
+                <span className="text-[var(--muted-foreground)]">{step}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function ElapsedTime({ startedAt }: { startedAt: number }) {
   const DELAY_MS = 6000;
   const [seconds, setSeconds] = useState(() => Math.floor((Date.now() - startedAt) / 1000));

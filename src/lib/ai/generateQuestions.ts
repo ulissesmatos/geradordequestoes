@@ -715,7 +715,11 @@ async function generateWithClaude(
     },
     body: JSON.stringify({
       model: settings.model,
-      max_tokens: 4096,
+      // Folga: 4.096 era apertado para um lote no nível difícil, onde cada bloco carrega um
+      // texto de apoio de 2 a 4 parágrafos além das questões. Estourar aqui não degrada — o
+      // JSON vem truncado e a geração inteira falha. Só o Claude precisa do limite explícito;
+      // OpenAI e OpenRouter usam o padrão do modelo, que é bem maior.
+      max_tokens: 8192,
       system:
         "Você cria questões originais para concursos públicos. Use a ferramenta emit_questions para retornar apenas dados estruturados.",
       messages: [{ role: "user", content: prompt }],

@@ -228,7 +228,11 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
     title: buildQuestionSetTitle(mode, subject.name, displayTopicName),
     prompt: userPrompt,
     chatSessionId: sessionId,
-    context
+    context,
+    // Sem este repasse, TODO o progresso da geração morre no servidor: o funil emite
+    // "usando N provas reais", "gerando questões 21 a 30 de 50" e "revisando", e a tela
+    // ficava parada na primeira frase por minutos, parecendo travada.
+    onProgress
   });
 
   return {
@@ -444,7 +448,8 @@ async function runGenerateReview(user: ToolUser, sessionId: string, userPrompt: 
     title: target.title,
     prompt: userPrompt,
     chatSessionId: sessionId,
-    context: [await getRecentConversationText(sessionId), target.context].filter(Boolean).join("\n\n").slice(0, 5200)
+    context: [await getRecentConversationText(sessionId), target.context].filter(Boolean).join("\n\n").slice(0, 5200),
+    onProgress
   });
 
   return {
