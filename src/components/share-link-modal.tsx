@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { AlertTriangle, Link2, Loader2, Share2 } from "lucide-react";
 import { CopyButton } from "@/components/admin/copy-button";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
@@ -28,7 +28,9 @@ export function ShareLinkModal({
   revokedNotice,
   initialShareUrl,
   createAction,
-  revokeAction
+  revokeAction,
+  open: openProp,
+  onOpenChange
 }: {
   triggerLabel?: string;
   trigger?: ReactNode;
@@ -41,15 +43,29 @@ export function ShareLinkModal({
   initialShareUrl?: string | null;
   createAction: () => Promise<ShareActionResult>;
   revokeAction: () => Promise<RevokeActionResult>;
+  /**
+   * Controlado por fora junto com `onOpenChange`: não renderiza o próprio botão-gatilho — o
+   * chamador decide o que abre o modal (ex.: um item de um dropdown que precisa sobreviver ao
+   * dropdown fechando). Sem os dois, o componente é não controlado e desenha seu próprio botão.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
   const [shareUrl, setShareUrl] = useState<string | null>(initialShareUrl ?? null);
   const [justRevoked, setJustRevoked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function handleOpen() {
-    setOpen(true);
+  function setOpen(value: boolean) {
+    setUncontrolledOpen(value);
+    onOpenChange?.(value);
+  }
+
+  useEffect(() => {
+    if (!open) return;
     setJustRevoked(false);
     setError(null);
     // Sempre (re)gera ao abrir: se já existe um link ativo, a action é idempotente e devolve
@@ -59,7 +75,8 @@ export function ShareLinkModal({
       if (result.ok) setShareUrl(result.url);
       else setError(result.error);
     });
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function handleRevoke() {
     startTransition(async () => {
@@ -75,22 +92,24 @@ export function ShareLinkModal({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleOpen}
-        title={triggerLabel}
-        className={
-          triggerClassName ??
-          "inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
-        }
-      >
-        {trigger ?? (
-          <>
-            <Share2 className="h-4 w-4" />
-            {triggerLabel}
-          </>
-        )}
-      </button>
+      {!controlled && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={triggerLabel}
+          className={
+            triggerClassName ??
+            "inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+          }
+        >
+          {trigger ?? (
+            <>
+              <Share2 className="h-4 w-4" />
+              {triggerLabel}
+            </>
+          )}
+        </button>
+      )}
 
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogPanel>
