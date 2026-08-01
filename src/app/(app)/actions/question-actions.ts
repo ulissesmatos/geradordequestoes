@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getTrialBankStatus } from "@/lib/question-bank";
 import { generateAndSaveQuestionSet } from "@/lib/question-sets";
+import { QUESTION_LIMITS } from "@/lib/question-limits";
 import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { applyAttemptToReviewState } from "@/lib/review";
 import { assertCanGenerateWithAi } from "@/lib/subscriptions";
@@ -101,7 +102,7 @@ export async function generateUserQuestionsAction(
   const subjectId = String(formData.get("subjectId") ?? "");
   const topicId = String(formData.get("topicId") ?? "");
   const difficulty = formData.get("difficulty") as Difficulty;
-  const quantity = Math.min(Number(formData.get("quantity") ?? 5), 15);
+  const quantity = Math.min(Number(formData.get("quantity") ?? 5), QUESTION_LIMITS.maxPerBlock);
   const format = (formData.get("format") as QuestionFormat) || QuestionFormat.CERTO_ERRADO;
   const alternativesCount = Math.min(Math.max(Number(formData.get("alternativesCount") ?? 4), 2), 5);
   const mode = (formData.get("mode") as QuestionSetMode) || QuestionSetMode.ESTUDO;

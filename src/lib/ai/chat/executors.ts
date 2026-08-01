@@ -288,6 +288,11 @@ function capExplanation(cap: NonNullable<QuantityCap>): { curta: string; saida: 
         curta: `seu plano gera até ${cap.applied} questões por bloco`,
         saida: "Planos superiores geram blocos maiores de uma vez."
       };
+    case "TETO_DO_PRODUTO":
+      return {
+        curta: `${cap.applied} é o máximo por bloco`,
+        saida: "É o limite para as questões saírem com qualidade. Peça outro bloco em seguida se quiser mais."
+      };
     default:
       return {
         curta: `o plano gratuito gera até ${cap.applied} questões por bloco`,

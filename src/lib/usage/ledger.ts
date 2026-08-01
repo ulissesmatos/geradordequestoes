@@ -2,6 +2,7 @@ import { Role, UsageKind, UsageMeter } from "@prisma/client";
 import { getAppSettings } from "@/lib/app-settings";
 import { startOfDayInBrazil, startOfNextDayInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { QUESTION_LIMITS } from "@/lib/question-limits";
 import { getActiveSubscription } from "@/lib/subscriptions";
 import { resolveUsagePeriod, type UsagePeriod } from "@/lib/usage/period";
 
@@ -283,7 +284,12 @@ export async function settleUsage(ledgerId: string | null, actualUnits: number):
 }
 
 /** Motivo do corte, para a mensagem ao usuário não culpar o limite errado. */
-export type QuantityCapReason = "PLANO_GRATUITO" | "TAMANHO_DO_BLOCO" | "COTA_DIARIA" | "COTA_MENSAL";
+export type QuantityCapReason =
+  | "PLANO_GRATUITO"
+  | "TAMANHO_DO_BLOCO"
+  | "COTA_DIARIA"
+  | "COTA_MENSAL"
+  | "TETO_DO_PRODUTO";
 
 export type GenerationAllowance = {
   /** Maior bloco que este usuário pode gerar agora, já considerando cota e teto. null = sem teto. */
@@ -310,11 +316,22 @@ export async function resolveGenerationAllowance(
 ): Promise<GenerationAllowance> {
   const resolved = limits ?? (await resolveLimits(user));
   if (resolved.kind === "ADMIN") {
-    return { maxPerBlock: null, reason: null, exhausted: false, limits: resolved };
+    // Admin não tem plano nem cota, mas o teto do produto é técnico (tokens de saída por
+    // lote e repetição entre lotes) e vale para todo mundo.
+    return {
+      maxPerBlock: QUESTION_LIMITS.maxPerBlock,
+      reason: "TETO_DO_PRODUTO",
+      exhausted: false,
+      limits: resolved
+    };
   }
 
   const blockCap = resolved.maxQuestionsPerGeneration;
-  const candidates: Array<{ value: number; reason: QuantityCapReason }> = [];
+  // Teto do produto entra na disputa como qualquer outro: acima dele a espera cresce (cada
+  // lote é uma chamada sequencial) e os últimos lotes começam a repetir o que já saiu.
+  const candidates: Array<{ value: number; reason: QuantityCapReason }> = [
+    { value: QUESTION_LIMITS.maxPerBlock, reason: "TETO_DO_PRODUTO" }
+  ];
   if (blockCap !== null) {
     candidates.push({ value: blockCap, reason: resolved.kind === "TRIAL" ? "PLANO_GRATUITO" : "TAMANHO_DO_BLOCO" });
   }

@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
+import { splitIntoBatches } from "@/lib/question-limits";
 import { normalizeDisplayText } from "@/lib/sanitize";
 
 /** Questão real usada como base 1:1 no modo "variação fiel" (perto do enunciado original). */
@@ -442,39 +443,114 @@ export async function generateQuestions(input: {
     if (settings.provider === AiProvider.OPENROUTER) return generateWithOpenRouter(settings, fullPrompt);
     return generateWithOpenAI(settings, fullPrompt);
   };
-
-  let groups = await runProvider(prompt);
-
-  // Contrato de autossuficiência, verificado em código: nenhuma questão pode citar um
-  // texto-base ausente. Quando quebra, manda refazer UMA vez apontando exatamente o que
-  // deu errado (o custo extra só existe no caminho ruim) e, se ainda vier torto, descarta
-  // as questões quebradas em vez de entregá-las ao aluno.
   const checkOptions = { languageSubject: isLanguageSubject(input.subject, input.topic) };
-  const orphans = findOrphanQuestions(groups, checkOptions);
-  const mathViolations = findMathViolations(groups);
-  if (orphans.length > 0 || mathViolations.length > 0) {
-    input.onProgress?.("Revisando as questões geradas…");
-    // Os dois contratos compartilham a MESMA rodada de reparo: mesmo quando ambos falham,
-    // o custo extra é de no máximo uma chamada a mais.
-    const fixes = [
-      orphans.length > 0 ? buildSelfContainmentRepairInstruction(orphans) : "",
-      mathViolations.length > 0 ? buildMathRepairInstruction(mathViolations) : ""
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    const repaired = await runProvider(`${prompt}\n\n${fixes}`);
-    // Questão órfã é descartada (item impossível de responder é pior que entregar menos).
-    // Fórmula crua NÃO derruba a questão: fica feia, mas continua respondível.
-    groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
+
+  /** Uma chamada + o loop de reparo dela. Reparo é por LOTE, então custa um lote, não o bloco. */
+  const runBatch = async (batchPrompt: string, expected: number): Promise<RawGroup[]> => {
+    let groups = await runProvider(batchPrompt);
+
+    // Contrato de autossuficiência, verificado em código: nenhuma questão pode citar um
+    // texto-base ausente. Quando quebra, manda refazer UMA vez apontando exatamente o que
+    // deu errado (o custo extra só existe no caminho ruim) e, se ainda vier torto, descarta
+    // as questões quebradas em vez de entregá-las ao aluno.
+    const orphans = findOrphanQuestions(groups, checkOptions);
+    const mathViolations = findMathViolations(groups);
+    if (orphans.length > 0 || mathViolations.length > 0) {
+      input.onProgress?.("Revisando as questões geradas…");
+      // Os dois contratos compartilham a MESMA rodada de reparo: mesmo quando ambos falham,
+      // o custo extra é de no máximo uma chamada a mais.
+      const fixes = [
+        orphans.length > 0 ? buildSelfContainmentRepairInstruction(orphans) : "",
+        mathViolations.length > 0 ? buildMathRepairInstruction(mathViolations) : ""
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const repaired = await runProvider(`${batchPrompt}\n\n${fixes}`);
+      // Questão órfã é descartada (item impossível de responder é pior que entregar menos).
+      // Fórmula crua NÃO derruba a questão: fica feia, mas continua respondível.
+      groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
+    }
+
+    // Por último, depois do descarte de questões quebradas: cortar antes faria o descarte
+    // devolver menos do que o pedido mesmo havendo item bom sobrando no excedente.
+    return enforceQuantity(groups, expected);
+  };
+
+  // No modo variação fiel o esperado é uma variação por questão de referência.
+  const totalWanted = input.referenceQuestions?.length ?? input.quantity;
+  const batchSizes = splitIntoBatches(totalWanted);
+
+  /*
+   * Lote único: caminho de sempre, sem custo nem texto extra no prompt.
+   *
+   * O corte em lotes existe porque 4.096 tokens de saída não comportam um bloco grande — 50
+   * questões numa chamada só não sairiam piores, sairiam com o JSON truncado. Mas cada lote
+   * a mais é uma chamada a mais, então o caminho comum (bloco pequeno) não paga por isso.
+   */
+  if (batchSizes.length === 1) {
+    const groups = await runBatch(prompt, totalWanted);
+    return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups });
   }
 
-  // Por último, depois do descarte de questões quebradas: cortar antes faria o descarte
-  // devolver menos do que o pedido mesmo havendo item bom sobrando no excedente.
-  // No modo variação fiel o esperado é uma variação por questão de referência.
-  const expectedQuantity = input.referenceQuestions?.length ?? input.quantity;
-  groups = enforceQuantity(groups, expectedQuantity);
+  const allGroups: RawGroup[] = [];
+  // Enunciados já gerados, repassados ao próximo lote. Sem isso, quatro lotes sobre "Crase"
+  // saem quase iguais entre si: cada chamada é cega às outras e o modelo volta para os
+  // mesmos exemplos canônicos do assunto.
+  const generatedStatements: string[] = [];
+  let generatedCount = 0;
 
-  return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups });
+  for (const [index, batchSize] of batchSizes.entries()) {
+    const from = generatedCount + 1;
+    const to = generatedCount + batchSize;
+    input.onProgress?.(`Gerando questões ${from} a ${to} de ${totalWanted}…`);
+
+    const batchPrompt =
+      input.referenceQuestions && input.referenceQuestions.length > 0
+        ? buildVariantPrompt({
+            ...input,
+            format,
+            alternativesCount,
+            // Fatia as fontes: cada lote gera a variação das SUAS questões de referência.
+            referenceQuestions: input.referenceQuestions.slice(generatedCount, generatedCount + batchSize)
+          })
+        : buildPrompt({
+            ...input,
+            format,
+            alternativesCount,
+            quantity: batchSize,
+            referenceContext: input.referenceContext,
+            avoidStatements: generatedStatements
+          });
+
+    const groups = await runBatch(batchPrompt, batchSize);
+    allGroups.push(...groups);
+
+    generatedCount += groups.reduce((sum, group) => sum + group.questions.length, 0);
+    // Só o começo do enunciado: o suficiente para o modelo reconhecer o tema já coberto, sem
+    // inflar o prompt do último lote.
+    if (index < batchSizes.length - 1) {
+      for (const group of groups) {
+        for (const question of group.questions) generatedStatements.push(question.statement.slice(0, 160));
+      }
+    }
+  }
+
+  return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups: allGroups });
+}
+
+/**
+ * Lista o que já saiu nos lotes anteriores do MESMO bloco, para o lote atual não repetir.
+ *
+ * Sem isto, quatro lotes de 10 sobre "Crase" saem quase iguais: cada chamada é cega às
+ * outras e o modelo volta sempre para os mesmos exemplos canônicos do assunto.
+ */
+function buildAvoidRepetitionInstruction(statements: string[] | undefined) {
+  if (!statements || statements.length === 0) return "";
+  return [
+    "QUESTÕES JÁ GERADAS NESTE MESMO BLOCO — não repita nenhuma delas, nem versão levemente reescrita:",
+    ...statements.map((statement, index) => `${index + 1}. ${statement}`),
+    "Aborde ÂNGULOS DIFERENTES do assunto: outros dispositivos, outras exceções, outras pegadinhas, outros cenários. Se o assunto for estreito, varie a situação hipotética e o recorte em vez de reformular o mesmo item."
+  ].join("\n");
 }
 
 function buildPrompt(input: {
@@ -489,6 +565,8 @@ function buildPrompt(input: {
   extraInstructions?: string;
   context?: string;
   referenceContext?: string;
+  /** Enunciados já gerados nos lotes anteriores deste mesmo bloco. */
+  avoidStatements?: string[];
 }) {
   const formatInstruction =
     input.format === "CERTO_ERRADO"
@@ -508,6 +586,7 @@ function buildPrompt(input: {
     input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
     input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
     input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",
+    buildAvoidRepetitionInstruction(input.avoidStatements),
     "Gere questões originais de concurso público.",
     "Não copie verbatim; inspire-se no estilo e nas pegadinhas das provas reais para criar itens inéditos.",
     "Use linguagem clara, objetiva e adequada a concurso.",

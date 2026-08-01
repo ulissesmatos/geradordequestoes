@@ -16,7 +16,7 @@ type SubjectWithTopics = {
   topics: { id: string; name: string }[];
 };
 
-const QUANTITY_OPTIONS = [3, 5, 10, 15];
+const QUANTITY_OPTIONS = [3, 5, 10, 15, 20, 30, 40, 50];
 
 /** Texto do corte na voz do motivo certo — culpar o "plano gratuito" mente para o assinante. */
 function capReasonText(cap: { applied: number; reason: string | null }) {
@@ -27,6 +27,8 @@ function capReasonText(cap: { applied: number; reason: string | null }) {
       return `sua cota de questões deste ciclo só permitia ${cap.applied}`;
     case "TAMANHO_DO_BLOCO":
       return `seu plano gera até ${cap.applied} questões por bloco`;
+    case "TETO_DO_PRODUTO":
+      return `${cap.applied} é o máximo por bloco`;
     default:
       return `o plano gratuito gera até ${cap.applied} por bloco`;
   }
