@@ -34,6 +34,90 @@ export function matchByName<T extends { name: string }>(items: T[], query: strin
   );
 }
 
+/** Palavras que não distinguem uma matéria de outra e só inflam a semelhança. */
+const STOPWORDS = new Set(["de", "da", "do", "das", "dos", "e", "em", "no", "na", "a", "o", "para", "com", "nocoes"]);
+
+function meaningfulTokens(value: string): string[] {
+  return normalizeName(value)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token));
+}
+
+/**
+ * Item mais parecido quando `matchByName` não achou nada — por sobreposição de palavras.
+ *
+ * Devolve `null` quando NENHUMA palavra significativa é compartilhada. Isso é deliberado:
+ * "mais próximo" só faz sentido havendo alguma relação. Encaixar um pedido de Direito Penal
+ * numa matéria sorteada corromperia o desempenho por matéria, que é justamente o dado que
+ * alimenta a revisão espaçada e o card de "assuntos para reforçar".
+ */
+export function closestByName<T extends { name: string }>(
+  items: T[],
+  query: string
+): { item: T; score: number } | null {
+  const queryTokens = meaningfulTokens(query);
+  if (queryTokens.length === 0) return null;
+
+  const tokenized = items.map((item) => ({ item, tokens: meaningfulTokens(item.name) }));
+
+  // Em quantas matérias cada palavra aparece. "direito" está em várias e por isso NÃO
+  // distingue nada — é palavra de família, não de identidade.
+  const documentFrequency = new Map<string, number>();
+  for (const entry of tokenized) {
+    for (const token of new Set(entry.tokens)) {
+      documentFrequency.set(token, (documentFrequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  let best: { item: T; score: number } | null = null;
+  for (const { item, tokens } of tokenized) {
+    if (tokens.length === 0) continue;
+
+    const shared = tokens.filter((token) => queryTokens.some((other) => tokensMatch(token, other)));
+    if (shared.length === 0) continue;
+
+    /*
+     * Palavra de família em comum não basta. Sem esta guarda, "Direito Penal" caía em
+     * "Direito Constitucional" só por dividirem "direito" — e questões de Penal entrando
+     * como Constitucional mentem no desempenho por matéria do aluno.
+     *
+     * Aceita quando a semelhança vem de uma palavra EXCLUSIVA daquela matéria, ou quando o
+     * pedido inteiro foi coberto (aí não sobrou especialização contradita).
+     */
+    const hasDistinctiveToken = shared.some((token) => documentFrequency.get(token) === 1);
+    const allQueryTokensMatched = queryTokens.every((token) => tokens.some((other) => tokensMatch(token, other)));
+    if (!hasDistinctiveToken && !allQueryTokensMatched) continue;
+
+    // Jaccard: penaliza tanto a matéria genérica demais quanto a específica demais.
+    const score = shared.length / new Set([...queryTokens, ...tokens]).size;
+    if (!best || score > best.score) best = { item, score };
+  }
+  return best;
+}
+
+/** Duas palavras são a mesma raiz? Cobre flexão ("lógica"/"lógico") e prefixo. */
+function tokensMatch(a: string, b: string): boolean {
+  if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
+  let common = 0;
+  while (common < a.length && common < b.length && a[common] === b[common]) common += 1;
+  // 5 caracteres em comum separa "logica"/"logico" de coincidências curtas como
+  // "direito"/"direta", que compartilham só 4.
+  return common >= 5;
+}
+
+/**
+ * Guarda antes de criar um assunto a partir de rótulo da IA. Mais folgada que a de matéria:
+ * assunto costuma ser descritivo mesmo ("Concordância verbal e nominal"), mas continua
+ * recusando frase inteira, que poluiria o catálogo de forma difícil de desfazer.
+ */
+export function isPlausibleTopicName(name: string) {
+  const clean = name.trim();
+  if (clean.length < 3 || clean.length > 80) return false;
+  if (clean.split(/\s+/).length > 10) return false;
+  if (/[.!?]$/.test(clean)) return false;
+  return true;
+}
+
 /**
  * Variantes que a IA costuma devolver para a MESMA matéria. Sem esse passo, o auto-create
  * do backfill criaria "Português" E "Língua Portuguesa" como matérias diferentes no catálogo

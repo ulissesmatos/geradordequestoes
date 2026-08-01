@@ -17,7 +17,8 @@ import { buildQuestionSetTitle, generateAndSaveQuestionSet } from "@/lib/questio
 import { getPerformanceContext, getRecentAttachmentText, getRecentConversationText } from "@/lib/ai/chat/context";
 import { chatTools, isChatToolName } from "@/lib/ai/chat/tools";
 import { searchReferenceChunks, searchReferenceQuestions, searchWithinDocument } from "@/lib/reference";
-import { matchByName } from "@/lib/taxonomy";
+import { canonicalSubjectName, closestByName, isPlausibleTopicName, matchByName } from "@/lib/taxonomy";
+import { slugify } from "@/lib/utils";
 import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { webSearch } from "@/lib/ai/web-search";
 
@@ -95,30 +96,105 @@ function parseArgs<T extends z.ZodType>(schema: T, rawArgs: unknown): { ok: true
   return { ok: false, result: errorResult(`Argumentos inválidos (${issues}). Corrija e tente novamente.`) };
 }
 
-async function runGenerateQuestions(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown, onProgress?: (label: string) => void): Promise<ToolExecutionResult> {
-  const parsed = parseArgs(chatTools.generate_questions.schema, rawArgs);
-  if (!parsed.ok) return parsed.result;
-  const args = parsed.args;
+type SubjectWithTopics = { id: string; name: string; topics: { id: string; name: string }[] };
 
+type TaxonomyResolution =
+  | {
+      ok: true;
+      subject: SubjectWithTopics;
+      topic: { id: string; name: string };
+      /** Preenchido quando não foi acerto direto — o modelo precisa avisar o usuário. */
+      fallbackNote?: string;
+    }
+  | { ok: false; result: ToolExecutionResult };
+
+/**
+ * Resolve os rótulos livres de matéria/assunto vindos da IA para linhas reais do banco.
+ *
+ * Antes isto eram dois `return errorResult(...)` e um deles derrubava a geração num caso que
+ * não é erro nenhum do usuário: matéria CADASTRADA mas sem nenhum assunto. Um aluno pediu
+ * 10 questões de Raciocínio Lógico e recebeu "essa matéria ainda não tem assuntos
+ * cadastrados" — falha de dado do admin cobrada do aluno.
+ *
+ * A regra agora é gerar sempre que houver como ancorar o pedido em algo real:
+ *
+ * 1. Matéria sem assuntos → CRIA o assunto pedido. Acontece uma vez por matéria e conserta
+ *    o buraco sozinho, em vez de repetir o erro para todo aluno que pedir aquela matéria.
+ * 2. Matéria não encontrada mas parecida com uma existente → usa a parecida e avisa.
+ * 3. Assunto não encontrado dentro da matéria → usa o primeiro (o título do bloco já
+ *    preserva o rótulo que o aluno pediu).
+ *
+ * O único caso que ainda pergunta em vez de gerar é quando NADA se relaciona ao pedido —
+ * encaixar Direito Penal numa matéria sorteada corromperia o desempenho por matéria, que é
+ * o dado que alimenta a revisão espaçada e o "assuntos para reforçar".
+ */
+async function resolveQuestionTaxonomy(subjectName: string, topicName?: string): Promise<TaxonomyResolution> {
   const subjects = await prisma.subject.findMany({
     include: { topics: { orderBy: { name: "asc" } } },
     orderBy: { name: "asc" }
   });
   if (subjects.length === 0) {
-    return errorResult("Não há matérias cadastradas no sistema. Explique que o administrador precisa cadastrar matérias e assuntos antes de gerar questões.");
+    return {
+      ok: false,
+      result: errorResult(
+        "Não há matérias cadastradas no sistema. Explique que o administrador precisa cadastrar matérias antes de gerar questões."
+      )
+    };
   }
 
-  const subject = matchByName(subjects, args.subjectName);
+  // canonicalSubjectName primeiro: resolve variantes como "Raciocínio Lógico Matemático"
+  // ou "Noções de Informática" antes de qualquer busca.
+  const canonical = canonicalSubjectName(subjectName);
+  let fallbackNote: string | undefined;
+
+  let subject = matchByName(subjects, canonical);
   if (!subject) {
-    return errorResult(
-      `Matéria "${args.subjectName}" não encontrada. Matérias disponíveis: ${subjects.map((item) => item.name).join(", ")}. Pergunte ao usuário qual delas usar.`
-    );
+    const closest = closestByName(subjects, canonical);
+    if (!closest) {
+      return {
+        ok: false,
+        result: errorResult(
+          `Não há matéria parecida com "${subjectName}" na plataforma. Matérias disponíveis: ${subjects
+            .map((item) => item.name)
+            .join(", ")}. Diga isso ao usuário e pergunte qual delas usar.`
+        )
+      };
+    }
+    subject = closest.item;
+    fallbackNote = `O usuário pediu "${subjectName}", que não existe na plataforma; o bloco foi criado em "${subject.name}", a matéria mais próxima. Avise isso em uma frase, sem se desculpar demais.`;
   }
-  if (subject.topics.length === 0) {
-    return errorResult(`A matéria ${subject.name} ainda não tem assuntos cadastrados. Sugira outra matéria ao usuário.`);
+
+  const requestedTopic = topicName?.trim();
+  const matchedTopic = requestedTopic ? matchByName(subject.topics, requestedTopic) : null;
+  if (matchedTopic) return { ok: true, subject, topic: matchedTopic, fallbackNote };
+
+  if (subject.topics.length > 0) {
+    // Assunto pedido não existe, mas a matéria tem outros: ancora no primeiro. O título do
+    // bloco preserva o rótulo pedido, então o aluno continua vendo o que pediu.
+    return { ok: true, subject, topic: subject.topics[0], fallbackNote };
   }
-  const topic = (args.topicName ? matchByName(subject.topics, args.topicName) : null) ?? subject.topics[0];
-  // If the AI requested a topic that doesn't match a DB topic, preserve its label in the title
+
+  // Matéria sem nenhum assunto: cria. `Geral` é a rede de segurança quando o rótulo da IA é
+  // longo ou estranho demais para virar item de catálogo.
+  const newTopicName = requestedTopic && isPlausibleTopicName(requestedTopic) ? requestedTopic : "Geral";
+  const created = await prisma.topic.upsert({
+    where: { subjectId_slug: { subjectId: subject.id, slug: slugify(newTopicName) } },
+    update: {},
+    create: { subjectId: subject.id, name: newTopicName, slug: slugify(newTopicName) },
+    select: { id: true, name: true }
+  });
+  return { ok: true, subject, topic: created, fallbackNote };
+}
+
+async function runGenerateQuestions(user: ToolUser, sessionId: string, userPrompt: string, rawArgs: unknown, onProgress?: (label: string) => void): Promise<ToolExecutionResult> {
+  const parsed = parseArgs(chatTools.generate_questions.schema, rawArgs);
+  if (!parsed.ok) return parsed.result;
+  const args = parsed.args;
+
+  const taxonomy = await resolveQuestionTaxonomy(args.subjectName, args.topicName);
+  if (!taxonomy.ok) return taxonomy.result;
+  const { subject, topic, fallbackNote } = taxonomy;
+  // Preserva no título o rótulo que o aluno pediu, mesmo quando ancoramos em outro assunto.
   const displayTopicName = args.topicName || topic.name;
 
   const [recentContext, attachmentText, performanceContext] = await Promise.all([
@@ -168,6 +244,7 @@ async function runGenerateQuestions(user: ToolUser, sessionId: string, userPromp
       difficulty: difficultyLabel(difficulty),
       referenceUsed: questionSet.referenceUsed,
       ...quantityCapPayload(questionSet.quantityCap),
+      ...(fallbackNote ? { materiaAproximada: fallbackNote } : {}),
       note: questionSet.referenceUsed
         ? "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links."
         : "Bloco salvo na biblioteca do usuário. O app mostra o botão 'Responder agora' automaticamente; não invente links. Avise brevemente que não havia prova real cadastrada sobre este ponto; as questões seguem o estilo da banca."
