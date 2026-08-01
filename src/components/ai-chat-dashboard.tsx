@@ -888,7 +888,6 @@ function SessionActionsMenu({ session, isActive }: { session: ChatSessionSummary
   const [draftTitle, setDraftTitle] = useState(session.title);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const longPressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -911,42 +910,28 @@ function SessionActionsMenu({ session, isActive }: { session: ChatSessionSummary
     };
   }, []);
 
-  function clearLongPressTimer() {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }
-
-  function handleLongPressStart() {
+  function handleRowClick(event: React.MouseEvent<HTMLDivElement>) {
     if (!isTouchDevice) return;
-    clearLongPressTimer();
-    longPressTimerRef.current = window.setTimeout(() => setOpen(true), 450);
-  }
 
-  function handleLongPressEnd() {
-    clearLongPressTimer();
+    const target = event.target as HTMLElement;
+    if (target.closest("a, button, input, form")) return;
+
+    setOpen((current) => !current);
   }
 
   return (
     <div ref={menuRef} className="relative">
-      <button
-        type="button"
-        aria-label="Mais opções da conversa"
-        title="Mais opções"
-        onClick={() => {
-          if (!isTouchDevice) {
-            setOpen((current) => !current);
-          }
-        }}
-        onTouchStart={handleLongPressStart}
-        onTouchEnd={handleLongPressEnd}
-        onTouchCancel={handleLongPressEnd}
-        onMouseLeave={clearLongPressTimer}
-        className="rounded-md p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-      >
-        <MoreHorizontal className="h-3.5 w-3.5" />
-      </button>
+      {!isTouchDevice && (
+        <button
+          type="button"
+          aria-label="Mais opções da conversa"
+          title="Mais opções"
+          onClick={() => setOpen((current) => !current)}
+          className="rounded-md p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {open && (
         <div
@@ -1051,14 +1036,25 @@ function SessionList({
           )}
         >
           <div className="flex items-center gap-1">
-            <Link
-              href={`/ai?sessionId=${session.id}`}
-              onClick={onNavigate}
-              className="min-w-0 flex-1 rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
-            >
-              <span className="block truncate">{session.title}</span>
-            </Link>
-            <SessionActionsMenu session={session} isActive={activeSessionId === session.id} />
+            <div className="min-w-0 flex-1" onClick={(event) => {
+              const target = event.target as HTMLElement;
+              if (target.closest("button, a, input")) return;
+              if (window.matchMedia("(pointer: coarse)").matches) {
+                const menu = event.currentTarget.parentElement?.querySelector("[data-session-actions]") as HTMLElement | null;
+                menu?.click();
+              }
+            }}>
+              <Link
+                href={`/ai?sessionId=${session.id}`}
+                onClick={onNavigate}
+                className="block rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+              >
+                <span className="block truncate">{session.title}</span>
+              </Link>
+            </div>
+            <div data-session-actions>
+              <SessionActionsMenu session={session} isActive={activeSessionId === session.id} />
+            </div>
           </div>
         </div>
       ))}
