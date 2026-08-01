@@ -17,6 +17,20 @@ import { formatReferenceContext, getReferenceContext, searchReferenceQuestions }
 import { deepStripNullBytes, stripNullBytes } from "@/lib/sanitize";
 import { refundUsage, reserveUsage, resolveGenerationAllowance, settleUsage } from "@/lib/usage/ledger";
 
+/**
+ * Quantas provas reais buscar como âncora de estilo.
+ *
+ * Era 4 fixo, e o número aparece na tela para o aluno ("usando 4 questões reais de prova"),
+ * então repetia sempre igual. Mas o motivo de variar não é estético: item difícil precisa de
+ * mais referência para a banca "aparecer" no fraseado e nas pegadinhas, e bloco maior cobre
+ * mais recortes do assunto. Sobe junto com os dois, com teto para não inflar o prompt.
+ */
+function referenceLimitFor(difficulty: Difficulty, quantity: number): number {
+  const base = difficulty === "DIFICIL" ? 6 : difficulty === "MEDIO" ? 4 : 3;
+  const byVolume = Math.ceil(quantity / 5);
+  return Math.min(8, Math.max(base, byVolume));
+}
+
 export async function generateAndSaveQuestionSet(input: {
   user: Pick<User, "id" | "role">;
   subjectId: string;
@@ -109,13 +123,14 @@ export async function generateAndSaveQuestionSet(input: {
 
   // Grounding: busca questões reais de prova para âncora de estilo — canal separado do contexto do aluno.
   // Só roda quando NÃO estamos no modo variação fiel (que já buscou suas próprias fontes acima).
+  if (!variantSources) input.onProgress?.("Consultando provas reais no acervo…");
   const { hits, usedStructuredQuestions } = variantSources
     ? { hits: [], usedStructuredQuestions: true }
     : await getReferenceContext({
         subjectId: input.subjectId,
         topicId: input.topicId,
         query,
-        limit: 4
+        limit: referenceLimitFor(input.difficulty, quantity)
       });
   const referenceBlock = formatReferenceContext(hits);
   // Informação real e útil: o aluno fica sabendo que o lote está ancorado em prova de verdade.

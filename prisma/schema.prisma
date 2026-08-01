@@ -574,6 +574,11 @@ model AiChatSession {
   id              String          @id @default(cuid())
   userId          String
   title           String
+  /**
+   * Quando a IA nomeou a conversa. Preenchido = não renomear mais: só o PRIMEIRO pedido dá
+   * nome à sessão, senão o item pularia de nome na barra lateral a cada mensagem.
+   */
+  titleGeneratedAt DateTime?
   summary         String?
   summarizedCount Int             @default(0)
   createdAt       DateTime        @default(now())

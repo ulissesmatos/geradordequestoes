@@ -150,9 +150,14 @@ export function AiChatDashboard({
   const [typedMessageId, setTypedMessageId] = useState<string | null>(null);
   const [typedClarification, setTypedClarification] = useState<Clarification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Acumula os passos do turno em vez de guardar só o último: numa geração de 2 minutos, ver
-  // o que JÁ aconteceu é o que diferencia "está trabalhando" de "travou".
-  const [progressSteps, setProgressSteps] = useState<string[]>([]);
+  /**
+   * Progresso do turno: a TAREFA em andamento e os PASSOS já percorridos dentro dela.
+   *
+   * São coisas diferentes e misturá-las invertia o sentido: "Gerando 10 questões" ganhava um
+   * check assim que o primeiro passo chegava, ou seja, aparecia como concluída antes de
+   * qualquer questão existir. A tarefa fica no topo, rodando; os passos entram abaixo dela.
+   */
+  const [progress, setProgress] = useState<{ task: string | null; steps: string[] }>({ task: null, steps: [] });
   /** Instante em que o turno começou, para o contador de tempo decorrido. */
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -195,7 +200,7 @@ export function AiChatDashboard({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, progressSteps, streamError]);
+  }, [messages, optimisticMessage, typedResponse, isSubmitting, loadingText, progress, streamError]);
 
   useEffect(() => {
     if (!isSubmitting) {
@@ -222,7 +227,7 @@ export function AiChatDashboard({
     setFileAttachments([]);
     setIsSubmitting(false);
     setTurnStartedAt(null);
-    setProgressSteps([]);
+    setProgress({ task: null, steps: [] });
     setStreamError(null);
     setStreamSessionId(null);
     setOptimisticMessage(null);
@@ -373,7 +378,7 @@ export function AiChatDashboard({
     setTypedMessageId(null);
     setTypedClarification(null);
     setStreamError(null);
-    setProgressSteps([]);
+    setProgress({ task: null, steps: [] });
     setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
     setTurnStartedAt(Date.now());
     setIsSubmitting(true);
@@ -434,15 +439,19 @@ export function AiChatDashboard({
             // versão antiga do backend, que não enviava label.
             const label =
               (typeof data.label === "string" && data.label) || TOOL_LABELS[String(data.name)] || "Trabalhando nisso…";
-            // Label repetido não vira linha nova: a lista conta o que MUDOU, não quantos
-            // eventos chegaram (o servidor reemite o mesmo texto ao trocar de fase).
-            setProgressSteps((previous) =>
-              previous[previous.length - 1] === label ? previous : [...previous, label]
-            );
+            setProgress((previous) => {
+              // Tarefa nova zera os passos: são os passos DAQUELA tarefa. Backend antigo (sem
+              // `phase`) cai aqui e continua funcionando como antes.
+              if (data.phase !== "step") return { task: label, steps: [] };
+              // Passo repetido não vira linha nova: a lista conta o que MUDOU, não quantos
+              // eventos chegaram.
+              if (previous.steps[previous.steps.length - 1] === label) return previous;
+              return { ...previous, steps: [...previous.steps, label] };
+            });
           } else if (event === "delta") {
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setProgressSteps([]);
+            setProgress({ task: null, steps: [] });
             setTypedResponse((previous) => previous + String(data.text ?? ""));
           } else if (event === "done") {
             setTypedSetId((data.questionSetId as string | null) ?? null);
@@ -452,13 +461,13 @@ export function AiChatDashboard({
             setTypedClarification((data.clarification as Clarification | null) ?? null);
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setProgressSteps([]);
+            setProgress({ task: null, steps: [] });
             router.refresh();
           } else if (event === "error") {
             setStreamError(String(data.error ?? "Erro ao enviar a mensagem."));
             setIsSubmitting(false);
             setTurnStartedAt(null);
-            setProgressSteps([]);
+            setProgress({ task: null, steps: [] });
           }
         }
       }
@@ -466,7 +475,7 @@ export function AiChatDashboard({
       setStreamError(error instanceof Error ? error.message : "Erro ao enviar a mensagem.");
       setIsSubmitting(false);
       setTurnStartedAt(null);
-      setProgressSteps([]);
+      setProgress({ task: null, steps: [] });
     }
   }
 
@@ -632,7 +641,11 @@ export function AiChatDashboard({
               {isSubmitting && (
                 <div className="flex items-start justify-start gap-2.5">
                   <BotAvatar />
-                  <ProgressSteps steps={progressSteps} fallback={loadingText} startedAt={turnStartedAt} />
+                  <ProgressSteps
+                    task={progress.task ?? loadingText}
+                    steps={progress.steps}
+                    startedAt={turnStartedAt}
+                  />
                 </div>
               )}
               {streamError && !isSubmitting && (
@@ -897,44 +910,42 @@ function SessionList({
  * Todo passo vem de fato do servidor (argumentos reais da ferramenta, lote atual, acervo
  * consultado). Nada é inventado no cliente, e nada é gerado por IA só para preencher tela.
  */
-function ProgressSteps({
-  steps,
-  fallback,
-  startedAt
-}: {
-  steps: string[];
-  fallback: string;
-  startedAt: number | null;
-}) {
-  const visible = steps.length > 0 ? steps : [fallback];
-  const lastIndex = visible.length - 1;
+function ProgressSteps({ task, steps, startedAt }: { task: string; steps: string[]; startedAt: number | null }) {
+  const lastIndex = steps.length - 1;
 
   return (
     <div className="max-w-[88%] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 shadow-[var(--shadow-sm)]">
-      <ul className="space-y-1.5">
-        {visible.map((step, index) => {
-          const isCurrent = index === lastIndex;
-          return (
-            <li key={`${index}-${step}`} className="flex items-start gap-2">
-              <span className="mt-[7px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-                {isCurrent ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--primary)]" />
-                ) : (
-                  <Check className="h-3.5 w-3.5 text-[var(--success)]" />
-                )}
-              </span>
-              {isCurrent ? (
-                <span className="flex flex-wrap items-center gap-2">
-                  <ShiningText text={step} />
-                  {startedAt !== null && <ElapsedTime startedAt={startedAt} />}
+      {/* A TAREFA sempre roda: ela só termina quando o card inteiro some, dando lugar à
+          resposta. Marcá-la com check enquanto os passos correm era o que invertia o sentido. */}
+      <div className="flex items-start gap-2">
+        <Loader2 className="mt-[5px] h-3.5 w-3.5 shrink-0 animate-spin text-[var(--primary)]" />
+        <span className="flex flex-wrap items-center gap-2">
+          <ShiningText text={task} />
+          {startedAt !== null && <ElapsedTime startedAt={startedAt} />}
+        </span>
+      </div>
+
+      {steps.length > 0 && (
+        <ul className="mt-1.5 space-y-1 border-l border-[var(--border)] pl-4">
+          {steps.map((step, index) => {
+            const isCurrent = index === lastIndex;
+            return (
+              <li key={`${index}-${step}`} className="flex items-start gap-2 text-xs">
+                <span className="mt-[5px] flex h-3 w-3 shrink-0 items-center justify-center">
+                  {isCurrent ? (
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--primary)]" />
+                  ) : (
+                    <Check className="h-3 w-3 text-[var(--success)]" />
+                  )}
                 </span>
-              ) : (
-                <span className="text-[var(--muted-foreground)]">{step}</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                <span className={isCurrent ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]"}>
+                  {step}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

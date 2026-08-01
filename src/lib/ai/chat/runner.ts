@@ -18,8 +18,16 @@ export type ToolTraceEntry = {
 };
 
 export type ChatTurnEvent =
-  /** `label` e a frase pronta mostrada ao usuario, montada a partir dos argumentos REAIS da ferramenta. */
-  | { type: "tool_started"; name: string; label: string }
+  /**
+   * `label` e a frase pronta mostrada ao usuario, montada a partir dos argumentos REAIS da
+   * ferramenta.
+   *
+   * `phase` separa a TAREFA ("Gerando 10 questoes de Direito Processual Penal") dos PASSOS
+   * dela ("Usando 6 questoes reais de prova como base"). Sem essa distincao a tela marcava a
+   * tarefa como concluida assim que o primeiro passo chegava — ou seja, exibia um check em
+   * "gerando as questoes" antes de qualquer questao existir.
+   */
+  | { type: "tool_started"; name: string; label: string; phase: "task" | "step" }
   | { type: "delta"; text: string }
   /**
    * O texto transmitido nesta rodada era só o modelo narrando a intenção ANTES de chamar a
@@ -130,7 +138,7 @@ export async function runChatTurn(input: {
     messages.push({ role: "assistant", content: result.assistantText, toolCalls: result.calls });
 
     for (const call of result.calls) {
-      input.onEvent?.({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap) });
+      input.onEvent?.({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap), phase: "task" });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {
@@ -158,7 +166,7 @@ export async function runChatTurn(input: {
           name: call.name,
           argumentsJson: call.argumentsJson,
           // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
-          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label })
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" })
         });
         toolTrace.push({
           name: call.name,
@@ -270,7 +278,7 @@ export async function streamChatTurn(input: {
     messages.push({ role: "assistant", content: completion.assistantText, toolCalls: completion.calls });
 
     for (const call of completion.calls) {
-      input.onEvent({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap) });
+      input.onEvent({ type: "tool_started", name: call.name, label: describeToolStart(call.name, call.argumentsJson, quantityCap), phase: "task" });
 
       const parsedClarification = tryParseClarification(call);
       if (parsedClarification) {
@@ -300,7 +308,7 @@ export async function streamChatTurn(input: {
           name: call.name,
           argumentsJson: call.argumentsJson,
           // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
-          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label })
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" })
         });
         toolTrace.push({
           name: call.name,

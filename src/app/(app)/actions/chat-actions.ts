@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
-import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
+import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
@@ -74,6 +74,10 @@ export async function sendChatMessageAction(
     // QUESTIONS, dentro de generateAndSaveQuestionSet — medidores diferentes, sem dupla
     // cobrança da mesma mensagem.
     charge = await chargeAiAction({ user, kind: TrialUsageKind.CHAT_MESSAGE, ledgerKind: UsageKind.CHAT_MESSAGE });
+
+    // Título da conversa em paralelo ao turno (ver generateSessionTitle): pô-lo na frente
+    // atrasaria a resposta de todo chat novo para melhorar um texto da barra lateral.
+    const titlePromise = generateSessionTitle(session.id, prompt).catch(() => undefined);
     const turn = await runChatTurn({ user, sessionId: session.id, prompt });
 
     const assistant = await prisma.aiChatMessage.create({
@@ -96,6 +100,7 @@ export async function sendChatMessageAction(
       prompt
     });
     await summarizeSessionIfNeeded(session.id).catch(() => undefined);
+    await titlePromise;
 
     revalidatePath("/ai");
     if (turn.questionSetId) revalidatePath("/biblioteca");

@@ -2,7 +2,7 @@ import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma, TrialUsa
 import { revalidatePath } from "next/cache";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
-import { getOrCreateChatSession } from "@/lib/ai/chat/sessions";
+import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
@@ -94,6 +94,11 @@ export async function POST(request: Request) {
         // vão para o medidor QUESTIONS lá no funil de geração — nunca aqui.
         charge = await chargeAiAction({ user, kind: TrialUsageKind.CHAT_MESSAGE, ledgerKind: UsageKind.CHAT_MESSAGE });
 
+        // Título da conversa em PARALELO ao turno, não antes: é uma chamada curta, mas
+        // colocá-la na frente atrasaria a resposta de todo chat novo para melhorar um texto
+        // da barra lateral. Aguardado só no fim, junto do resto do trabalho pós-stream.
+        const titlePromise = generateSessionTitle(session.id, prompt).catch(() => undefined);
+
         const turn = await streamChatTurn({
           user,
           sessionId: session.id,
@@ -101,7 +106,7 @@ export async function POST(request: Request) {
           onEvent: (event) => {
             if (event.type === "delta") send("delta", { text: event.text });
             else if (event.type === "draft_discarded") send("discard", {});
-            else if (event.type === "tool_started") send("tool", { name: event.name, label: event.label });
+            else if (event.type === "tool_started") send("tool", { name: event.name, label: event.label, phase: event.phase });
           }
         });
 
@@ -146,6 +151,9 @@ export async function POST(request: Request) {
 
         // Sumarização (chamada de IA extra) roda em segundo plano — nunca atrasa o turno.
         await summarizeSessionIfNeeded(session.id).catch(() => undefined);
+        // Já estava rodando desde o começo; aqui só garantimos que a função não encerre
+        // antes de o título ser gravado.
+        await titlePromise;
       } catch (error) {
         // Turno não entregou resultado: devolve a unidade cobrada na entrada.
         await refundAiAction(charge);
