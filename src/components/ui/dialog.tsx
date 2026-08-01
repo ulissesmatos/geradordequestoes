@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +29,11 @@ export function Dialog({
 
   if (!open) return null;
 
-  return (
+  // Portal pro body: um Dialog aberto de dentro de um Sheet (drawer mobile) ficava preso
+  // dentro do painel deslizante, porque a animação de slide aplica `transform` nele — e
+  // `transform` vira containing block de `position: fixed`, então o Dialog não cobria mais a
+  // tela inteira. Portal evita isso independente de onde o Dialog é aberto.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       aria-modal="true"
@@ -44,7 +49,8 @@ export function Dialog({
       <div className="relative z-10 w-full max-w-md animate-fade-in">
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
