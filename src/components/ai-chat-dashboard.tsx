@@ -59,6 +59,15 @@ type FileAttachment = {
   error?: string;
 };
 
+type UploadResponsePayload = {
+  url?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  extractedText?: string;
+  error?: string;
+};
+
 type ChatSessionSummary = {
   id: string;
   title: string;
@@ -98,6 +107,19 @@ function buildPlaceholders(subjectNames: string[] | undefined) {
 }
 
 const loadingLabels = ["Pensando...", "Consultando...", "Preparando a resposta...", "Quase lá...", "Organizando as ideias...", "Só um momento...", "Analisando os detalhes...", "Processando a informação...", "Ajustando os parâmetros...", "Refletindo sobre a melhor resposta..."];
+
+async function readUploadResponse(response: Response): Promise<UploadResponsePayload> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json().catch(() => ({}))) as UploadResponsePayload;
+  }
+
+  await response.text().catch(() => "");
+  if (response.status >= 500) {
+    return { error: "Falha interna no upload. Tente novamente em instantes." };
+  }
+  return { error: "Falha no upload. Tente enviar o arquivo novamente." };
+}
 
 /**
  * Fallback: hoje o servidor envia a frase pronta (com matéria/assunto/termo de busca reais)
@@ -298,12 +320,21 @@ export function AiChatDashboard({
       const body = new FormData();
       body.append("file", file);
       const response = await fetch("/api/uploads", { method: "POST", body });
-      const data = await response.json();
+      const data = await readUploadResponse(response);
       if (!response.ok) throw new Error(data?.error ?? "Falha no upload.");
+      if (!data.url) throw new Error("Upload concluído sem URL do arquivo.");
       setFileAttachments((items) =>
         items.map((item) =>
           item.id === localId
-            ? { ...item, status: "ready", url: data.url, extractedText: data.extractedText, name: data.name ?? item.name }
+            ? {
+                ...item,
+                status: "ready",
+                url: data.url,
+                extractedText: data.extractedText,
+                name: data.name ?? item.name,
+                mimeType: data.mimeType ?? item.mimeType,
+                size: data.size ?? item.size
+              }
             : item
         )
       );
@@ -697,7 +728,7 @@ export function AiChatDashboard({
                     <span
                       key={attachment.id}
                       className={cn(
-                        "animate-fade-in flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+                        "animate-fade-in flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
                         attachment.status === "error"
                           ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
                           : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
@@ -713,7 +744,11 @@ export function AiChatDashboard({
                       )}
                       <span className="max-w-[140px] truncate">{attachment.name}</span>
                       {attachment.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--muted-foreground)]" />}
-                      {attachment.status === "error" && <span className="text-[10px]">{attachment.error}</span>}
+                      {attachment.status === "error" && (
+                        <span className="max-w-[220px] truncate text-[10px]" title={attachment.error}>
+                          {attachment.error}
+                        </span>
+                      )}
                       <button
                         type="button"
                         aria-label="Remover anexo"

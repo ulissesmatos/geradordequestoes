@@ -18,12 +18,22 @@ const registerSchema = z.object({
   password: z.string().min(8, "Use pelo menos 8 caracteres.")
 });
 
+/**
+ * Só aceita path relativo de um nível — barra dupla ou invertida é o vetor clássico de open
+ * redirect (`//evil.com`, `/\evil.com`). O callback padrão do NextAuth já restringe a mesma
+ * origem por baixo; isto é uma segunda camada, não a única.
+ */
+function safeCallbackUrl(raw: FormDataEntryValue | null): string {
+  const value = typeof raw === "string" ? raw : "";
+  return /^\/(?!\/|\\)/.test(value) ? value : "/ai";
+}
+
 export async function loginAction(_: unknown, formData: FormData) {
   try {
     await signIn("credentials", {
       email: String(formData.get("email") ?? ""),
       password: String(formData.get("password") ?? ""),
-      redirectTo: "/ai"
+      redirectTo: safeCallbackUrl(formData.get("callbackUrl"))
     });
   } catch (error) {
     if (error instanceof AuthError) {
