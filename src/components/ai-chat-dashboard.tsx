@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import {
   deleteChatSessionAction,
@@ -844,7 +844,7 @@ function DrawerNavLink({
   );
 }
 
-function DeleteChatButton({ sessionId, isActive }: { sessionId: string; isActive: boolean }) {
+function DeleteChatButton({ sessionId, isActive, label = "Excluir", className }: { sessionId: string; isActive: boolean; label?: string; className?: string }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -860,16 +860,15 @@ function DeleteChatButton({ sessionId, isActive }: { sessionId: string; isActive
 
   return (
     <>
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="icon"
         title="Excluir chat"
-        className="h-8 w-8 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
+        className={cn("flex items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]", className)}
         onClick={() => setOpen(true)}
       >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+        <Trash2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+        <span>{label}</span>
+      </button>
       <ConfirmDialog
         open={open}
         onClose={() => setOpen(false)}
@@ -880,6 +879,152 @@ function DeleteChatButton({ sessionId, isActive }: { sessionId: string; isActive
         pending={pending}
       />
     </>
+  );
+}
+
+function SessionActionsMenu({ session, isActive }: { session: ChatSessionSummary; isActive: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(session.title);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, []);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleLongPressStart() {
+    if (!isTouchDevice) return;
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => setOpen(true), 450);
+  }
+
+  function handleLongPressEnd() {
+    clearLongPressTimer();
+  }
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        aria-label="Mais opções da conversa"
+        title="Mais opções"
+        onClick={() => {
+          if (!isTouchDevice) {
+            setOpen((current) => !current);
+          }
+        }}
+        onTouchStart={handleLongPressStart}
+        onTouchEnd={handleLongPressEnd}
+        onTouchCancel={handleLongPressEnd}
+        onMouseLeave={clearLongPressTimer}
+        className="rounded-md p-2 text-[var(--muted-foreground)] transition hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+
+      {open && (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className="absolute right-0 top-9 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(true);
+              setDraftTitle(session.title);
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+          >
+            <Pencil className="h-4 w-4 text-[var(--muted-foreground)]" />
+            <span>Editar</span>
+          </button>
+
+          {editing && (
+            <div className="mt-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2">
+              <form
+                action={renameChatSessionAction}
+                className="space-y-2"
+                onSubmit={() => {
+                  setOpen(false);
+                  setEditing(false);
+                }}
+              >
+                <input type="hidden" name="sessionId" value={session.id} />
+                <input
+                  name="title"
+                  value={draftTitle}
+                  onChange={(event) => setDraftTitle(event.target.value)}
+                  className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm outline-none focus:border-[var(--primary)]"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" type="submit" className="flex-1">
+                    Salvar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditing(false);
+                      setDraftTitle(session.title);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          <div onClick={() => setOpen(false)}>
+            <ShareLinkModal
+              triggerLabel="Compartilhar"
+              trigger={<span className="flex items-center gap-2"><Share2 className="h-4 w-4 text-[var(--muted-foreground)]" /><span>Compartilhar</span></span>}
+              triggerClassName="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+              title="Compartilhar conversa"
+              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
+              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+              initialShareUrl={session.shareUrl}
+              createAction={shareChatSessionAction.bind(null, session.id)}
+              revokeAction={revokeChatShareAction.bind(null, session.id)}
+            />
+          </div>
+
+          <DeleteChatButton
+            sessionId={session.id}
+            isActive={isActive}
+            label="Excluir"
+            className="w-full"
+          />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -913,32 +1058,7 @@ function SessionList({
             >
               <span className="block truncate">{session.title}</span>
             </Link>
-            <details className="relative">
-              <summary className="list-none rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--surface)]">
-                <Pencil className="h-3.5 w-3.5" />
-              </summary>
-              <form action={renameChatSessionAction} className="absolute right-0 top-8 z-20 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg">
-                <input type="hidden" name="sessionId" value={session.id} />
-                <input
-                  name="title"
-                  defaultValue={session.title}
-                  className="h-9 w-full rounded-md border border-[var(--border)] px-2 text-sm outline-none focus:border-[var(--primary)]"
-                />
-                <Button size="sm" className="mt-2 w-full">Salvar</Button>
-              </form>
-            </details>
-            <ShareLinkModal
-              triggerLabel="Compartilhar conversa"
-              trigger={<Share2 className="h-3.5 w-3.5" />}
-              triggerClassName="rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-              title="Compartilhar conversa"
-              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
-              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
-              initialShareUrl={session.shareUrl}
-              createAction={shareChatSessionAction.bind(null, session.id)}
-              revokeAction={revokeChatShareAction.bind(null, session.id)}
-            />
-            <DeleteChatButton sessionId={session.id} isActive={activeSessionId === session.id} />
+            <SessionActionsMenu session={session} isActive={activeSessionId === session.id} />
           </div>
         </div>
       ))}
