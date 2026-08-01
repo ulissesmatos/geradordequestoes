@@ -35,13 +35,17 @@ export function computeNextReviewState(
   return { correctStreak: streak, lapsesDelta: 0, dueAt: new Date(at.getTime() + intervalDays * DAY_MS) };
 }
 
-/** Atualiza (upsert) o estado de revisão após uma tentativa. Nunca lança — revisão não pode quebrar o fluxo de resposta. */
+/**
+ * Atualiza (upsert) o estado de revisão após uma tentativa. Nunca lança — revisão não pode
+ * quebrar o fluxo de resposta — mas devolve o resultado (quando dá certo) para quem quiser
+ * mostrar ao aluno quando aquela questão específica volta a aparecer.
+ */
 export async function applyAttemptToReviewState(input: {
   userId: string;
   questionId: string;
   isCorrect: boolean;
   at?: Date;
-}): Promise<void> {
+}): Promise<NextState | null> {
   const at = input.at ?? new Date();
   try {
     const previous = await prisma.questionReviewState.findUnique({
@@ -68,8 +72,10 @@ export async function applyAttemptToReviewState(input: {
         dueAt: next.dueAt
       }
     });
+    return next;
   } catch {
     // melhor perder uma atualização de agenda do que falhar a resposta do aluno
+    return null;
   }
 }
 

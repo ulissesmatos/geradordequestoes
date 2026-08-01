@@ -28,7 +28,7 @@ const attemptSchema = z.object({
 });
 
 export type AnswerQuestionResult =
-  | { ok: true }
+  | { ok: true; nextReviewDueAt: string | null }
   | { ok: false; error: string; limitReached?: boolean };
 
 export async function answerQuestionAction(formData: FormData): Promise<AnswerQuestionResult> {
@@ -93,10 +93,10 @@ export async function answerQuestionAction(formData: FormData): Promise<AnswerQu
   });
 
   // Alimenta a agenda de revisão espaçada (best-effort, nunca lança).
-  await applyAttemptToReviewState({ userId: user.id, questionId: question.id, isCorrect });
+  const reviewState = await applyAttemptToReviewState({ userId: user.id, questionId: question.id, isCorrect });
 
   revalidatePath("/ai");
-  return { ok: true };
+  return { ok: true, nextReviewDueAt: reviewState?.dueAt.toISOString() ?? null };
 }
 
 export type GenerateUserQuestionsState = {

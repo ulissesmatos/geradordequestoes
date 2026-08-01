@@ -44,14 +44,20 @@ type SelectedAnswer = {
 export function QuestionRunner({
   questions,
   mode,
-  initialAnswers
+  initialAnswers,
+  reviewMode = false
 }: {
   questions: RunnerQuestion[];
   mode: "study" | "simulado";
   initialAnswers?: Record<string, SelectedAnswer>;
+  /** Sessão de revisão espaçada: some da fila de hoje assim que respondida (voltou para uma
+   *  data futura), então a tela final mostra quando cada questão volta a aparecer — senão
+   *  "0 revisões pendentes" logo depois de acertar parece que os acertos sumiram. */
+  reviewMode?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>(initialAnswers ?? {});
+  const [nextReviewDates, setNextReviewDates] = useState<Record<string, string>>({});
   const [startedAt, setStartedAt] = useState(Date.now());
   const [isPending, startTransition] = useTransition();
   const [finished, setFinished] = useState(initialAnswers != null && Object.keys(initialAnswers).length > 0);
@@ -110,6 +116,13 @@ export function QuestionRunner({
                   <p className="text-sm text-[var(--muted-foreground)]">
                     Você respondeu {answeredCount} de {questions.length} {questions.length === 1 ? "questão" : "questões"}.
                   </p>
+                  {reviewMode && (
+                    <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                      Cada questão já saiu da fila de hoje e voltou para uma data futura — quem você acertou demora mais
+                      para reaparecer que quem você errou. Por isso a revisão pode zerar assim que você termina: veja
+                      quando cada uma volta na correção abaixo.
+                    </p>
+                  )}
                 </div>
               </div>
               <Button onClick={restart}>
@@ -163,6 +176,12 @@ export function QuestionRunner({
                   <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
                     {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
                   </p>
+                  {reviewMode && nextReviewDates[question.id] && (
+                    <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+                      <RotateCcw className="h-3 w-3 shrink-0" />
+                      {formatReviewReturn(nextReviewDates[question.id])}
+                    </p>
+                  )}
                   <p className="mt-2 text-sm text-[var(--muted-foreground)]"><MathText text={question.explanation} /></p>
                   {question.sourceBadge && (
                     <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
@@ -205,6 +224,8 @@ export function QuestionRunner({
           return next;
         });
         setAnswerError({ message: result.error, limitReached: result.limitReached ?? false });
+      } else if (result.nextReviewDueAt) {
+        setNextReviewDates((previous) => ({ ...previous, [questionId]: result.nextReviewDueAt as string }));
       }
     });
   }
@@ -375,4 +396,12 @@ function getCorrectLabel(question: RunnerQuestion) {
   const correct = question.options?.find((option) => option.isCorrect);
   if (correct) return `${correct.label}) ${correct.text}`;
   return question.answer ?? "sem gabarito";
+}
+
+/** "Volta amanhã" / "Volta em N dias (dd/mm)" — a data de retorno de UMA questão à revisão. */
+function formatReviewReturn(dueAtIso: string) {
+  const dueAt = new Date(dueAtIso);
+  const days = Math.max(1, Math.round((dueAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  const dateLabel = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(dueAt);
+  return days <= 1 ? `Volta amanhã para revisão (${dateLabel})` : `Volta em ${days} dias para revisão (${dateLabel})`;
 }

@@ -48,6 +48,7 @@ export default async function ReviewPage({
         <QuestionRunner
           questions={questions.map((q) => ({ ...q, isFavorited: favSet.has(q.id) }))}
           mode="study"
+          reviewMode
         />
       </div>
     );
