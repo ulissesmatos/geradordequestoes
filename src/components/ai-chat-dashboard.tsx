@@ -2,12 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Sparkles, Timer, Trash2, User, X } from "lucide-react";
+import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
-import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
+import {
+  deleteChatSessionAction,
+  renameChatSessionAction,
+  revokeChatShareAction,
+  shareChatSessionAction
+} from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
+import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -57,6 +63,8 @@ type ChatSessionSummary = {
   id: string;
   title: string;
   updatedAt: string;
+  /** Link ativo de compartilhamento desta sessão, se houver (já computado no servidor). */
+  shareUrl: string | null;
 };
 
 const FALLBACK_SUBJECTS = ["Português", "Informática", "Direito Constitucional", "Raciocínio Lógico", "Direito Administrativo"];
@@ -884,6 +892,17 @@ function SessionList({
                 <Button size="sm" className="mt-2 w-full">Salvar</Button>
               </form>
             </details>
+            <ShareLinkModal
+              triggerLabel="Compartilhar conversa"
+              trigger={<Share2 className="h-3.5 w-3.5" />}
+              triggerClassName="rounded-md p-2 text-[var(--muted-foreground)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              title="Compartilhar conversa"
+              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
+              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+              initialShareUrl={session.shareUrl}
+              createAction={shareChatSessionAction.bind(null, session.id)}
+              revokeAction={revokeChatShareAction.bind(null, session.id)}
+            />
             <DeleteChatButton sessionId={session.id} isActive={activeSessionId === session.id} />
           </div>
         </div>

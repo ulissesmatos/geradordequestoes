@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { AlertTriangle, Link2, Loader2, Share2 } from "lucide-react";
 import { CopyButton } from "@/components/admin/copy-button";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
@@ -19,6 +19,10 @@ export type RevokeActionResult = { ok: true } | { ok: false; error: string };
  */
 export function ShareLinkModal({
   triggerLabel = "Compartilhar",
+  /** Substitui o conteúdo padrão do botão-gatilho (ex.: só o ícone, para caber numa linha
+   *  compacta da sidebar). O clique continua abrindo o modal do mesmo jeito. */
+  trigger,
+  triggerClassName,
   title,
   description,
   revokedNotice,
@@ -27,6 +31,8 @@ export function ShareLinkModal({
   revokeAction
 }: {
   triggerLabel?: string;
+  trigger?: ReactNode;
+  triggerClassName?: string;
   title: string;
   description: string;
   /** Texto mostrado depois de revogar, antes de reabrir (explica o que "revogar" fez). */
@@ -73,10 +79,17 @@ export function ShareLinkModal({
         type="button"
         onClick={handleOpen}
         title={triggerLabel}
-        className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+        className={
+          triggerClassName ??
+          "inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--surface-subtle)]"
+        }
       >
-        <Share2 className="h-4 w-4" />
-        {triggerLabel}
+        {trigger ?? (
+          <>
+            <Share2 className="h-4 w-4" />
+            {triggerLabel}
+          </>
+        )}
       </button>
 
       <Dialog open={open} onClose={() => setOpen(false)}>
