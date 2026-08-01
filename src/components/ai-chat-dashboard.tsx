@@ -4,16 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, BookOpen, Bot, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
-import {
-  deleteChatSessionAction,
-  renameChatSessionAction,
-  revokeChatShareAction,
-  shareChatSessionAction
-} from "@/app/(app)/actions/chat-actions";
+import { deleteChatSessionAction, renameChatSessionAction } from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
-import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -842,6 +836,7 @@ function SessionActionsMenu({
 }) {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
+  const [shareState, setShareState] = useState<"idle" | "copied">("idle");
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -849,6 +844,27 @@ function SessionActionsMenu({
     if (typeof window === "undefined") return;
     setIsTouchDevice(window.matchMedia("(pointer: coarse)").matches);
   }, []);
+
+  async function handleShare() {
+    if (typeof window === "undefined") return;
+
+    const shareUrl = `${window.location.origin}/ai?sessionId=${session.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: session.title, text: `Veja esta conversa: ${session.title}`, url: shareUrl });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareState("copied");
+      }
+      onOpenChange(false);
+    } catch {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareState("copied");
+      }
+      onOpenChange(false);
+    }
+  }
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent | TouchEvent) {
@@ -934,19 +950,17 @@ function SessionActionsMenu({
             </div>
           )}
 
-          <div onClick={() => onOpenChange(false)}>
-            <ShareLinkModal
-              triggerLabel="Compartilhar"
-              trigger={<span className="flex items-center gap-2"><Share2 className="h-4 w-4 text-[var(--muted-foreground)]" /><span>Compartilhar</span></span>}
-              triggerClassName="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
-              title="Compartilhar conversa"
-              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
-              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
-              initialShareUrl={session.shareUrl}
-              createAction={shareChatSessionAction.bind(null, session.id)}
-              revokeAction={revokeChatShareAction.bind(null, session.id)}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShareState("idle");
+              void handleShare();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[var(--foreground)] transition hover:bg-[var(--surface-subtle)]"
+          >
+            <Share2 className="h-4 w-4 text-[var(--muted-foreground)]" />
+            <span>{shareState === "copied" ? "Link copiado" : "Compartilhar"}</span>
+          </button>
 
           <DeleteChatButton
             sessionId={session.id}
