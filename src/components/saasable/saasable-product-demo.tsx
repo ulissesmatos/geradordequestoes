@@ -55,7 +55,7 @@ export function SaasableProductDemo() {
         <div className="flex flex-col gap-4 max-w-2xl mx-auto">
           <DemoFrame visible={step >= 0} reduceMotion={shouldReduceMotion}>
             <div className="ml-auto max-w-[85%] rounded-2xl bg-primary-100 p-4 text-sm text-primary-800">
-              Gere 5 questões de Direito Administrativo sobre atos administrativos, Certo/Errado.
+              Gere 5 questões de Português sobre concordância verbal, Certo/Errado.
             </div>
           </DemoFrame>
 
@@ -64,8 +64,8 @@ export function SaasableProductDemo() {
               <BotAvatar />
               <div className="flex min-w-0 max-w-[88%] flex-1 flex-col gap-2">
                 <div className="rounded-2xl border border-theme-divider bg-theme-bg-paper p-4 text-sm leading-6 text-theme-text-primary">
-                  Pronto. Gerei um bloco de 5 questões de Direito Administrativo com base no acervo de provas da
-                  plataforma. Já ficou salvo no seu histórico.
+                  Pronto. Gerei um bloco de 5 questões de Português com base no acervo de provas da plataforma. Já
+                  ficou salvo no seu histórico.
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-2xl border border-l-4 border-theme-divider border-l-primary-500 bg-theme-bg-paper p-3.5">
                   <div className="flex items-center gap-2.5 text-sm font-semibold text-theme-text-primary">
@@ -83,11 +83,11 @@ export function SaasableProductDemo() {
           <DemoFrame visible={step >= 2} reduceMotion={shouldReduceMotion}>
             <div className="rounded-2xl border border-theme-divider bg-theme-bg-paper p-5">
               <p className="caption text-theme-text-secondary uppercase">
-                Direito Administrativo / Atos Administrativos / Certo ou Errado
+                Português / Concordância Verbal / Certo ou Errado
               </p>
               <p className="mt-2.5 body1 text-theme-text-primary">
-                O atributo da autoexecutoriedade permite que a Administração Pública execute suas próprias decisões,
-                independentemente de prévia autorização do Poder Judiciário.
+                O verbo &quot;fazer&quot;, quando indica tempo decorrido, é impessoal e deve permanecer sempre na 3ª
+                pessoa do singular, como em &quot;Faz dez anos que ele se formou&quot;.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="flex items-center gap-2 rounded-xl border-2 border-primary-500 bg-primary-50 px-4 py-3 text-sm font-semibold text-primary-800">
