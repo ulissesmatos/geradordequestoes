@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
 import { maskSecret } from "@/lib/crypto";
+import { formatDateTimeBR } from "@/lib/dates";
 import { getRevenueSummary } from "@/lib/revenue";
 
 export default async function AdminPaymentsPage() {
@@ -268,5 +269,5 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  return formatDateTimeBR(date);
 }

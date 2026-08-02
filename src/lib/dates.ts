@@ -126,3 +126,39 @@ export function startOfWeekInBrazil(reference: Date = new Date()): Date {
   const daysSinceMonday = (weekdayInBrazil(reference) + 6) % 7;
   return dayKeyToInstant(shiftDayKey(today, -daysSinceMonday));
 }
+
+/**
+ * Exibição de datas pro usuário — sempre no fuso de Brasília, não importa se o
+ * processo (server component, action, cron, e-mail) roda em UTC. Todo `new
+ * Date`/Prisma `DateTime` já é um instante absoluto; a conversão pro fuso do
+ * aluno é só na hora de formatar, nunca ao salvar (banco continua 100% UTC).
+ *
+ * Antes disso, ~15 arquivos definiam sua própria função `formatDate` local com
+ * `Intl.DateTimeFormat("pt-BR", {...})` sem `timeZone` — cada um herdava o fuso
+ * do processo Node, então em produção (servidor em UTC) uma resposta às 21h30
+ * de Brasília aparecia com a data de amanhã e "00:30" pra quem via renderizado
+ * no servidor.
+ */
+type DateInput = Date | string | number;
+
+function brazilFormatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("pt-BR", { ...options, timeZone: BRAZIL_TIME_ZONE });
+}
+
+/** Só a data ("short" → "02/08/2026", "medium" → "2 de ago. de 2026", "long" → "2 de agosto de 2026"). */
+export function formatDateBR(date: DateInput | null | undefined, dateStyle: "short" | "medium" | "long" = "short"): string {
+  if (date == null) return "—";
+  return brazilFormatter({ dateStyle }).format(new Date(date));
+}
+
+/** Data + hora curta, ex. "02/08/2026 14:30". */
+export function formatDateTimeBR(date: DateInput | null | undefined, dateStyle: "short" | "medium" | "long" = "short"): string {
+  if (date == null) return "—";
+  return brazilFormatter({ dateStyle, timeStyle: "short" }).format(new Date(date));
+}
+
+/** Dia e mês compactos, sem ano — ex. prazo de revisão "02/08". */
+export function formatDayMonthBR(date: DateInput | null | undefined): string {
+  if (date == null) return "—";
+  return brazilFormatter({ day: "2-digit", month: "2-digit" }).format(new Date(date));
+}

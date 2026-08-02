@@ -2,13 +2,12 @@ import Link from "next/link";
 import { CalendarClock, ListChecks, Timer } from "lucide-react";
 import { MockExamStatus } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 import { cn } from "@/lib/utils";
-
-const dateFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 type ExamBadge = { label: string; className: string };
 
@@ -90,7 +89,7 @@ export default async function MockExamsPage() {
                   <p className="flex items-center gap-1.5">
                     <CalendarClock className="h-4 w-4" />
                     {exam.durationMinutes} min
-                    {exam.closesAt ? ` · até ${dateFmt.format(exam.closesAt)}` : ""}
+                    {exam.closesAt ? ` · até ${formatDateTimeBR(exam.closesAt)}` : ""}
                   </p>
                 </CardContent>
               </Card>

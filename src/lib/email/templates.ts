@@ -1,3 +1,5 @@
+import { formatDateBR } from "@/lib/dates";
+
 export type EmailTemplate = { subject: string; html: string; text: string };
 
 function layout(appName: string, bodyHtml: string): string {
@@ -130,11 +132,11 @@ export function paymentReceiptTemplate(input: {
       <tr><td style="padding:6px 0;color:#64748b;width:120px;">Plano</td><td style="padding:6px 0;"><strong>${escapeHtml(input.planName)}</strong></td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Valor</td><td style="padding:6px 0;">${formatBRL(input.amountCents)}</td></tr>
       <tr><td style="padding:6px 0;color:#64748b;">Forma</td><td style="padding:6px 0;">${method}</td></tr>
-      ${input.endsAt ? `<tr><td style="padding:6px 0;color:#64748b;">Válido até</td><td style="padding:6px 0;">${input.endsAt.toLocaleDateString("pt-BR")}</td></tr>` : `<tr><td style="padding:6px 0;color:#64748b;">Renovação</td><td style="padding:6px 0;">Automática (mensal)</td></tr>`}
+      ${input.endsAt ? `<tr><td style="padding:6px 0;color:#64748b;">Válido até</td><td style="padding:6px 0;">${formatDateBR(input.endsAt)}</td></tr>` : `<tr><td style="padding:6px 0;color:#64748b;">Renovação</td><td style="padding:6px 0;">Automática (mensal)</td></tr>`}
     </table>
     <p style="margin:16px 0 0;color:#64748b;font-size:13px;">Guarde este e-mail como comprovante.</p>
   `;
-  const text = `Pagamento confirmado em ${input.appName}.\nPlano: ${input.planName}\nValor: ${formatBRL(input.amountCents)}\nForma: ${method}${input.endsAt ? `\nVálido até: ${input.endsAt.toLocaleDateString("pt-BR")}` : "\nRenovação automática"}`;
+  const text = `Pagamento confirmado em ${input.appName}.\nPlano: ${input.planName}\nValor: ${formatBRL(input.amountCents)}\nForma: ${method}${input.endsAt ? `\nVálido até: ${formatDateBR(input.endsAt)}` : "\nRenovação automática"}`;
   return { subject, html: layout(input.appName, body), text };
 }
 
@@ -146,14 +148,14 @@ export function subscriptionExpiringTemplate(input: {
 }): EmailTemplate {
   const subject = `Seu acesso expira em breve · ${input.appName}`;
   const body = `
-    <p style="margin:0 0 12px;">Seu acesso ao plano <strong>${escapeHtml(input.planName)}</strong> expira em <strong>${input.endsAt.toLocaleDateString("pt-BR")}</strong>.</p>
+    <p style="margin:0 0 12px;">Seu acesso ao plano <strong>${escapeHtml(input.planName)}</strong> expira em <strong>${formatDateBR(input.endsAt)}</strong>.</p>
     <p style="margin:0 0 16px;">Para não perder o acesso às gerações com IA, renove agora:</p>
     <p style="margin:0 0 16px;">
       <a href="${input.renewUrl}" style="display:inline-block;background:#0a6268;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Renovar acesso</a>
     </p>
     <p style="margin:0;color:#64748b;font-size:13px;">Se já renovou, ignore este e-mail.</p>
   `;
-  const text = `Seu acesso ao plano ${input.planName} expira em ${input.endsAt.toLocaleDateString("pt-BR")}. Renove em: ${input.renewUrl}`;
+  const text = `Seu acesso ao plano ${input.planName} expira em ${formatDateBR(input.endsAt)}. Renove em: ${input.renewUrl}`;
   return { subject, html: layout(input.appName, body), text };
 }
 

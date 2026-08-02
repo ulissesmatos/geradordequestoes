@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
+import { formatDateBR } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 export type AffiliateReferralRow = {
@@ -86,5 +87,5 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(iso: string) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(iso));
+  return formatDateBR(iso, "medium");
 }

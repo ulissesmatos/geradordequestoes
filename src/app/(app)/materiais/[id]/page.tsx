@@ -3,6 +3,7 @@ import { ArrowLeft, BookOpen, Download, Sparkles, Tag } from "lucide-react";
 import { DeleteMaterialButton } from "@/components/delete-material-button";
 import { MaterialEditor } from "@/components/material-editor";
 import { Button } from "@/components/ui/button";
+import { formatDateBR } from "@/lib/dates";
 import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -27,7 +28,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
   // botão); quem barra de verdade é a action.
   const expandAllowed = entitlements.can("materialExpand");
 
-  const createdAt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(material.createdAt);
+  const createdAt = formatDateBR(material.createdAt, "long");
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">

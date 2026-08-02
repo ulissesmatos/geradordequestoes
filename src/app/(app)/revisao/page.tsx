@@ -3,6 +3,7 @@ import { ArrowLeft, CalendarClock, CheckCircle2, Play } from "lucide-react";
 import { QuestionRunner } from "@/components/question-runner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import {
@@ -144,5 +145,5 @@ function NothingDueCard({ nextDueAt }: { nextDueAt?: Date | null }) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+  return formatDateBR(date, "medium");
 }

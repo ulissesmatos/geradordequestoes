@@ -5,6 +5,7 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 const PAGE_SIZE = 30;
@@ -17,7 +18,7 @@ const typeLabels: Record<string, string> = {
 };
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  return formatDateTimeBR(date);
 }
 
 export default async function AdminFeedbacksPage({ searchParams }: { searchParams: Promise<{ page?: string; status?: string }> }) {

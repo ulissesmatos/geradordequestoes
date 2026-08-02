@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { logAdminAction } from "@/lib/audit";
+import { formatDateBR } from "@/lib/dates";
 import { requireAdmin } from "@/lib/guards";
 import { createPixPayment, TEAM_CHARGE_REF_PREFIX } from "@/lib/mercado-pago";
 import { appUrl, getPaymentSettings } from "@/lib/payments";
@@ -222,7 +223,7 @@ export async function renewTeamAction(formData: FormData) {
     action: "update",
     entity: "TeamAccount",
     entityId: teamAccountId,
-    summary: newEndsAt ? `pagamento confirmado, vigência até ${newEndsAt.toLocaleDateString("pt-BR")}` : "renovação"
+    summary: newEndsAt ? `pagamento confirmado, vigência até ${formatDateBR(newEndsAt)}` : "renovação"
   });
   revalidatePath(`/admin/teams/${teamAccountId}`);
   revalidatePath("/admin/teams");

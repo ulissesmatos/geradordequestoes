@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress, ProgressRing, quotaTone } from "@/components/ui/progress";
 import { DailyActivityChart, StatTile, SubjectAccuracyBars } from "@/components/performance-charts";
 import { WeekStrip } from "@/components/week-strip";
+import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import {
   getDailyActivity,
@@ -552,5 +553,5 @@ function formatSeconds(seconds: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+  return formatDateBR(date, "medium");
 }

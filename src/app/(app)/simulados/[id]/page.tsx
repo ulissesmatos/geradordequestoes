@@ -6,12 +6,11 @@ import { startMockExamAction } from "@/app/(app)/simulados/actions";
 import { MockExamRunner } from "@/components/mock-exam-runner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { ensureSessionCurrent, getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
-
-const dateFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export default async function MockExamPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -100,7 +99,7 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
             <p className="flex items-center gap-2">
               <CalendarClock className="h-4 w-4 text-[var(--primary)]" />
               Duração: {exam.durationMinutes} minutos
-              {exam.closesAt ? ` · disponível até ${dateFmt.format(exam.closesAt)}` : ""}
+              {exam.closesAt ? ` · disponível até ${formatDateTimeBR(exam.closesAt)}` : ""}
             </p>
           </div>
 
@@ -131,7 +130,7 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
           ) : (
             <p className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-center text-sm text-[var(--muted-foreground)]">
               {windowState === "futuro" && exam.opensAt
-                ? `Abre em ${dateFmt.format(exam.opensAt)}.`
+                ? `Abre em ${formatDateTimeBR(exam.opensAt)}.`
                 : "Este simulado não está mais disponível."}
             </p>
           )}

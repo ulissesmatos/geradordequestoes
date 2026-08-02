@@ -2,11 +2,10 @@ import Link from "next/link";
 import { Plus, Timer } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Button } from "@/components/ui/button";
+import { formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { mockExamStatusMeta } from "@/lib/mock-exam-labels";
 import { cn } from "@/lib/utils";
-
-const dateFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export default async function AdminMockExamsPage() {
   const exams = await prisma.mockExam.findMany({
@@ -66,7 +65,7 @@ export default async function AdminMockExamsPage() {
                     <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold", meta.className)}>{meta.label}</span>
                   </td>
                   <td className="px-4 py-3 text-[var(--muted-foreground)]">
-                    {exam.opensAt ? dateFmt.format(exam.opensAt) : "—"} → {exam.closesAt ? dateFmt.format(exam.closesAt) : "—"}
+                    {exam.opensAt ? formatDateTimeBR(exam.opensAt) : "—"} → {exam.closesAt ? formatDateTimeBR(exam.closesAt) : "—"}
                   </td>
                   <td className="px-4 py-3 tabular-nums">{exam.questionSet.quantity}</td>
                   <td className="px-4 py-3 tabular-nums">{exam._count.sessions}</td>

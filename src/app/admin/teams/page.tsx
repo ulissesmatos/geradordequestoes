@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDateBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 function formatMoney(cents: number) {
@@ -15,8 +16,7 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date | null) {
-  if (!date) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
+  return formatDateBR(date);
 }
 
 export default async function AdminTeamsPage() {

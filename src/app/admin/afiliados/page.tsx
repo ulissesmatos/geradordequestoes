@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { affiliateLinkUrl, getAffiliateBalance, getAffiliateReferralDetails } from "@/lib/affiliates";
+import { formatDateBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { processWithdrawalAction, updateAffiliateAction } from "@/app/admin/afiliados/actions";
 
@@ -201,5 +202,5 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+  return formatDateBR(date, "medium");
 }

@@ -1,5 +1,6 @@
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { requireAdmin } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 
@@ -43,7 +44,7 @@ export default async function AdminAuditPage({
                 {log.summary && <span className="text-[var(--muted-foreground)]">· {log.summary}</span>}
               </div>
               <div className="text-xs text-[var(--muted-foreground)]">
-                {log.adminEmail} · {log.createdAt.toLocaleString("pt-BR")}
+                {log.adminEmail} · {formatDateTimeBR(log.createdAt)}
               </div>
             </div>
           ))}

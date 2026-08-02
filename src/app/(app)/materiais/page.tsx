@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileText, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
@@ -64,7 +65,7 @@ export default async function MaterialsPage({
               </CardHeader>
               <CardContent className="text-sm text-[var(--muted-foreground)]">
                 <p>{material.subject?.name ?? "Sem matéria"} {material.topic ? `/ ${material.topic.name}` : ""}</p>
-                <p className="mt-2">{material.createdAt.toLocaleDateString("pt-BR")}</p>
+                <p className="mt-2">{formatDateBR(material.createdAt)}</p>
               </CardContent>
             </Card>
           </Link>

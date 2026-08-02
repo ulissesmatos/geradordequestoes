@@ -2,6 +2,7 @@ import Link from "next/link";
 import { StudyMaterialStatus } from "@prisma/client";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminAiMaterialsPage({
@@ -119,5 +120,5 @@ function FilterLink({ href, active, children }: { href: string; active: boolean;
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  return formatDateTimeBR(date);
 }

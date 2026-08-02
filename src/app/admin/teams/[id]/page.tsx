@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { appUrl } from "@/lib/payments";
 
+import { formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { formatCpf } from "@/lib/validation/cpf";
 
@@ -30,8 +31,7 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date | null) {
-  if (!date) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  return formatDateTimeBR(date);
 }
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {

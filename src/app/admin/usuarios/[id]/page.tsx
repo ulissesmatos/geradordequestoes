@@ -9,18 +9,17 @@ import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { formatDateBR, formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getAiUsageStatus } from "@/lib/subscriptions";
 import { formatCpf, formatPhone } from "@/lib/validation/cpf";
 
 function formatDate(date: Date | null | undefined) {
-  if (!date) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+  return formatDateTimeBR(date);
 }
 
 function formatDay(date: Date | null | undefined) {
-  if (!date) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
+  return formatDateBR(date);
 }
 
 function formatMoney(cents: number) {

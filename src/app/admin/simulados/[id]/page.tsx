@@ -11,12 +11,11 @@ import {
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { formatExamDuration } from "@/lib/mock-exams";
 import { mockExamStatusMeta } from "@/lib/mock-exam-labels";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
-
-const dateFmt = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export default async function AdminMockExamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -67,8 +66,8 @@ export default async function AdminMockExamDetailPage({ params }: { params: Prom
             description={`${exam.questionSet.subject.name} / ${exam.questionSet.topic.name} · ${exam.questionSet.quantity} questões · ${exam.durationMinutes} min · ${exam.teamAccount?.name ?? "Todos os assinantes"}`}
           />
           <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-            Janela: {exam.opensAt ? dateFmt.format(exam.opensAt) : "imediata"} →{" "}
-            {exam.closesAt ? dateFmt.format(exam.closesAt) : "sem fechamento"}
+            Janela: {exam.opensAt ? formatDateTimeBR(exam.opensAt) : "imediata"} →{" "}
+            {exam.closesAt ? formatDateTimeBR(exam.closesAt) : "sem fechamento"}
           </p>
         </div>
         <span className={cn("rounded-full px-3 py-1 text-sm font-semibold", meta.className)}>{meta.label}</span>
@@ -153,7 +152,7 @@ export default async function AdminMockExamDetailPage({ params }: { params: Prom
                       </td>
                       <td className="px-3 py-2 tabular-nums">{formatExamDuration(session.totalSeconds ?? 0)}</td>
                       <td className="px-3 py-2 text-[var(--muted-foreground)]">
-                        {session.finishedAt ? dateFmt.format(session.finishedAt) : "—"}
+                        {session.finishedAt ? formatDateTimeBR(session.finishedAt) : "—"}
                       </td>
                     </tr>
                   ))}

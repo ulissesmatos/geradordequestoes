@@ -9,6 +9,7 @@ import { MathText } from "@/components/math-text";
 import { ReportQuestionButton } from "@/components/report-question-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDayMonthBR } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
 type RunnerOption = {
@@ -402,6 +403,6 @@ function getCorrectLabel(question: RunnerQuestion) {
 function formatReviewReturn(dueAtIso: string) {
   const dueAt = new Date(dueAtIso);
   const days = Math.max(1, Math.round((dueAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-  const dateLabel = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(dueAt);
+  const dateLabel = formatDayMonthBR(dueAt);
   return days <= 1 ? `Volta amanhã para revisão (${dateLabel})` : `Volta em ${days} dias para revisão (${dateLabel})`;
 }

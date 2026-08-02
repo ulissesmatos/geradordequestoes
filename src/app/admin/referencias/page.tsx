@@ -15,10 +15,11 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getModelOptionsForProvider } from "@/lib/ai/model-catalog";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
+import { formatDateBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(date);
+  return formatDateBR(date);
 }
 
 const extractionMeta: Record<ReferenceExtractionStatus, { label: string; tone: "neutral" | "success" | "warning" | "danger" }> = {

@@ -6,6 +6,7 @@ import { ArrowRight, BadgeCheck, Check, CreditCard, Loader2, QrCode, ShieldCheck
 import { validateCouponAction } from "@/app/checkout/actions";
 import { Dialog, DialogPanel } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { formatDateBR } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { UpgradePreview } from "@/components/pricing-cards";
 
@@ -283,7 +284,7 @@ function UpgradePreviewPane({
                 {preview.cycleEndDate && (
                   <PreviewRow
                     label="Acesso válido até"
-                    value={new Date(preview.cycleEndDate).toLocaleDateString("pt-BR")}
+                    value={formatDateBR(preview.cycleEndDate)}
                     subtle
                   />
                 )}

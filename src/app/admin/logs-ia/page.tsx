@@ -1,6 +1,7 @@
 import { AiChatRole, AiUsageEventStatus } from "@prisma/client";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 export default async function AiLogsPage() {
@@ -49,7 +50,7 @@ export default async function AiLogsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-sm font-medium">
                 <span>{msg.session.user?.email ?? "usuário desconhecido"}</span>
-                <span className="text-[var(--muted-foreground)]">{msg.createdAt.toLocaleString("pt-BR")}</span>
+                <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(msg.createdAt)}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -110,7 +111,7 @@ export default async function AiLogsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center justify-between text-sm font-medium">
                 <span>{ev.user.email}</span>
-                <span className="text-[var(--muted-foreground)]">{ev.createdAt.toLocaleString("pt-BR")}</span>
+                <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(ev.createdAt)}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
@@ -140,7 +141,7 @@ export default async function AiLogsPage() {
                 <span className={`font-semibold ${log.status === "ERROR" ? "text-[var(--destructive)]" : "text-[var(--success)]"}`}>
                   {log.status}
                 </span>
-                <span className="text-[var(--muted-foreground)]">{log.createdAt.toLocaleString("pt-BR")}</span>
+                <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(log.createdAt)}</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">

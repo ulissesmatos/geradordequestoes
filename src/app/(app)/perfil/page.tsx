@@ -8,6 +8,7 @@ import { Panel, PanelHeader } from "@/components/saasable/saasable-panel";
 import { StudyPreferencesForm } from "@/components/study-preferences-form";
 import { TeamCodeRedeem } from "@/components/team-code-redeem";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 import { prisma } from "@/lib/prisma";
@@ -319,7 +320,7 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+  return formatDateBR(date, "medium");
 }
 
 function hoursUntilReset(resetsAt: string | null | undefined) {

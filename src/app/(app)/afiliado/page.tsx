@@ -3,6 +3,7 @@ import { CopyLinkButton, WithdrawalForm } from "@/components/affiliate-panel";
 import { Panel, PanelHeader } from "@/components/saasable/saasable-panel";
 import { Button } from "@/components/ui/button";
 import { affiliateLinkUrl, getAffiliateOverview, MIN_WITHDRAWAL_CENTS } from "@/lib/affiliates";
+import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { cn } from "@/lib/utils";
 
@@ -168,5 +169,5 @@ function formatMoney(cents: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(date);
+  return formatDateBR(date, "medium");
 }
