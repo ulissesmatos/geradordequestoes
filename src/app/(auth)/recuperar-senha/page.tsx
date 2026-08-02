@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { RequestResetForm } from "@/components/password-reset-forms";
+import { hasValidSession } from "@/lib/guards";
 
 export default async function RecuperarSenhaPage() {
-  const session = await auth();
-  if (session?.user) redirect("/desempenho");
+  if (await hasValidSession()) redirect("/desempenho");
 
   return <RequestResetForm />;
 }
