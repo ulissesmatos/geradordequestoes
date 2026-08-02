@@ -27,7 +27,7 @@ export default async function AffiliatePage() {
         </Button>
         <Panel>
           <div className="flex flex-col items-center gap-3 p-4 text-center">
-            <i className="ti ti-handshake text-4xl leading-none text-primary-500" />
+            <i className="ti ti-affiliate text-4xl leading-none text-primary-500" />
             <p className="subtitle1 text-theme-text-primary">Programa de afiliados por convite</p>
             <p className="max-w-md body2 text-theme-text-secondary">
               {overview

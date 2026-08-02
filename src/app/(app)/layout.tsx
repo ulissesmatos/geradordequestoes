@@ -20,7 +20,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       {/* Fontes/ícones da SaasAble aqui, mas layout/densidade das telas do aluno ficam
           como estão — telas de trabalho, não landing page. */}
       <SaasableAssets />
-      <div style={{ fontFamily: "figtree, sans-serif" }}>
+      <div style={{ fontFamily: "var(--font-figtree), sans-serif" }}>
         <AppNavVisibility>
           <AppNav
             isAdmin={user.role === Role.ADMIN}

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { archivo, figtree } from "@/lib/fonts";
 import { getAppSettings } from "@/lib/app-settings";
 import "./globals.css";
 
@@ -74,7 +75,7 @@ const THEME_SCRIPT = `(function () {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${inter.variable} ${archivo.variable} ${figtree.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         {children}

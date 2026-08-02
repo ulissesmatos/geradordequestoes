@@ -12,7 +12,7 @@ export function SiteFooter({ logoUrl = "/brand/logo.png", appName = "Gerador de 
     <footer className="border-t border-[var(--border)]">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-[var(--muted-foreground)] md:flex-row md:items-center md:justify-between md:px-6">
         <div className="flex items-center gap-3">
-          <Image src={logoUrl} alt={appName} width={744} height={179} className="h-8 w-auto object-contain" />
+          <Image src={logoUrl} alt={appName} width={744} height={179} sizes="150px" className="h-8 w-auto object-contain" />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           <Link href="/pricing" className="hover:text-[var(--foreground)]">Planos</Link>

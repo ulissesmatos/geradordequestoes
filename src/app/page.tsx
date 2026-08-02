@@ -58,7 +58,7 @@ export default async function HomePage() {
     <>
       <SaasableAssets />
 
-      <main className="dm-ready bg-theme-bg-default text-theme-text-primary" style={{ fontFamily: "figtree, sans-serif" }}>
+      <main className="dm-ready bg-theme-bg-default text-theme-text-primary" style={{ fontFamily: "var(--font-figtree), sans-serif" }}>
         <SaasableNavbar logoUrl={appSettings.logoUrl} appName={appSettings.appName} isLoggedIn={Boolean(session?.user)} />
 
         <SaasableHero />

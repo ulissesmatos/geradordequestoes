@@ -38,6 +38,7 @@ export function AppLogo({
       alt={alt}
       width={744}
       height={179}
+      sizes="150px"
       className={className}
     />
   );

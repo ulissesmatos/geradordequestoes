@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import { Reveal } from "@/components/saasable/reveal";
+
+// AnimatePresence/m aqui dependem do <LazyMotion> que o <Reveal> ao redor já monta —
+// por isso este componente só anima quando renderizado dentro de um Reveal.
 
 const FAQ_ITEMS = [
   {
@@ -81,7 +84,7 @@ export function SaasableFaq() {
                           <p className="body1 text-theme-text-secondary">{item.answer}</p>
                         </div>
                       ) : (
-                        <motion.div
+                        <m.div
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
@@ -91,7 +94,7 @@ export function SaasableFaq() {
                           <div className="pt-2 sm:pt-3">
                             <p className="body1 text-theme-text-secondary">{item.answer}</p>
                           </div>
-                        </motion.div>
+                        </m.div>
                       ))}
                   </AnimatePresence>
                 </div>

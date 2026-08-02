@@ -243,7 +243,7 @@ export default async function ProfilePage({
       {affiliateProfile?.isActive && (
         <Panel>
           <PanelHeader
-            icon="ti-handshake"
+            icon="ti-affiliate"
             title="Programa de afiliados"
             description={`Sua conta participa do programa: você ganha ${affiliateProfile.commissionPercent}% de cada pagamento dos alunos que indicar.`}
           />

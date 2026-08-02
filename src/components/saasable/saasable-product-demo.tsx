@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { m, useReducedMotion } from "motion/react";
 import { BotAvatar } from "@/components/bot-avatar";
+
+// m aqui depende do <LazyMotion> que o <Reveal> ao redor (ver saasable-hero.tsx) já monta.
 
 const STEP_INTERVAL_MS = 2600;
 const MAX_STEP = 2;
@@ -110,13 +112,13 @@ function DemoFrame({ visible, reduceMotion, children }: { visible: boolean; redu
   }
 
   return (
-    <motion.div
+    <m.div
       initial={false}
       animate={{ opacity: visible ? 1 : 0, y: visible ? 0 : 8 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       style={{ pointerEvents: visible ? "auto" : "none" }}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
