@@ -132,13 +132,13 @@ export function QuestionRunner({
               </Button>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 sm:max-w-xs">
-              <div className="rounded-[var(--radius)] border border-emerald-200 bg-emerald-50 p-3 text-center">
-                <p className="text-2xl font-bold text-emerald-700">{score}</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{score === 1 ? "Acerto" : "Acertos"}</p>
+              <div className="rounded-[var(--radius)] border border-[var(--success)] bg-[var(--success-soft)] p-3 text-center">
+                <p className="text-2xl font-bold text-[var(--success-soft-foreground)]">{score}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--success-soft-foreground)]">{score === 1 ? "Acerto" : "Acertos"}</p>
               </div>
-              <div className="rounded-[var(--radius)] border border-rose-200 bg-rose-50 p-3 text-center">
-                <p className="text-2xl font-bold text-rose-700">{wrong}</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">{wrong === 1 ? "Erro" : "Erros"}</p>
+              <div className="rounded-[var(--radius)] border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-3 text-center">
+                <p className="text-2xl font-bold text-[var(--danger-soft-foreground)]">{wrong}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--danger-soft-foreground)]">{wrong === 1 ? "Erro" : "Erros"}</p>
               </div>
             </div>
           </CardContent>
@@ -157,7 +157,9 @@ export function QuestionRunner({
                   key={question.id}
                   className={cn(
                     "rounded-md border p-4",
-                    selected?.isCorrect ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/40"
+                    selected?.isCorrect
+                      ? "border-[var(--success)] bg-[var(--success-soft)]"
+                      : "border-[var(--danger-soft-border)] bg-[var(--danger-soft)]"
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -174,7 +176,13 @@ export function QuestionRunner({
                     </div>
                   )}
                   <p className="mt-1"><MathText text={question.statement} /></p>
-                  <p className={selected?.isCorrect ? "mt-2 font-semibold text-emerald-800" : "mt-2 font-semibold text-rose-800"}>
+                  <p
+                    className={
+                      selected?.isCorrect
+                        ? "mt-2 font-semibold text-[var(--success-soft-foreground)]"
+                        : "mt-2 font-semibold text-[var(--danger-soft-foreground)]"
+                    }
+                  >
                     {selected?.isCorrect ? "✓" : "✗"} Sua resposta: {selected?.label ?? "—"} · Gabarito: {correct}
                   </p>
                   {reviewMode && nextReviewDates[question.id] && (
@@ -297,7 +305,7 @@ export function QuestionRunner({
               "rounded-md border p-4",
               answerError.limitReached
                 ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]"
-                : "border-rose-200 bg-rose-50 text-rose-900"
+                : "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
             )}
           >
             <p className="flex items-center gap-2 font-semibold">
@@ -332,7 +340,13 @@ export function QuestionRunner({
           ))}
         </div>
         {showFeedback && (
-          <div className={selected.isCorrect ? "rounded-md border border-emerald-200 bg-emerald-50 p-4 text-emerald-900" : "rounded-md border border-rose-200 bg-rose-50 p-4 text-rose-900"}>
+          <div
+            className={
+              selected.isCorrect
+                ? "rounded-md border border-[var(--success)] bg-[var(--success-soft)] p-4 text-[var(--success-soft-foreground)]"
+                : "rounded-md border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-[var(--danger-soft-foreground)]"
+            }
+          >
             <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
             <p className="mt-2 text-sm"><MathText text={current.explanation} /></p>
             {current.sourceBadge && (
