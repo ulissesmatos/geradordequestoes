@@ -678,6 +678,25 @@ model AdminAuditLog {
   @@index([createdAt])
 }
 
+/**
+ * Erros de JavaScript capturados no navegador do usuário (window.onerror /
+ * unhandledrejection), reportados por src/components/client-error-reporter.tsx via
+ * /api/client-errors. Sem isso, um erro puramente client-side (ex.: navegador antigo sem um
+ * método usado por uma dependência) nunca aparece nos logs de servidor — a página só trava
+ * ou pisca em loop pro usuário, sem nenhum rastro pra investigar depois.
+ */
+model ClientErrorLog {
+  id        String   @id @default(cuid())
+  message   String
+  stack     String?
+  url       String
+  userAgent String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model StudyMaterial {
   id          String              @id @default(cuid())
   userId      String

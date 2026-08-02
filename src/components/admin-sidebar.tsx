@@ -7,6 +7,7 @@ import {
   BarChart3,
   Bot,
   BookOpen,
+  Bug,
   Building2,
   CreditCard,
   FileQuestion,
@@ -76,6 +77,7 @@ const groups = [
     links: [
       { href: "/admin/email", label: "E-mail", icon: Mail },
       { href: "/admin/auditoria", label: "Auditoria", icon: ScrollText },
+      { href: "/admin/erros-cliente", label: "Erros do navegador", icon: Bug },
       { href: "/admin/branding", label: "Branding", icon: Settings }
     ]
   }

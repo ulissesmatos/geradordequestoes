@@ -48,5 +48,8 @@ export const RATE_LIMITS = {
   /** Uploads de anexos por usuário: 20 a cada 5 minutos. */
   uploads: { limit: 20, windowMs: 5 * 60_000 },
   /** "Aprofundar" seção de material por usuário: 6 por minuto (multi-abas/duplo clique). */
-  materialExpand: { limit: 6, windowMs: 60_000 }
+  materialExpand: { limit: 6, windowMs: 60_000 },
+  /** Erros de JS reportados por IP: 20 por minuto — cobre um navegador preso num loop de erro
+   *  sem deixar a tabela crescer sem limite (o próprio reporter também se limita no cliente). */
+  clientErrors: { limit: 20, windowMs: 60_000 }
 } as const;
