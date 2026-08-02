@@ -28,11 +28,19 @@ export type ReferenceVariantSource = {
  */
 const MIN_SUPPORT_TEXT_LENGTH = 25;
 
+/**
+ * ORDEM DOS CAMPOS IMPORTA: geração estruturada preenche na ordem declarada, sem voltar
+ * atrás. "explanation" vem ANTES de "answer" e de "options" de propósito — a IA precisa
+ * "mostrar o trabalho" (resolver a conta/lógica na justificativa) antes de se comprometer
+ * com o gabarito, não depois. Com answer/isCorrect vindo primeiro, já vimos em produção a IA
+ * se corrigir só na explicação (ex.: concluir CERTO no texto) sem conseguir voltar e ajustar
+ * o campo já emitido — o aluno recebia um gabarito que contradizia a própria justificativa.
+ */
 const generatedItemSchema = z.object({
   statement: z.string().min(20),
   format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]),
-  answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
   explanation: z.string().min(10),
+  answer: z.enum(["CERTO", "ERRADO"]).nullable().optional(),
   difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]),
   /**
    * Classificação explícita: a questão só se resolve com o texto-base do grupo?
@@ -146,15 +154,17 @@ function buildSupportTextInstruction(quantity: number) {
   return `Nível DIFÍCIL — texto de apoio: quando o assunto se prestar a isso (interpretação de texto, direito, legislação, história, temas com uma situação hipotética ou trecho normativo plausível — NÃO force em assuntos que não combinam, como pura gramática/ortografia/informática básica), você pode montar um bloco no estilo real de prova: um supportText de 2 a 4 parágrafos (uma situação hipotética, um texto informativo ou um trecho de lei/norma) seguido de 3 a ${maxPerGroup} questões — no formato já definido acima — que o julgam sob ângulos diferentes. ATENÇÃO: isso NÃO aumenta o total. O bloco consome parte das ${quantity} questões pedidas, nunca soma por cima delas; se um bloco já usar as ${quantity}, não crie outro grupo. Nem toda questão difícil precisa disso: se o tema não render um texto de apoio natural, gere itens independentes normalmente (supportText null).`;
 };
 
+// Ordem dos campos abaixo (required + properties) espelha de propósito a de generatedItemSchema —
+// mesmo motivo: "explanation" antes de "answer"/"options" para a IA raciocinar antes de responder.
 const generatedItemJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["statement", "format", "answer", "explanation", "difficulty", "dependsOnSupportText", "options"],
+  required: ["statement", "format", "explanation", "answer", "difficulty", "dependsOnSupportText", "options"],
   properties: {
     statement: { type: "string", minLength: 20 },
     format: { type: "string", enum: ["CERTO_ERRADO", "MULTIPLA_ESCOLHA"] },
-    answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
     explanation: { type: "string", minLength: 10 },
+    answer: { type: ["string", "null"], enum: ["CERTO", "ERRADO", null] },
     difficulty: { type: "string", enum: ["FACIL", "MEDIO", "DIFICIL"] },
     dependsOnSupportText: { type: "boolean" },
     sourceIndex: { type: "integer", minimum: 1 },
@@ -396,6 +406,72 @@ function dropOrphanQuestions(groups: RawGroup[], options: { languageSubject: boo
   return cleaned;
 }
 
+/**
+ * Marcas de raciocínio interno vazando pro texto que o aluno lê — a IA "comentando sobre a
+ * própria geração" em vez de só explicar o conteúdo. Visto em produção: justificativa que
+ * concluía CERTO no meio do texto e terminava com "(Como a ferramenta exige gabarito,
+ * ajuste: a afirmação é CERTO.)" — o campo answer já tinha sido emitido ANTES da explicação
+ * (ver comentário em generatedItemSchema) e ficou ERRADO, contradizendo a própria
+ * justificativa. Reordenar o schema ataca a causa; isto aqui é a rede de segurança para o
+ * que passar mesmo assim.
+ *
+ * De propósito, NÃO pega contraste pedagógico legítimo ("à primeira vista pareceria X, mas
+ * na verdade Y é o correto") — só menções diretas à ferramenta/sistema/schema, que uma
+ * explicação de conteúdo de concurso nunca teria motivo genuíno para fazer.
+ */
+const LEAKED_REASONING_PATTERNS: RegExp[] = [
+  /\ba\s+ferramenta\b/i,
+  /\bo\s+sistema\s+exig/i,
+  /\bajuste:\s*a\s+afirma[çc][ãa]o\b/i,
+  /\bo\s+campo\s+(?:answer|gabarito)\b/i,
+  /\b(?:answer|gabarito)\s+(?:obrigat[óo]rio|exigido)\b/i
+];
+
+type LeakedReasoningIssue = { statement: string };
+
+/** Questões cuja justificativa vazou raciocínio/comentário sobre a própria ferramenta. */
+function findLeakedReasoningQuestions(groups: RawGroup[]): LeakedReasoningIssue[] {
+  const issues: LeakedReasoningIssue[] = [];
+  for (const group of groups) {
+    for (const question of group.questions) {
+      if (LEAKED_REASONING_PATTERNS.some((pattern) => pattern.test(question.explanation))) {
+        issues.push({ statement: question.statement });
+      }
+    }
+  }
+  return issues;
+}
+
+function buildLeakedReasoningRepairInstruction(issues: LeakedReasoningIssue[]): string {
+  const list = issues.map((issue, index) => `${index + 1}. "${issue.statement.slice(0, 160)}"`).join("\n");
+  return [
+    "CORREÇÃO OBRIGATÓRIA — a justificativa destas questões vazou raciocínio interno da geração (ex.: menciona a ferramenta/sistema, ou narra um ajuste de resposta dentro do próprio texto) em vez de só explicar o conteúdo para o aluno:",
+    list,
+    "Gere o lote NOVAMENTE do zero, com a mesma quantidade, formato e dificuldade. Resolva o raciocínio/conta ANTES de decidir a resposta final: escreva a justificativa já com a conclusão definitiva e certifique-se de que answer (ou isCorrect nas alternativas) reflete EXATAMENTE essa conclusão. A justificativa deve conter só a explicação do conteúdo — nunca mencione a ferramenta, o sistema, JSON, schema, nem narre estar 'ajustando' ou 'corrigindo' a resposta."
+  ].join("\n");
+}
+
+/**
+ * Fail-safe: se nem o reparo tirou o vazamento, descarta a questão — sinal forte de que o
+ * gabarito também pode estar errado (não é só estética, como o LaTeX cru), então servir a
+ * questão pro aluno é pior que servir menos questões.
+ */
+function dropLeakedReasoningQuestions(groups: RawGroup[]): RawGroup[] {
+  const cleaned = groups
+    .map((group) => ({
+      ...group,
+      questions: group.questions.filter((question) => !LEAKED_REASONING_PATTERNS.some((pattern) => pattern.test(question.explanation)))
+    }))
+    .filter((group) => group.questions.length > 0);
+
+  if (cleaned.length === 0) {
+    throw new Error(
+      "A IA insistiu em vazar raciocínio interno na justificativa das questões. Tente novamente ou use um modelo mais forte no painel admin."
+    );
+  }
+  return cleaned;
+}
+
 export async function generateQuestions(input: {
   subject: string;
   topic: string;
@@ -449,26 +525,29 @@ export async function generateQuestions(input: {
   const runBatch = async (batchPrompt: string, expected: number): Promise<RawGroup[]> => {
     let groups = await runProvider(batchPrompt);
 
-    // Contrato de autossuficiência, verificado em código: nenhuma questão pode citar um
-    // texto-base ausente. Quando quebra, manda refazer UMA vez apontando exatamente o que
-    // deu errado (o custo extra só existe no caminho ruim) e, se ainda vier torto, descarta
-    // as questões quebradas em vez de entregá-las ao aluno.
+    // Contratos verificados em código (custo zero: regex sobre o que já veio). Quando algum
+    // quebra, manda refazer UMA vez apontando exatamente o que deu errado — os três contratos
+    // compartilham a MESMA rodada de reparo, então o custo extra é de no máximo uma chamada a
+    // mais, mesmo quando mais de um falha junto.
     const orphans = findOrphanQuestions(groups, checkOptions);
     const mathViolations = findMathViolations(groups);
-    if (orphans.length > 0 || mathViolations.length > 0) {
+    const leakedReasoning = findLeakedReasoningQuestions(groups);
+    if (orphans.length > 0 || mathViolations.length > 0 || leakedReasoning.length > 0) {
       input.onProgress?.("Revisando as questões geradas…");
-      // Os dois contratos compartilham a MESMA rodada de reparo: mesmo quando ambos falham,
-      // o custo extra é de no máximo uma chamada a mais.
       const fixes = [
         orphans.length > 0 ? buildSelfContainmentRepairInstruction(orphans) : "",
-        mathViolations.length > 0 ? buildMathRepairInstruction(mathViolations) : ""
+        mathViolations.length > 0 ? buildMathRepairInstruction(mathViolations) : "",
+        leakedReasoning.length > 0 ? buildLeakedReasoningRepairInstruction(leakedReasoning) : ""
       ]
         .filter(Boolean)
         .join("\n\n");
       const repaired = await runProvider(`${batchPrompt}\n\n${fixes}`);
-      // Questão órfã é descartada (item impossível de responder é pior que entregar menos).
-      // Fórmula crua NÃO derruba a questão: fica feia, mas continua respondível.
-      groups = findOrphanQuestions(repaired, checkOptions).length > 0 ? dropOrphanQuestions(repaired, checkOptions) : repaired;
+      // Questão órfã ou com raciocínio vazado é descartada (item impossível de responder, ou
+      // com gabarito possivelmente errado, é pior que entregar menos). Fórmula crua NÃO
+      // derruba a questão: fica feia, mas continua respondível.
+      groups = repaired;
+      if (findOrphanQuestions(groups, checkOptions).length > 0) groups = dropOrphanQuestions(groups, checkOptions);
+      if (findLeakedReasoningQuestions(groups).length > 0) groups = dropLeakedReasoningQuestions(groups);
     }
 
     // Por último, depois do descarte de questões quebradas: cortar antes faria o descarte
