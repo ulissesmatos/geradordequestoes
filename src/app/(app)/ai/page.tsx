@@ -35,7 +35,10 @@ export default async function AiChatPage({
     getEntitlements(user)
   ]);
 
-  const selectedSessionId = params.new ? null : params.sessionId ?? sessions[0]?.id ?? null;
+  // Entrar em /ai sem sessionId sempre abre um chat novo (estado vazio) — não carrega
+  // automaticamente a última conversa. Um chat específico só abre quando o link diz
+  // qual (clique na sidebar, retomar um card salvo, etc.).
+  const selectedSessionId = params.new ? null : (params.sessionId ?? null);
   const session = selectedSessionId
     ? await prisma.aiChatSession.findFirst({
       where: { id: selectedSessionId, userId: user.id },

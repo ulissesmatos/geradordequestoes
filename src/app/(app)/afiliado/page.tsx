@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, Banknote, Handshake, Link2, Users } from "lucide-react";
 import { CopyLinkButton, WithdrawalForm } from "@/components/affiliate-panel";
+import { Panel, PanelHeader } from "@/components/saasable/saasable-panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { affiliateLinkUrl, getAffiliateOverview, MIN_WITHDRAWAL_CENTS } from "@/lib/affiliates";
 import { requireUser } from "@/lib/guards";
+import { cn } from "@/lib/utils";
 
 const withdrawalStatusMeta: Record<string, { label: string; className: string }> = {
   REQUESTED: { label: "Aguardando", className: "bg-amber-100 text-amber-800" },
@@ -18,24 +18,24 @@ export default async function AffiliatePage() {
 
   if (!overview || !overview.profile.isActive) {
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-4">
+      <div className="dm-ready mx-auto w-full max-w-3xl space-y-4">
         <Button asChild variant="outline" size="sm">
           <Link href="/perfil">
-            <ArrowLeft className="h-4 w-4" />
+            <i className="ti ti-arrow-left text-base leading-none" />
             Voltar ao perfil
           </Link>
         </Button>
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
-            <Handshake className="h-10 w-10 text-[var(--primary)]" />
-            <p className="text-lg font-semibold">Programa de afiliados por convite</p>
-            <p className="max-w-md text-sm text-[var(--muted-foreground)]">
+        <Panel>
+          <div className="flex flex-col items-center gap-3 p-4 text-center">
+            <i className="ti ti-handshake text-4xl leading-none text-primary-500" />
+            <p className="subtitle1 text-theme-text-primary">Programa de afiliados por convite</p>
+            <p className="max-w-md body2 text-theme-text-secondary">
               {overview
                 ? "Sua participação no programa está desativada no momento. Fale com o suporte para mais detalhes."
                 : "O programa de afiliados está disponível apenas para contas convidadas pela equipe. Interessado em divulgar a plataforma e ganhar comissão? Fale com o suporte."}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       </div>
     );
   }
@@ -44,35 +44,31 @@ export default async function AffiliatePage() {
   const link = affiliateLinkUrl(profile.code);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="dm-ready mx-auto w-full max-w-3xl space-y-5">
       <div>
-        <h1 className="text-3xl font-bold">Programa de afiliados</h1>
-        <p className="text-[var(--muted-foreground)]">
+        <h1 className="h1">Programa de afiliados</h1>
+        <p className="body2 text-theme-text-secondary">
           Divulgue seu link e ganhe <strong>{profile.commissionPercent}%</strong> de cada pagamento dos
           alunos que você indicar.
         </p>
       </div>
 
       {/* ── Link de divulgação ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5 text-[var(--primary)]" />
-            Seu link de indicação
-          </CardTitle>
-          <CardDescription>
-            Quem acessar por este link e assinar (em até 30 dias) conta como sua indicação.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
+      <Panel>
+        <PanelHeader
+          icon="ti-link"
+          title="Seu link de indicação"
+          description="Quem acessar por este link e assinar (em até 30 dias) conta como sua indicação."
+        />
+        <div className="flex flex-wrap items-center gap-2">
           <input
             readOnly
             value={link}
-            className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-2 font-mono text-xs text-[var(--muted-foreground)]"
+            className="min-w-0 flex-1 rounded-xl border border-theme-divider bg-theme-bg-default px-3 py-2 font-mono text-xs text-theme-text-secondary"
           />
           <CopyLinkButton link={link} />
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
       {/* ── Números ── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -83,105 +79,86 @@ export default async function AffiliatePage() {
       </div>
 
       {/* ── Saque ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Banknote className="h-5 w-5 text-[var(--primary)]" />
-            Solicitar saque
-          </CardTitle>
-          <CardDescription>
-            O pagamento é feito via Pix pela equipe. Saque mínimo de {formatMoney(MIN_WITHDRAWAL_CENTS)}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WithdrawalForm availableCents={balance.availableCents} minCents={MIN_WITHDRAWAL_CENTS} />
-        </CardContent>
-      </Card>
+      <Panel>
+        <PanelHeader
+          icon="ti-cash-banknote"
+          title="Solicitar saque"
+          description={`O pagamento é feito via Pix pela equipe. Saque mínimo de ${formatMoney(MIN_WITHDRAWAL_CENTS)}.`}
+        />
+        <WithdrawalForm availableCents={balance.availableCents} minCents={MIN_WITHDRAWAL_CENTS} />
+      </Panel>
 
       {/* ── Histórico de saques ── */}
       {withdrawals.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Saques</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <Panel>
+          <h4 className="h4">Saques</h4>
+          <div className="space-y-2">
             {withdrawals.map((withdrawal) => {
               const meta = withdrawalStatusMeta[withdrawal.status] ?? withdrawalStatusMeta.REQUESTED;
               return (
                 <div
                   key={withdrawal.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border)] p-3 text-sm"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-theme-divider p-3 text-sm"
                 >
                   <div className="min-w-0">
                     <p className="font-semibold">{formatMoney(withdrawal.amountCents)}</p>
-                    <p className="truncate text-xs text-[var(--muted-foreground)]">
+                    <p className="truncate caption2 text-theme-text-secondary">
                       {formatDate(withdrawal.createdAt)} · Pix: {withdrawal.pixKey}
                       {withdrawal.note ? ` · ${withdrawal.note}` : ""}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${meta.className}`}>
+                  <span className={cn("rounded-full px-2 py-0.5 caption", meta.className)}>
                     {meta.label}
                   </span>
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
       {/* ── Comissões recentes ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-[var(--primary)]" />
-            Comissões recentes
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {commissions.length === 0 ? (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              Nenhuma comissão ainda. Compartilhe seu link — quando um indicado pagar um plano, sua
-              comissão aparece aqui.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] text-sm">
-                <thead className="text-left text-xs uppercase text-[var(--muted-foreground)]">
-                  <tr>
-                    <th className="py-2">Data</th>
-                    <th>Pagamento</th>
-                    <th>%</th>
-                    <th>Comissão</th>
+      <Panel>
+        <PanelHeader icon="ti-users" title="Comissões recentes" />
+        {commissions.length === 0 ? (
+          <p className="body2 text-theme-text-secondary">
+            Nenhuma comissão ainda. Compartilhe seu link — quando um indicado pagar um plano, sua
+            comissão aparece aqui.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead className="text-left caption2 text-theme-text-secondary">
+                <tr>
+                  <th className="py-2">Data</th>
+                  <th>Pagamento</th>
+                  <th>%</th>
+                  <th>Comissão</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commissions.map((commission) => (
+                  <tr key={commission.id} className="border-t border-theme-divider">
+                    <td className="py-2 text-theme-text-secondary">{formatDate(commission.createdAt)}</td>
+                    <td>{formatMoney(commission.baseAmountCents)}</td>
+                    <td>{commission.percent}%</td>
+                    <td className="font-semibold text-emerald-700">{formatMoney(commission.amountCents)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {commissions.map((commission) => (
-                    <tr key={commission.id} className="border-t border-[var(--border)]">
-                      <td className="py-2 text-[var(--muted-foreground)]">{formatDate(commission.createdAt)}</td>
-                      <td>{formatMoney(commission.baseAmountCents)}</td>
-                      <td>{commission.percent}%</td>
-                      <td className="font-semibold text-emerald-700">{formatMoney(commission.amountCents)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
 
 function Stat({ value, label, highlight = false }: { value: string; label: string; highlight?: boolean }) {
   return (
-    <div
-      className={`rounded-[var(--radius)] border p-4 ${
-        highlight ? "border-[var(--primary)] bg-[var(--primary-soft)]" : "border-[var(--border)] bg-[var(--surface)]"
-      }`}
-    >
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
+    <div className={cn("rounded-2xl border bg-theme-bg-paper p-4", highlight ? "border-primary-500" : "border-theme-divider")}>
+      <p className="h4">{value}</p>
+      <p className="mt-0.5 caption text-theme-text-secondary">{label}</p>
     </div>
   );
 }

@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
-import { BadgeCheck, Check, Sparkles } from "lucide-react";
 import { PaymentMethodModal } from "@/components/payment-method-modal";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type PricingPlan = {
@@ -58,24 +55,20 @@ export function PricingCards({
   } | null;
 }) {
   return (
-    <section className={cn("w-full", compact ? "py-12" : "py-16 lg:py-24")}>
-      <div className="mx-auto max-w-6xl">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <Badge variant="secondary">Planos</Badge>
-          <div className="space-y-3">
-            <h2 className="text-3xl font-semibold tracking-tight md:text-5xl">{headline}</h2>
-            <p className="mx-auto max-w-2xl text-base leading-7 text-[var(--muted-foreground)]">
-              {subheadline}
-            </p>
+    <section className={cn("w-full", compact ? "py-12" : "common-section")}>
+      <div className="saasable-container max-w-6xl">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="inline-flex items-center rounded-full border border-theme-divider bg-theme-bg-paper px-3 py-1.5 caption text-theme-text-secondary">
+            Planos
           </div>
+          <h2 className="h2 max-w-2xl">{headline}</h2>
+          <h6 className="h6 max-w-2xl text-theme-text-secondary font-normal">{subheadline}</h6>
         </div>
 
         {plans.length === 0 ? (
-          <Card className="mx-auto mt-12 max-w-2xl">
-            <CardContent className="p-6 text-center text-sm text-[var(--muted-foreground)]">
-              Nenhum plano ativo no momento. Volte em breve ou fale com o administrador.
-            </CardContent>
-          </Card>
+          <div className="mx-auto mt-12 max-w-2xl rounded-3xl bg-theme-bg-paper p-6 text-center body1 text-theme-text-secondary">
+            Nenhum plano ativo no momento. Volte em breve ou fale com o administrador.
+          </div>
         ) : (
           <div className="grid gap-5 pt-12 md:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => {
@@ -93,68 +86,67 @@ export function PricingCards({
                   ? buildUpgradePreview(currentPlan, plan.priceCents)
                   : null;
               return (
-                <Card
+                <div
                   key={plan.id}
                   className={cn(
-                    "rounded-md bg-[var(--surface)]",
-                    highlighted && "border-[var(--primary)] shadow-xl shadow-[var(--primary)]/10"
+                    "rounded-2xl sm:rounded-3xl bg-theme-bg-paper border p-6 sm:p-8 flex flex-col gap-6",
+                    highlighted ? "border-primary-500 shadow-[0_20px_45px_-20px_rgba(10,98,104,0.35)]" : "border-theme-divider"
                   )}
                 >
-                  <CardHeader>
+                  <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between gap-3">
-                      <CardTitle className="text-xl font-semibold">{plan.name}</CardTitle>
+                      <h4 className="h4">{plan.name}</h4>
                       {highlighted && (
-                        <Badge className="border-transparent bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-white">
-                          <Sparkles className="mr-1 h-3 w-3" />
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary-500 px-2.5 py-1 caption text-white">
+                          <i className="ti ti-sparkles text-xs leading-none" />
                           Popular
-                        </Badge>
+                        </span>
                       )}
                     </div>
-                    <CardDescription className="min-h-10 leading-6">
+                    <p className="min-h-10 body2 text-theme-text-secondary">
                       {plan.marketingSubtitle || plan.description || "Geração de questões com IA para rotina de estudos."}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-col gap-7">
-                      <p className="flex items-end gap-2">
-                        <span className="text-4xl font-semibold tracking-tight">{priceFormatted}</span>
-                        <span className="pb-1 text-sm text-[var(--muted-foreground)]">/ mês</span>
-                      </p>
-                      <div className="space-y-4 text-sm">
-                        {plan.features.map((feature) => (
-                          <Feature key={feature}>{feature}</Feature>
-                        ))}
-                      </div>
-                      {relation === "current" ? (
-                        <Button variant="outline" className="w-full" disabled>
-                          <BadgeCheck className="h-4 w-4" />
-                          Plano atual
-                        </Button>
-                      ) : relation === "downgrade" ? (
-                        <div className="space-y-1.5">
-                          <Button variant="outline" className="w-full" disabled>
-                            Inferior ao plano atual
-                          </Button>
-                          <p className="text-center text-xs text-[var(--muted-foreground)]">
-                            Para reduzir o plano, cancele a assinatura atual no perfil.
-                          </p>
-                        </div>
-                      ) : (
-                        <PaymentMethodModal
-                          planSlug={plan.slug}
-                          planName={plan.name}
-                          planPrice={priceFormatted}
-                          highlighted={highlighted}
-                          ctaText={relation === "upgrade" ? "Fazer upgrade" : plan.ctaText}
-                          isUpgrade={relation === "upgrade"}
-                          upgradePreview={upgradePreview}
-                          hasStripe={hasStripe && !!plan.stripePriceId}
-                          hasPix={hasPix}
-                        />
-                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-7">
+                    <p className="flex items-end gap-2">
+                      <span className="h1">{priceFormatted}</span>
+                      <span className="pb-1 body2 text-theme-text-secondary">/ mês</span>
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {plan.features.map((feature) => (
+                        <Feature key={feature}>{feature}</Feature>
+                      ))}
                     </div>
-                  </CardContent>
-                </Card>
+                    {relation === "current" ? (
+                      <Button variant="outline" className="w-full" disabled>
+                        <i className="ti ti-rosette-discount-check text-base leading-none" />
+                        Plano atual
+                      </Button>
+                    ) : relation === "downgrade" ? (
+                      <div className="space-y-1.5">
+                        <Button variant="outline" className="w-full" disabled>
+                          Inferior ao plano atual
+                        </Button>
+                        <p className="text-center caption2 text-theme-text-secondary">
+                          Para reduzir o plano, cancele a assinatura atual no perfil.
+                        </p>
+                      </div>
+                    ) : (
+                      <PaymentMethodModal
+                        planSlug={plan.slug}
+                        planName={plan.name}
+                        planPrice={priceFormatted}
+                        highlighted={highlighted}
+                        ctaText={relation === "upgrade" ? "Fazer upgrade" : plan.ctaText}
+                        isUpgrade={relation === "upgrade"}
+                        upgradePreview={upgradePreview}
+                        hasStripe={hasStripe && !!plan.stripePriceId}
+                        hasPix={hasPix}
+                      />
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -167,8 +159,8 @@ export function PricingCards({
 function Feature({ children }: { children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" />
-      <span>{children}</span>
+      <i className="ti ti-check mt-0.5 text-base leading-none shrink-0 text-primary-500" />
+      <span className="body2 text-theme-text-primary">{children}</span>
     </div>
   );
 }
@@ -211,4 +203,3 @@ function buildUpgradePreview(
     isRecurring: false
   };
 }
-

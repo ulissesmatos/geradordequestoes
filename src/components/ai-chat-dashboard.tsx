@@ -14,7 +14,7 @@ import { BotAvatar } from "@/components/bot-avatar";
 import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
 import { ShareLinkModal } from "@/components/share-link-modal";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -522,7 +522,6 @@ export function AiChatDashboard({
 
   const activeSession = sessions.find((item) => item.id === activeSessionId);
   const activeSessionTitle = activeSession?.title ?? "Chat IA";
-  const activeSessionShareUrl = activeSession?.shareUrl ?? null;
 
   const sessionList = (
     <SessionList
@@ -613,7 +612,8 @@ export function AiChatDashboard({
             <p className="text-sm font-semibold text-[var(--primary-soft-foreground)]">Solte imagens ou PDFs para anexar</p>
           </div>
         )}
-        {/* Mini-header mobile (estilo ChatGPT): menu + título + compartilhar + novo chat */}
+        {/* Mini-header mobile: só o essencial (abrir histórico + título + novo chat). Compartilhar
+            mora no "..." de cada conversa na sidebar — não precisa de uma barra própria aqui. */}
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
           <button
             type="button"
@@ -626,46 +626,14 @@ export function AiChatDashboard({
           <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-[var(--foreground)]">
             {activeSessionTitle}
           </span>
-          <div className="flex shrink-0 items-center gap-1">
-            {activeSessionId && (
-              <ShareLinkModal
-                triggerLabel="Compartilhar conversa"
-                trigger={<Share2 className="h-5 w-5" />}
-                triggerClassName="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-                title="Compartilhar conversa"
-                description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
-                revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
-                initialShareUrl={activeSessionShareUrl}
-                createAction={shareChatSessionAction.bind(null, activeSessionId)}
-                revokeAction={revokeChatShareAction.bind(null, activeSessionId)}
-              />
-            )}
-            <Link
-              href="/ai?new=1"
-              aria-label="Novo chat"
-              className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-            >
-              <MessageSquarePlus className="h-5 w-5" />
-            </Link>
-          </div>
+          <Link
+            href="/ai?new=1"
+            aria-label="Novo chat"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+          >
+            <MessageSquarePlus className="h-5 w-5" />
+          </Link>
         </div>
-
-        {/* Header desktop: só aparece com uma conversa ativa, para dar destaque ao botão de compartilhar. */}
-        {activeSessionId && (
-          <div className="hidden h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 md:flex">
-            <span className="min-w-0 truncate text-sm font-semibold text-[var(--foreground)]">{activeSessionTitle}</span>
-            <ShareLinkModal
-              triggerLabel="Compartilhar"
-              triggerClassName={buttonVariants({ variant: "outline", size: "sm", className: "gap-1.5" })}
-              title="Compartilhar conversa"
-              description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
-              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
-              initialShareUrl={activeSessionShareUrl}
-              createAction={shareChatSessionAction.bind(null, activeSessionId)}
-              revokeAction={revokeChatShareAction.bind(null, activeSessionId)}
-            />
-          </div>
-        )}
 
         {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
 
@@ -919,7 +887,12 @@ function SessionRow({
   }
 
   return (
-    <div className={cn("group rounded-md border border-transparent", isActive && "border-[var(--border)] bg-[var(--muted)]")}>
+    <div
+      className={cn(
+        "group rounded-md border border-transparent transition-colors",
+        isActive ? "border-[var(--border)] bg-[var(--muted)]" : "hover:bg-[var(--surface)]"
+      )}
+    >
       {renaming ? (
         <form action={renameChatSessionAction} className="flex items-center gap-1 p-1" onSubmit={() => setRenaming(false)}>
           <input type="hidden" name="sessionId" value={session.id} />
@@ -954,7 +927,7 @@ function SessionRow({
           <Link
             href={`/ai?sessionId=${session.id}`}
             onClick={onNavigate}
-            className="block min-w-0 flex-1 rounded-md px-2 py-2 text-sm hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+            className="block min-w-0 flex-1 rounded-md px-2 py-2 text-sm"
           >
             <span className="block truncate">{session.title}</span>
           </Link>

@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 import { PricingCards } from "@/components/pricing-cards";
-import { SiteHeader } from "@/components/site-header";
-import { SiteFooter } from "@/components/site-footer";
+import { SaasableAssets } from "@/components/saasable/saasable-assets";
+import { SaasableNavbar } from "@/components/saasable/saasable-navbar";
+import { SaasableFooter } from "@/components/saasable/saasable-footer";
 import { getAppSettings } from "@/lib/app-settings";
 import { findStripeSubscriptionId } from "@/lib/payments";
 import { getPricingContent, planFeatures } from "@/lib/pricing";
@@ -40,12 +41,13 @@ export default async function PricingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <SiteHeader logoUrl={appSettings.logoUrl} appName={appSettings.appName} showPlans={false} sticky={false} />
-      <div className="mx-auto max-w-7xl px-4 md:px-6">
+    <>
+      <SaasableAssets />
+      <main className="dm-ready min-h-screen bg-theme-bg-default text-theme-text-primary">
+        <SaasableNavbar logoUrl={appSettings.logoUrl} appName={appSettings.appName} isLoggedIn={Boolean(session?.user)} />
         <PricingCards plans={pricedPlans} headline={pricingContent.headline} subheadline={pricingContent.subheadline} hasStripe={hasStripe} hasPix={hasPix} currentPlan={currentPlan} />
-      </div>
-      <SiteFooter logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
-    </main>
+        <SaasableFooter logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
+      </main>
+    </>
   );
 }

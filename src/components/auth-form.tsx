@@ -4,97 +4,87 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { googleSignInAction, loginAction, registerAction } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const action = mode === "login" ? loginAction : registerAction;
   const [state, formAction] = useActionState(action, null);
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>{mode === "login" ? "Entrar" : "Criar conta"}</CardTitle>
-        <CardDescription>
-          {mode === "login" ? "Acesse sua área de estudos." : "Comece a responder questões em poucos segundos."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form action={googleSignInAction}>
-          <button
-            type="submit"
-            className="flex w-full items-center justify-center gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-[var(--surface-subtle)]"
-          >
-            <GoogleIcon />
-            Continuar com Google
-          </button>
-        </form>
-        {/* O botão do Google fica fora do formulário de cadastro, então quem entra por aqui
-            não veria referência a Termos/Privacidade em nenhum momento. */}
+    <div className="w-full max-w-md rounded-3xl bg-theme-bg-paper p-6 md:p-8">
+      <h4 className="h4">{mode === "login" ? "Entrar" : "Criar conta"}</h4>
+      <p className="mt-1 body2 text-theme-text-secondary">
+        {mode === "login" ? "Acesse sua área de estudos." : "Comece a responder questões em poucos segundos."}
+      </p>
+
+      <form action={googleSignInAction} className="mt-6">
+        <button
+          type="submit"
+          className="flex w-full items-center justify-center gap-3 rounded-2xl border border-theme-divider bg-theme-bg-paper px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-theme-bg-default"
+        >
+          <GoogleIcon />
+          Continuar com Google
+        </button>
+      </form>
+      {/* O botão do Google fica fora do formulário de cadastro, então quem entra por aqui
+          não veria referência a Termos/Privacidade em nenhum momento. */}
+      {mode === "register" && (
+        <p className="mt-2 text-center caption2 text-theme-text-secondary">
+          Ao continuar com o Google, você concorda com os{" "}
+          <Link className="font-semibold text-primary-500 hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
+          e a{" "}
+          <Link className="font-semibold text-primary-500 hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
+        </p>
+      )}
+      <div className="my-4 flex items-center gap-3 caption2 text-theme-text-secondary">
+        <span className="h-px flex-1 bg-theme-divider" />
+        ou {mode === "login" ? "entre" : "cadastre-se"} com e-mail
+        <span className="h-px flex-1 bg-theme-divider" />
+      </div>
+      <form action={formAction} className="space-y-4">
         {mode === "register" && (
-          <p className="mt-2 text-center text-xs text-[var(--muted-foreground)]">
-            Ao continuar com o Google, você concorda com os{" "}
-            <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
-            e a{" "}
-            <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
+          <label className="block space-y-1 subtitle2">
+            Nome
+            <input name="name" required minLength={2} className="form-control" />
+          </label>
+        )}
+        <label className="block space-y-1 subtitle2">
+          E-mail
+          <input name="email" type="email" required className="form-control" />
+        </label>
+        <label className="block space-y-1 subtitle2">
+          Senha
+          <input name="password" type="password" required minLength={mode === "register" ? 8 : 6} className="form-control" />
+        </label>
+        {mode === "login" && (
+          <p className="text-right text-sm">
+            <Link className="font-semibold text-primary-500 hover:underline" href="/recuperar-senha">
+              Esqueci minha senha
+            </Link>
           </p>
         )}
-        <div className="my-4 flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
-          <span className="h-px flex-1 bg-[var(--border)]" />
-          ou {mode === "login" ? "entre" : "cadastre-se"} com e-mail
-          <span className="h-px flex-1 bg-[var(--border)]" />
-        </div>
-        <form action={formAction} className="space-y-4">
-          {mode === "register" && (
-            <label className="block space-y-1 text-sm font-medium">
-              Nome
-              <Input name="name" required minLength={2} />
-            </label>
-          )}
-          <label className="block space-y-1 text-sm font-medium">
-            E-mail
-            <Input name="email" type="email" required />
+        {/* Checkbox obrigatório (era apenas texto informativo). O aceite é gravado com
+            data/hora no usuário — é o que serve de prova de consentimento numa disputa. */}
+        {mode === "register" && (
+          <label className="flex items-start gap-2 caption2 text-theme-text-secondary">
+            <input type="checkbox" name="acceptTerms" required className="mt-0.5 h-4 w-4 shrink-0 accent-primary-500" />
+            <span>
+              Li e concordo com os{" "}
+              <Link className="font-semibold text-primary-500 hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
+              e a{" "}
+              <Link className="font-semibold text-primary-500 hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
+            </span>
           </label>
-          <label className="block space-y-1 text-sm font-medium">
-            Senha
-            <Input name="password" type="password" required minLength={mode === "register" ? 8 : 6} />
-          </label>
-          {mode === "login" && (
-            <p className="text-right text-sm">
-              <Link className="font-semibold text-[var(--primary)] hover:underline" href="/recuperar-senha">
-                Esqueci minha senha
-              </Link>
-            </p>
-          )}
-          {/* Checkbox obrigatório (era apenas texto informativo). O aceite é gravado com
-              data/hora no usuário — é o que serve de prova de consentimento numa disputa. */}
-          {mode === "register" && (
-            <label className="flex items-start gap-2 text-xs text-[var(--muted-foreground)]">
-              <input
-                type="checkbox"
-                name="acceptTerms"
-                required
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
-              />
-              <span>
-                Li e concordo com os{" "}
-                <Link className="font-semibold text-[var(--primary)] hover:underline" href="/termos" target="_blank">Termos de Uso</Link>{" "}
-                e a{" "}
-                <Link className="font-semibold text-[var(--primary)] hover:underline" href="/privacidade" target="_blank">Política de Privacidade</Link>.
-              </span>
-            </label>
-          )}
-          {state?.error && <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
-          <SubmitButton className="w-full">{mode === "login" ? "Entrar" : "Cadastrar"}</SubmitButton>
-        </form>
-        <p className="mt-4 text-center text-sm text-[var(--muted-foreground)]">
-          {mode === "login" ? "Ainda não tem conta?" : "Já tem conta?"}{" "}
-          <Link className="font-semibold text-[var(--primary)]" href={mode === "login" ? "/register" : "/login"}>
-            {mode === "login" ? "Cadastre-se" : "Entrar"}
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+        )}
+        {state?.error && <p className="rounded-2xl bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger-soft-foreground)]">{state.error}</p>}
+        <SubmitButton className="w-full">{mode === "login" ? "Entrar" : "Cadastrar"}</SubmitButton>
+      </form>
+      <p className="mt-4 text-center body2 text-theme-text-secondary">
+        {mode === "login" ? "Ainda não tem conta?" : "Já tem conta?"}{" "}
+        <Link className="font-semibold text-primary-500" href={mode === "login" ? "/register" : "/login"}>
+          {mode === "login" ? "Cadastre-se" : "Entrar"}
+        </Link>
+      </p>
+    </div>
   );
 }
 

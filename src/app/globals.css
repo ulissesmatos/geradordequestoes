@@ -1,4 +1,521 @@
-@import "tailwindcss";
+/* source(none): desliga a auto-detecção de conteúdo do Tailwind v4 e escaneia só o
+   que listamos abaixo. Necessário porque o style.css vendorizado do SaasAble
+   (public/saasable) é CSS já compilado, e a auto-detecção o lia como template,
+   achava seletores tipo bg-[url('../images/...')] (já compilados por ELE) e tentava
+   gerar essa mesma classe aqui, quebrando o build ao resolver um caminho de imagem
+   que não existe neste projeto. */
+@import "tailwindcss" source(none);
+@source "../../src";
+
+/* Dark mode por classe (".dark" na <html>, aplicada por script em layout.tsx a partir da
+   preferência do usuário), não pela media query prefers-color-scheme direto — assim
+   "Claro"/"Escuro" explícitos vencem o SO, e só "Automático" de fato segue o sistema. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/**
+ * Paleta/tipografia "SaasAble" (landing page e páginas privadas restylizadas) — geradas
+ * nativamente pelo NOSSO Tailwind, não por um segundo style.css compilado carregado via
+ * <link>. Carregamos um style.css vendorizado inteiro antes disso e ele quebrou o app: as
+ * duas builds do Tailwind geram as MESMAS classes (.hidden, .md\:flex etc.), e como a
+ * segunda folha carregava depois da nossa no <head>, a regra .hidden dela (sem media query)
+ * ganhava de qualquer .md:flex nosso — por isso a sidebar do chat e o menu do AppNav
+ * sumiam em telas largas. Só existe UMA fonte de verdade agora.
+ */
+@theme {
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-200: var(--primary-200);
+  --color-primary-300: var(--primary-300);
+  --color-primary-400: var(--primary-400);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-800: var(--primary-800);
+  --color-primary-900: var(--primary-900);
+  --color-primary-950: var(--primary-950);
+  --color-secondary-50: var(--secondary-50);
+  --color-secondary-100: var(--secondary-100);
+  --color-secondary-200: var(--secondary-200);
+  --color-secondary-300: var(--secondary-300);
+  --color-secondary-400: var(--secondary-400);
+  --color-secondary-500: var(--secondary-500);
+  --color-secondary-600: var(--secondary-600);
+  --color-secondary-700: var(--secondary-700);
+  --color-secondary-800: var(--secondary-800);
+  --color-secondary-900: var(--secondary-900);
+  --color-secondary-950: var(--secondary-950);
+  --color-neutral-50: var(--neutral-50);
+  --color-neutral-100: var(--neutral-100);
+  --color-neutral-200: var(--neutral-200);
+  --color-neutral-300: var(--neutral-300);
+  --color-neutral-400: var(--neutral-400);
+  --color-neutral-500: var(--neutral-500);
+  --color-neutral-600: var(--neutral-600);
+  --color-neutral-700: var(--neutral-700);
+  --color-neutral-800: var(--neutral-800);
+  --color-neutral-900: var(--neutral-900);
+  --color-neutral-950: var(--neutral-950);
+  --color-theme-text-primary: var(--theme-text-primary);
+  --color-theme-text-secondary: var(--theme-text-secondary);
+  --color-theme-divider: var(--theme-divider);
+  --color-theme-bg-default: var(--theme-bg-default);
+  --color-theme-bg-paper: var(--theme-bg-paper);
+}
+
+:root {
+  /* Escala teal (marca atual) no lugar do azul padrão do kit. */
+  --primary-50: #e6f2f2;
+  --primary-100: #cce6e6;
+  --primary-200: #99cdcd;
+  --primary-300: #4da3a3;
+  --primary-400: #1a8080;
+  --primary-500: #0a6268;
+  --primary-600: #084e53;
+  --primary-700: #063f43;
+  --primary-800: #052f33;
+  --primary-900: #032022;
+  --primary-950: #011012;
+
+  /* Escala dourada (marca atual) no lugar do roxo/azul padrão do kit. */
+  --secondary-50: #fdf2df;
+  --secondary-100: #fbe4bf;
+  --secondary-200: #f6d086;
+  --secondary-300: #efb54d;
+  --secondary-400: #c58200;
+  --secondary-500: #9a5b00;
+  --secondary-600: #7a4900;
+  --secondary-700: #5c3700;
+  --secondary-800: #3f2600;
+  --secondary-900: #241600;
+  --secondary-950: #120b00;
+
+  /* Neutros do kit (mantidos como vieram — já são cinzas quase brancos, servem com
+     qualquer cor de marca). */
+  --neutral-50: #f9f9fc;
+  --neutral-100: #f1f4f9;
+  --neutral-200: #ebeef3;
+  --neutral-300: #e6e8ee;
+  --neutral-400: #e2e2e5;
+  --neutral-500: #d7dadf;
+  --neutral-600: #c2c7ce;
+  --neutral-700: #72787e;
+  --neutral-800: #42474e;
+  --neutral-900: #1a1c1e;
+  --neutral-950: #000000;
+  --theme-text-primary: #1a1c1e;
+  --theme-text-secondary: #42474e;
+  --theme-divider: #c2c7ce;
+  /* bg-default (fundo da página) levemente distinto de bg-paper (cartão), igual
+     neutral-100 — antes eram os dois #fff, então a separação vinha só de usar
+     bg-neutral-100 literal na página em vez do token; padronizando aqui pra tudo que
+     usa bg-theme-bg-default responder ao escuro junto. */
+  --theme-bg-default: #f1f4f9;
+  --theme-bg-paper: #fff;
+
+  /* Escala tipográfica (h1-h6, body, subtitle, caption) usada pelas classes abaixo. */
+  --font-h1-fontFamily: "archivo", serif;
+  --font-h1-fontWeight: 400;
+  --font-h1-fontSize: 57px;
+  --font-h1-lineHeight: 1.123;
+  --font-h1-letterSpacing: -0.25px;
+  --font-h1-md-fontSize: 45px;
+  --font-h1-md-lineHeight: 1.156;
+  --font-h1-sm-fontSize: 32px;
+  --font-h1-sm-lineHeight: 1.222;
+  --font-h2-fontFamily: "archivo", serif;
+  --font-h2-fontWeight: 400;
+  --font-h2-fontSize: 45px;
+  --font-h2-lineHeight: 1.156;
+  --font-h2-letterSpacing: 0px;
+  --font-h2-md-fontSize: 36px;
+  --font-h2-md-lineHeight: 1.222;
+  --font-h2-sm-fontSize: 24px;
+  --font-h2-sm-lineHeight: 1.333;
+  --font-h3-fontFamily: "archivo", serif;
+  --font-h3-fontWeight: 400;
+  --font-h3-fontSize: 28px;
+  --font-h3-lineHeight: 1.286;
+  --font-h3-letterSpacing: 0px;
+  --font-h3-md-fontSize: 24px;
+  --font-h3-md-lineHeight: 1.333;
+  --font-h3-sm-fontSize: 20px;
+  --font-h3-sm-lineHeight: 1.4;
+  --font-h4-fontFamily: "archivo", serif;
+  --font-h4-fontWeight: 400;
+  --font-h4-fontSize: 24px;
+  --font-h4-lineHeight: 1.333;
+  --font-h4-letterSpacing: 0px;
+  --font-h4-md-fontSize: 20px;
+  --font-h4-md-lineHeight: 1.4;
+  --font-h4-sm-fontSize: 16px;
+  --font-h4-sm-lineHeight: 1.5;
+  --font-h5-fontFamily: "figtree", serif;
+  --font-h5-fontWeight: 500;
+  --font-h5-fontSize: 22px;
+  --font-h5-lineHeight: 1.273;
+  --font-h5-letterSpacing: 0px;
+  --font-h5-md-fontSize: 16px;
+  --font-h5-md-lineHeight: 1.5;
+  --font-h5-md-letterSpacing: 0.15px;
+  --font-h6-fontFamily: "figtree", serif;
+  --font-h6-fontWeight: 400;
+  --font-h6-fontSize: 22px;
+  --font-h6-lineHeight: 1.364;
+  --font-h6-letterSpacing: 0px;
+  --font-h6-md-fontSize: 16px;
+  --font-h6-md-lineHeight: 1.5;
+  --font-h6-md-letterSpacing: 0.5px;
+  --font-body1-fontFamily: "figtree", serif;
+  --font-body1-fontWeight: 400;
+  --font-body1-fontSize: 16px;
+  --font-body1-lineHeight: 1.5;
+  --font-body1-letterSpacing: 0.5px;
+  --font-body1-md-fontSize: 14px;
+  --font-body1-md-lineHeight: 1.429;
+  --font-body1-md-letterSpacing: 0.25px;
+  --font-body2-fontFamily: "figtree", serif;
+  --font-body2-fontWeight: 400;
+  --font-body2-fontSize: 14px;
+  --font-body2-lineHeight: 1.429;
+  --font-body2-letterSpacing: 0.25px;
+  --font-body2-md-fontSize: 12px;
+  --font-body2-md-lineHeight: 1.5;
+  --font-subtitle1-fontFamily: "figtree", serif;
+  --font-subtitle1-fontWeight: 500;
+  --font-subtitle1-fontSize: 16px;
+  --font-subtitle1-lineHeight: 1.5;
+  --font-subtitle1-letterSpacing: 0.15px;
+  --font-subtitle1-md-fontWeight: 600;
+  --font-subtitle1-md-fontSize: 14px;
+  --font-subtitle1-md-lineHeight: 1.429;
+  --font-subtitle1-md-letterSpacing: 0.1px;
+  --font-subtitle2-fontFamily: "figtree", serif;
+  --font-subtitle2-fontWeight: 600;
+  --font-subtitle2-fontSize: 14px;
+  --font-subtitle2-lineHeight: 1.429;
+  --font-subtitle2-letterSpacing: 0.1px;
+  --font-subtitle2-md-fontSize: 12px;
+  --font-subtitle2-md-lineHeight: 1.5;
+  --font-caption-fontFamily: "figtree", serif;
+  --font-caption-fontWeight: 600;
+  --font-caption-fontSize: 12px;
+  --font-caption-lineHeight: 1.333;
+  --font-caption-letterSpacing: 0px;
+  --font-caption1-fontFamily: "figtree", serif;
+  --font-caption1-fontWeight: 400;
+  --font-caption1-fontSize: 16px;
+  --font-caption1-lineHeight: 1.5;
+  --font-caption1-letterSpacing: 0.5px;
+  --font-caption2-fontFamily: "figtree", serif;
+  --font-caption2-fontWeight: 500;
+  --font-caption2-fontSize: 14px;
+  --font-caption2-lineHeight: 1.429;
+  --font-caption2-letterSpacing: 0.1px;
+  --font-btn-fontFamily: "archivo", serif;
+}
+
+/* Tipografia SaasAble — só via classe (.h1-.h6), NÃO pela tag <h1>-<h6> sozinha. Isso já
+   foi ".h1 {...}" e pegava QUALQUER heading do app (painel, chat, questões...), não só
+   as telas com visual SaasAble — e por ser uma regra fora de qualquer @layer, ela vencia
+   até classes explícitas do Tailwind tipo text-[var(--foreground)], que são geradas dentro
+   de @layer utilities (regra fora de layer sempre ganha de regra em layer, não importa
+   especificidade). Descoberto porque no modo escuro isso virava texto quase preto sobre
+   fundo quase preto em título após título; no claro já era um bug silencioso (cores tipo
+   text-emerald-800 de telas de pagamento também perdiam pra este mesmo motivo). */
+.h1 {
+  font-family: var(--font-h1-fontFamily);
+  font-size: var(--font-h1-fontSize);
+  line-height: var(--font-h1-lineHeight);
+  letter-spacing: var(--font-h1-letterSpacing);
+  font-weight: var(--font-h1-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h1 {
+    font-size: var(--font-h1-md-fontSize);
+    line-height: var(--font-h1-md-lineHeight);
+  }
+}
+@media (max-width: 640px) {
+  .h1 {
+    font-size: var(--font-h1-sm-fontSize);
+    line-height: var(--font-h1-sm-lineHeight);
+  }
+}
+.h2 {
+  font-family: var(--font-h2-fontFamily);
+  font-size: var(--font-h2-fontSize);
+  line-height: var(--font-h2-lineHeight);
+  letter-spacing: var(--font-h2-letterSpacing);
+  font-weight: var(--font-h2-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h2 {
+    font-size: var(--font-h2-md-fontSize);
+    line-height: var(--font-h2-md-lineHeight);
+  }
+}
+@media (max-width: 640px) {
+  .h2 {
+    font-size: var(--font-h2-sm-fontSize);
+    line-height: var(--font-h2-sm-lineHeight);
+  }
+}
+.h3 {
+  font-family: var(--font-h3-fontFamily);
+  font-size: var(--font-h3-fontSize);
+  line-height: var(--font-h3-lineHeight);
+  letter-spacing: var(--font-h3-letterSpacing);
+  font-weight: var(--font-h3-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h3 {
+    font-size: var(--font-h3-md-fontSize);
+    line-height: var(--font-h3-md-lineHeight);
+  }
+}
+@media (max-width: 640px) {
+  .h3 {
+    font-size: var(--font-h3-sm-fontSize);
+    line-height: var(--font-h3-sm-lineHeight);
+  }
+}
+.h4 {
+  font-family: var(--font-h4-fontFamily);
+  font-size: var(--font-h4-fontSize);
+  line-height: var(--font-h4-lineHeight);
+  letter-spacing: var(--font-h4-letterSpacing);
+  font-weight: var(--font-h4-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h4 {
+    font-size: var(--font-h4-md-fontSize);
+    line-height: var(--font-h4-md-lineHeight);
+  }
+}
+@media (max-width: 640px) {
+  .h4 {
+    font-size: var(--font-h4-sm-fontSize);
+    line-height: var(--font-h4-sm-lineHeight);
+  }
+}
+.h5 {
+  font-family: var(--font-h5-fontFamily);
+  font-size: var(--font-h5-fontSize);
+  line-height: var(--font-h5-lineHeight);
+  letter-spacing: var(--font-h5-letterSpacing);
+  font-weight: var(--font-h5-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h5 {
+    font-size: var(--font-h5-md-fontSize);
+    line-height: var(--font-h5-md-lineHeight);
+    letter-spacing: var(--font-h5-md-letterSpacing);
+  }
+}
+@media (max-width: 640px) {
+  .h5 {
+    font-size: var(--font-h5-sm-fontSize);
+    line-height: var(--font-h5-sm-lineHeight);
+  }
+}
+.h6 {
+  font-family: var(--font-h6-fontFamily);
+  font-size: var(--font-h6-fontSize);
+  line-height: var(--font-h6-lineHeight);
+  letter-spacing: var(--font-h6-letterSpacing);
+  font-weight: var(--font-h6-fontWeight);
+  color: var(--theme-text-primary);
+}
+@media (max-width: 992px) {
+  .h6 {
+    font-size: var(--font-h6-md-fontSize);
+    line-height: var(--font-h6-md-lineHeight);
+    letter-spacing: var(--font-h6-md-letterSpacing);
+  }
+}
+@media (max-width: 640px) {
+  .h6 {
+    font-size: var(--font-h6-sm-fontSize);
+    line-height: var(--font-h6-sm-lineHeight);
+  }
+}
+.body1 {
+  font-family: var(--font-body1-fontFamily);
+  font-size: var(--font-body1-fontSize);
+  line-height: var(--font-body1-lineHeight);
+  letter-spacing: var(--font-body1-letterSpacing);
+  font-weight: var(--font-body1-fontWeight);
+}
+.body2 {
+  font-family: var(--font-body2-fontFamily);
+  font-size: var(--font-body2-fontSize);
+  line-height: var(--font-body2-lineHeight);
+  letter-spacing: var(--font-body2-letterSpacing);
+  font-weight: var(--font-body2-fontWeight);
+}
+.subtitle1 {
+  font-family: var(--font-subtitle1-fontFamily);
+  font-size: var(--font-subtitle1-fontSize);
+  line-height: var(--font-subtitle1-lineHeight);
+  letter-spacing: var(--font-subtitle1-letterSpacing);
+  font-weight: var(--font-subtitle1-fontWeight);
+}
+.subtitle2 {
+  font-family: var(--font-subtitle2-fontFamily);
+  font-size: var(--font-subtitle2-fontSize);
+  line-height: var(--font-subtitle2-lineHeight);
+  letter-spacing: var(--font-subtitle2-letterSpacing);
+  font-weight: var(--font-subtitle2-fontWeight);
+}
+.caption {
+  font-family: var(--font-caption-fontFamily);
+  font-size: var(--font-caption-fontSize);
+  line-height: var(--font-caption-lineHeight);
+  letter-spacing: var(--font-caption-letterSpacing);
+  font-weight: var(--font-caption-fontWeight);
+}
+.caption1 {
+  font-family: var(--font-caption1-fontFamily);
+  font-size: var(--font-caption1-fontSize);
+  line-height: var(--font-caption1-lineHeight);
+  letter-spacing: var(--font-caption1-letterSpacing);
+  font-weight: var(--font-caption1-fontWeight);
+}
+.caption2 {
+  font-family: var(--font-caption2-fontFamily);
+  font-size: var(--font-caption2-fontSize);
+  line-height: var(--font-caption2-lineHeight);
+  letter-spacing: var(--font-caption2-letterSpacing);
+  font-weight: var(--font-caption2-fontWeight);
+}
+
+/* Botão pill do SaasAble — nome de classe próprio (.btn), não colide com nada nosso. */
+.btn {
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 100px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  padding-inline: 23px;
+  padding-block: 10px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.429;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  transition: all 0.25s var(--ease-in-out, cubic-bezier(0.4, 0, 0.2, 1));
+  font-family: var(--font-btn-fontFamily);
+}
+.btn.disabled,
+.btn:disabled {
+  pointer-events: none;
+  cursor: default;
+  opacity: 75%;
+}
+.btn.btn-lg {
+  padding-block: 19px;
+}
+.btn.btn-md {
+  padding-block: 13px;
+}
+.btn-primary {
+  background-color: var(--color-primary-500);
+  color: #fff;
+}
+.btn-primary:hover {
+  background-color: var(--color-primary-800);
+}
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--color-primary-800);
+}
+.btn-outline-primary {
+  border: 1px solid var(--color-primary-500);
+  background-color: transparent;
+  color: var(--color-primary-500);
+}
+.btn-outline-primary:hover,
+.btn-outline-primary:focus {
+  background-color: color-mix(in oklab, var(--color-primary-100) 40%, transparent);
+}
+
+/* Padding vertical de seção e largura máxima de conteúdo, usados em toda página
+   restylizada. "saasable-container" (não "container") de propósito — "container" é um
+   nome reservado do Tailwind, reusar geraria o mesmíssimo conflito de cascata que este
+   comentário lá em cima explica. */
+.common-section {
+  padding-block: 2rem;
+}
+@media (width >= 40rem) {
+  .common-section {
+    padding-block: 2.5rem;
+  }
+}
+@media (width >= 48rem) {
+  .common-section {
+    padding-block: 3rem;
+  }
+}
+.saasable-container {
+  margin-inline: auto;
+  max-width: 100%;
+  padding-inline: 1rem;
+}
+@media (width >= 40rem) {
+  .saasable-container {
+    padding-inline: 1.5rem;
+  }
+}
+@media (min-width: 1024px) {
+  .saasable-container {
+    max-width: 1128px;
+  }
+}
+@media (min-width: 1536px) {
+  .saasable-container {
+    max-width: 1266px;
+  }
+}
+
+/* Input de formulário do SaasAble. */
+.form-control {
+  display: block;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid var(--color-theme-divider);
+  background-color: var(--color-theme-bg-paper);
+  padding-inline: 14px;
+  padding-block: 16.5px;
+  font-size: var(--text-base);
+}
+.form-control::placeholder {
+  color: #bec8d0;
+}
+.form-control:focus {
+  border-color: var(--color-primary-500);
+  outline: none;
+}
+.form-control:disabled {
+  pointer-events: none;
+  background-color: color-mix(in oklab, var(--color-secondary-200) 10%, transparent);
+}
+/* O navegador pinta campo autopreenchido (e-mail/senha salvos) com um azul/amarelo
+   fixo, por cima de qualquer background-color nosso — só um box-shadow interno gigante
+   consegue cobrir isso. Sem isto, o card de login/cadastro ganha uma caixa azulada
+   destoante (mais visível ainda no escuro, onde o autofill do navegador continua claro). */
+.form-control:-webkit-autofill,
+.form-control:-webkit-autofill:hover,
+.form-control:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--color-theme-bg-paper) inset;
+  -webkit-text-fill-color: var(--color-theme-text-primary);
+  caret-color: var(--color-theme-text-primary);
+  transition: background-color 5000s ease-in-out 0s;
+}
 
 :root {
   /* Base neutrals — calibrados para contraste AA, menos "esverdeado" no fundo */
@@ -52,6 +569,93 @@
   --shadow-sm: 0 1px 2px rgba(19, 26, 24, 0.06);
   --shadow-md: 0 4px 14px rgba(19, 26, 24, 0.08);
   --shadow-lg: 0 12px 32px rgba(19, 26, 24, 0.12);
+}
+
+/* Contraparte escura dos tokens acima — só estes (não os tokens do design system SaasAble
+   em @theme/primeiro :root, que ainda são só claros). Cobre AppNav, o chat, e todas as
+   telas que não passaram pelo restyle SaasAble (ainda usam Card/Badge do shadcn, que já
+   são construídos em cima desses mesmos tokens). As páginas restylizadas (landing,
+   pricing, auth, perfil, afiliado) continuam claras por enquanto — entram num lote
+   separado de ajuste visual. */
+/* ".dark" puro, não ":root.dark" — o Tailwind trata o seletor ":root" como especial (é
+   dali que ele extrai os valores padrão do tema pro @theme) e descartava esse bloco
+   inteiro da build quando ele vinha qualificado como ":root.dark". */
+.dark {
+  --background: #0f1413;
+  --foreground: #e7ece9;
+  --card: #161d1b;
+  --surface: #161d1b;
+  --surface-subtle: #1c2422;
+  --surface-strong: #060908;
+  --muted: #232b29;
+  --muted-foreground: #9aa8a2;
+  --border: #2a332f;
+  --border-strong: #3a4642;
+
+  --primary: #14b8a6;
+  --primary-hover: #0d9488;
+  --primary-active: #0b7469;
+  --primary-foreground: #05201d;
+  --primary-soft: #12302d;
+  --primary-soft-foreground: #8fe9df;
+
+  --accent: #e0a339;
+  --accent-soft: #3a2a0e;
+  --accent-soft-hover: #4a3712;
+  --accent-foreground: #fbdfa0;
+
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --danger-soft: #3a1512;
+  --danger-soft-foreground: #ffb4a8;
+  --danger-soft-border: #5c231d;
+  --success: #34d399;
+  --success-soft: #0e2a1f;
+  --success-soft-foreground: #86efac;
+  --warning: #f0b429;
+  --warning-soft: #3a2a0a;
+  --warning-soft-foreground: #fbdfa0;
+  --info: #38bdf8;
+  --info-soft: #0c2436;
+  --info-soft-foreground: #bae6fd;
+
+  --ring: #14b8a6;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* Contraparte escura dos tokens "theme-*" do SaasAble — SÓ dentro de ".dm-ready"
+   (Perfil, Afiliado por enquanto), não em ".dark" geral. Landing, pricing, auth e as
+   demais páginas com visual SaasAble ainda usam bg-white/bg-neutral-100 literal em
+   dezenas de lugares não auditados; se esses tokens virassem escuros ali também, o
+   texto (agora claro) ficaria claro sobre esses fundos que continuam brancos —
+   quebrando exatamente as páginas que ainda não foram revisadas. Toda página cujos
+   Panels/cards já foram conferidos e ajustados para o escuro ganha ".dm-ready" no
+   wrapper raiz.
+
+   Repete cada valor em "--theme-*" E "--color-theme-*": o @theme do Tailwind gera
+   "--color-theme-bg-paper: var(--theme-bg-paper)" UMA VEZ, só em :root — uma classe
+   como bg-theme-bg-paper usa "--color-theme-bg-paper", e essa variável nunca é
+   redeclarada aqui embaixo, então ela fica "congelada" com o valor de --theme-bg-paper
+   QUE EXISTIA EM :ROOT (claro), por mais que --theme-bg-paper em si mude neste escopo.
+   Só reatribuindo a própria "--color-theme-nome" aqui é que as classes utilitárias
+   (bg-theme-bg-paper, text-theme-text-secondary etc, geradas pelo Tailwind) realmente
+   enxergam o valor novo; "--theme-nome" sozinha só resolve pra quem usa var() direto,
+   como as regras .h1-.h6. */
+.dark .dm-ready {
+  --theme-text-primary: #e7ece9;
+  --theme-text-secondary: #9aa8a2;
+  --theme-divider: #2a332f;
+  --theme-bg-default: #0f1413;
+  --theme-bg-paper: #161d1b;
+
+  --color-theme-text-primary: #e7ece9;
+  --color-theme-text-secondary: #9aa8a2;
+  --color-theme-divider: #2a332f;
+  --color-theme-bg-default: #0f1413;
+  --color-theme-bg-paper: #161d1b;
 }
 
 * {

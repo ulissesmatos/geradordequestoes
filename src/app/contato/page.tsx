@@ -1,44 +1,46 @@
 import { Building2, Mail } from "lucide-react";
+import { auth } from "@/auth";
 import { ContactForm } from "@/components/contact-form";
-import { SiteHeader } from "@/components/site-header";
-import { SiteFooter } from "@/components/site-footer";
-import { Card, CardContent } from "@/components/ui/card";
+import { SaasableAssets } from "@/components/saasable/saasable-assets";
+import { SaasableNavbar } from "@/components/saasable/saasable-navbar";
+import { SaasableFooter } from "@/components/saasable/saasable-footer";
+import { SaasablePageHeader } from "@/components/saasable/saasable-page-header";
+import { Reveal } from "@/components/saasable/reveal";
 import { getAppSettings } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContatoPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
-  const [appSettings, params] = await Promise.all([getAppSettings(), searchParams]);
+  const [appSettings, params, session] = await Promise.all([getAppSettings(), searchParams, auth()]);
   const isTeams = params.empresa === "1";
 
   return (
-    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <SiteHeader logoUrl={appSettings.logoUrl} appName={appSettings.appName} sticky={false} />
+    <>
+      <SaasableAssets />
+      <main className="dm-ready min-h-screen bg-theme-bg-default text-theme-text-primary">
+        <SaasableNavbar logoUrl={appSettings.logoUrl} appName={appSettings.appName} isLoggedIn={Boolean(session?.user)} />
 
-      <section className="mx-auto max-w-3xl px-4 py-12 md:px-6 md:py-16">
-        <div className="mb-8 text-center">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--primary-soft-foreground)]">
-            {isTeams ? <Building2 className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
-            {isTeams ? "Planos para empresas" : "Fale com a gente"}
+        <section className="common-section">
+          <div className="saasable-container max-w-3xl">
+            <SaasablePageHeader
+              icon={isTeams ? <Building2 className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
+              badge={isTeams ? "Planos para empresas" : "Fale com a gente"}
+              title={isTeams ? "Monte um plano para sua equipe" : "Entre em contato"}
+              description={
+                isTeams
+                  ? "Conte quantas pessoas participariam e como funciona seu grupo. Retornamos com uma proposta de assinatura em grupo com preço personalizado."
+                  : "Dúvidas, sugestões ou suporte: envie sua mensagem e responderemos por e-mail."
+              }
+            />
+
+            <Reveal delay={0.1} className="mt-10 rounded-3xl bg-theme-bg-paper p-6 md:p-8">
+              <ContactForm defaultTeams={isTeams} />
+            </Reveal>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
-            {isTeams ? "Monte um plano para sua equipe" : "Entre em contato"}
-          </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
-            {isTeams
-              ? "Conte quantas pessoas participariam e como funciona seu grupo. Retornamos com uma proposta de assinatura em grupo com preço personalizado."
-              : "Dúvidas, sugestões ou suporte: envie sua mensagem e responderemos por e-mail."}
-          </p>
-        </div>
+        </section>
 
-        <Card>
-          <CardContent className="p-6 md:p-8">
-            <ContactForm defaultTeams={isTeams} />
-          </CardContent>
-        </Card>
-      </section>
-
-      <SiteFooter logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
-    </main>
+        <SaasableFooter logoUrl={appSettings.logoUrl} appName={appSettings.appName} />
+      </main>
+    </>
   );
 }
