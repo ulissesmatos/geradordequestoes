@@ -20,9 +20,9 @@ export const chatTools = {
         .int()
         .min(1)
         .max(QUESTION_LIMITS.maxPerBlock)
-        .default(5)
+        .default(QUESTION_LIMITS.batchSize)
         .describe(
-          `Quantidade de questões que o usuário pediu, de 1 a ${QUESTION_LIMITS.maxPerBlock}. Se ele pedir mais que ${QUESTION_LIMITS.maxPerBlock}, use ${QUESTION_LIMITS.maxPerBlock}. Nunca reduza por conta própria achando que o plano dele não permite — o sistema corta e avisa.`
+          `Quantidade de questões que o usuário pediu, de 1 a ${QUESTION_LIMITS.maxPerBlock}. Se ele pedir mais que ${QUESTION_LIMITS.maxPerBlock}, use ${QUESTION_LIMITS.maxPerBlock}. Nunca reduza por conta própria achando que o plano dele não permite — o sistema corta e avisa. Se ele NÃO mencionar nenhuma quantidade (ex.: "gere questões sobre X", sem número), use ${QUESTION_LIMITS.batchSize} — não assuma o teto máximo de ${QUESTION_LIMITS.maxPerBlock} só porque o assunto é amplo.`
         ),
       difficulty: z.enum(["FACIL", "MEDIO", "DIFICIL"]).default("MEDIO"),
       format: z.enum(["CERTO_ERRADO", "MULTIPLA_ESCOLHA"]).default("CERTO_ERRADO").describe("Certo/Errado é o padrão do Cebraspe."),
