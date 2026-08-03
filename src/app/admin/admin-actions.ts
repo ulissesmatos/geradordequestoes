@@ -1,6 +1,6 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PopupAudience, PopupKind, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
+import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PopupAudience, PopupKind, QuestionAnswer, QuestionFormat, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -116,18 +116,36 @@ export async function createQuestionAction(formData: FormData) {
 
 export async function reviewQuestionAction(formData: FormData) {
   const admin = await requireAdmin();
+  const questionId = String(formData.get("questionId"));
+  const answer = (formData.get("answer") || null) as QuestionAnswer | null;
+
+  const current = await prisma.question.findUnique({ where: { id: questionId }, select: { format: true } });
+
   await prisma.question.update({
-    where: { id: String(formData.get("questionId")) },
+    where: { id: questionId },
     data: {
       statement: String(formData.get("statement")),
       supportText: String(formData.get("supportText") ?? "").trim() || null,
-      answer: (formData.get("answer") || null) as QuestionAnswer | null,
+      answer,
       explanation: String(formData.get("explanation")),
       difficulty: formData.get("difficulty") as Difficulty,
       status: formData.get("status") as QuestionStatus,
       reviewedById: admin.id
     }
   });
+
+  // Certo/Errado guarda o gabarito em DOIS lugares: Question.answer (o que a tela de admin
+  // mostra) e QuestionOption.isCorrect (o que question-actions.ts usa de fato pra corrigir a
+  // resposta do aluno, via selectedOptionId). Sem sincronizar os dois, corrigir um gabarito
+  // errado aqui só mudava o texto na tela do admin — o aluno continuava sendo corrigido pelo
+  // gabarito ANTIGO, porque a resposta dele referencia o option, não o campo answer.
+  if (current?.format === QuestionFormat.CERTO_ERRADO && answer) {
+    await Promise.all([
+      prisma.questionOption.updateMany({ where: { questionId, label: "C" }, data: { isCorrect: answer === "CERTO" } }),
+      prisma.questionOption.updateMany({ where: { questionId, label: "E" }, data: { isCorrect: answer === "ERRADO" } })
+    ]);
+  }
+
   revalidatePath("/admin/questoes");
   revalidatePath("/admin/questoes/revisar");
 }
