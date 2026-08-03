@@ -1,8 +1,9 @@
 import { deleteQuestionAction } from "@/app/admin/admin-actions";
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { ManualQuestionForm } from "@/components/admin/manual-question-form";
-import { MathText } from "@/components/math-text";
+import { QuestionReviewForm } from "@/components/admin/question-review-form";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,11 @@ export default async function AdminQuestionsPage({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <CardTitle className="text-base">
                   {question.subject.name} / {question.topic.name} / {question.status} / {question.format}
+                  {question.reviewedById && (
+                    <span className="ml-2 rounded-full bg-[var(--success-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--success)]">
+                      Revisada pela equipe
+                    </span>
+                  )}
                 </CardTitle>
                 <ConfirmDeleteButton action={deleteQuestionAction} id={question.id} confirmMessage="Excluir esta questão?" />
               </div>
@@ -71,46 +77,18 @@ export default async function AdminQuestionsPage({
                 Criada por: {question.createdBy?.email ?? "manual/sem usuário"} {question.questionSet ? `/ Bloco: ${question.questionSet.title}` : ""}
               </p>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {question.supportText && (
-                <p className="rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2.5 text-sm text-[var(--muted-foreground)]">
-                  <MathText text={question.supportText} />
-                </p>
-              )}
-              <p><MathText text={question.statement} /></p>
-              {question.options.length > 0 ? (
-                <div className="grid gap-2">
-                  {question.options.map((option) => (
-                    <p key={option.id} className={option.isCorrect ? "text-sm font-semibold text-[var(--success)]" : "text-sm"}>
-                      {option.label}) <MathText text={option.text} />
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm font-semibold">Gabarito: {question.answer}</p>
-              )}
-              <p className="text-sm text-[var(--muted-foreground)]"><MathText text={question.explanation} /></p>
+            <CardContent>
+              <QuestionReviewForm question={question} defaultStatus={question.status} />
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <a
-          aria-disabled={page <= 1}
-          href={`/admin/questoes?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page - 1) }).toString()}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Anterior
-        </a>
-        <a
-          aria-disabled={page >= totalPages}
-          href={`/admin/questoes?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page + 1) }).toString()}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Próxima
-        </a>
-      </div>
+      <AdminPagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={(p) => `/admin/questoes?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(p) }).toString()}`}
+      />
     </div>
   );
 }

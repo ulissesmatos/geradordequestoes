@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { SubscriptionStatus } from "@prisma/client";
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -96,22 +97,11 @@ export default async function UsersPage({
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between">
-        <a
-          aria-disabled={page <= 1}
-          href={`/admin/usuarios?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page - 1) }).toString()}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Anterior
-        </a>
-        <a
-          aria-disabled={page >= totalPages}
-          href={`/admin/usuarios?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(page + 1) }).toString()}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Próxima
-        </a>
-      </div>
+      <AdminPagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={(p) => `/admin/usuarios?${new URLSearchParams({ ...(query ? { q: query } : {}), page: String(p) }).toString()}`}
+      />
     </div>
   );
 }

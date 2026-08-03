@@ -1,4 +1,6 @@
 import { createCouponAction, createPlanAction, deleteCouponAction, updatePlanAction, updatePricingContentAction } from "@/app/admin/admin-actions";
+import { AdminPagination } from "@/components/admin/admin-pagination";
+import { AdminTabs, type AdminTabDef } from "@/components/admin/admin-tabs";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { PlanCapabilitiesFieldset } from "@/components/admin/plan-capabilities-fieldset";
@@ -12,17 +14,41 @@ import { parseCapabilities } from "@/lib/capabilities";
 import { defaultPlanFeatures, getPricingContent } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
-export default async function AdminPlansPage() {
-  const [plans, coupons, pricingContent] = await Promise.all([
+const COUPON_PAGE_SIZE = 20;
+
+const TABS: AdminTabDef[] = [
+  { value: "planos", label: "Planos" },
+  { value: "cupons", label: "Cupons" }
+];
+
+export default async function AdminPlansPage({
+  searchParams
+}: {
+  searchParams: Promise<{ tab?: string; page?: string }>;
+}) {
+  const params = await searchParams;
+  const activeTab = params.tab === "cupons" ? "cupons" : "planos";
+  const page = Math.max(1, Number(params.page ?? 1) || 1);
+
+  return (
+    <div className="space-y-6">
+      <AdminPageHeader title="Planos & Pricing" description="Controle planos, features, textos públicos, cupons e IDs dos gateways." />
+      <AdminTabs tabs={TABS} activeValue={activeTab} basePath="/admin/planos" />
+
+      {activeTab === "planos" && <PlanosTab />}
+      {activeTab === "cupons" && <CuponsTab page={page} />}
+    </div>
+  );
+}
+
+async function PlanosTab() {
+  const [plans, pricingContent] = await Promise.all([
     prisma.subscriptionPlan.findMany({ orderBy: [{ displayOrder: "asc" }, { priceCents: "asc" }] }),
-    prisma.coupon.findMany({ orderBy: { createdAt: "desc" } }),
     getPricingContent()
   ]);
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Planos & Pricing" description="Controle planos, features, textos públicos, cupons e IDs dos gateways." />
-
       <Card>
         <CardHeader>
           <CardTitle>Textos públicos do pricing</CardTitle>
@@ -127,7 +153,23 @@ export default async function AdminPlansPage() {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
 
+async function CuponsTab({ page }: { page: number }) {
+  const [coupons, total] = await Promise.all([
+    prisma.coupon.findMany({
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * COUPON_PAGE_SIZE,
+      take: COUPON_PAGE_SIZE
+    }),
+    prisma.coupon.count()
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / COUPON_PAGE_SIZE));
+
+  return (
+    <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Novo cupom</CardTitle>
@@ -156,7 +198,12 @@ export default async function AdminPlansPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Cupons</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Cupons</CardTitle>
+          <CardDescription>
+            {total} cupons · página {page} de {totalPages}
+          </CardDescription>
+        </CardHeader>
         <CardContent className="space-y-2">
           {coupons.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Nenhum cupom criado.</p>}
           {coupons.map((coupon) => (
@@ -171,6 +218,7 @@ export default async function AdminPlansPage() {
           ))}
         </CardContent>
       </Card>
+      <AdminPagination page={page} totalPages={totalPages} buildHref={(p) => `/admin/planos?tab=cupons&page=${p}`} />
     </div>
   );
 }

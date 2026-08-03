@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { updateQuestionFeedbackStatusAction } from "@/app/admin/admin-actions";
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -138,23 +139,7 @@ export default async function AdminFeedbacksPage({ searchParams }: { searchParam
         )}
       </div>
 
-      <div className="flex items-center justify-between">
-        <a
-          aria-disabled={page <= 1}
-          href={`/admin/feedbacks?status=${activeFilter}&page=${page - 1}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Anterior
-        </a>
-        <span className="text-sm text-[var(--muted-foreground)]">página {page} de {totalPages}</span>
-        <a
-          aria-disabled={page >= totalPages}
-          href={`/admin/feedbacks?status=${activeFilter}&page=${page + 1}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Próxima
-        </a>
-      </div>
+      <AdminPagination page={page} totalPages={totalPages} buildHref={(p) => `/admin/feedbacks?status=${activeFilter}&page=${p}`} />
     </div>
   );
 }

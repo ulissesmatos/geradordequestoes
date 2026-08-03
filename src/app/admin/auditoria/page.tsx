@@ -1,3 +1,4 @@
+import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTimeBR } from "@/lib/dates";
@@ -51,22 +52,7 @@ export default async function AdminAuditPage({
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between">
-        <a
-          aria-disabled={page <= 1}
-          href={`/admin/auditoria?page=${page - 1}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Anterior
-        </a>
-        <a
-          aria-disabled={page >= totalPages}
-          href={`/admin/auditoria?page=${page + 1}`}
-          className={`rounded-md border border-[var(--border)] px-3 py-2 text-sm ${page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-[var(--surface-subtle)]"}`}
-        >
-          Próxima
-        </a>
-      </div>
+      <AdminPagination page={page} totalPages={totalPages} buildHref={(p) => `/admin/auditoria?page=${p}`} />
     </div>
   );
 }
