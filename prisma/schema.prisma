@@ -131,6 +131,22 @@ enum SubscriptionEventType {
   MANUAL
 }
 
+/// Motivo do cancelamento de UserSubscription — usado pra separar churn de verdade
+/// (VOLUNTARY/PAYMENT_FAILED) de encerramentos que não são perda de cliente.
+enum SubscriptionCancelReason {
+  /// Cliente cancelou (ex.: portal Stripe), sem PAST_DUE recente sem PAID depois.
+  VOLUNTARY
+  /// Stripe esgotou tentativas de cobrança (dunning) — havia PAST_DUE sem PAID depois.
+  PAYMENT_FAILED
+  /// Admin encerrou a assinatura ou apagou a conta pelo painel.
+  ADMIN
+  /// Pacote de equipe cancelado — encerra as vagas dos membros.
+  TEAM
+  /// Linha substituída por uma assinatura NOVA e ativa do mesmo usuário (upgrade, renovação,
+  /// troca de plano) — o mesmo cliente continuando, NUNCA entra em métrica de churn.
+  SUPERSEDED
+}
+
 enum CouponType {
   PERCENT
   FIXED
@@ -188,6 +204,7 @@ model User {
   referredBy         AffiliateReferral?
   chatShares         ChatShare[]
   questionSetShares  QuestionSetShare[]
+  popupStates        PopupUserState[]
 }
 
 model EmailVerificationCode {
@@ -228,6 +245,11 @@ model AiProviderSetting {
   webSearchEnabled     Boolean                @default(false)
   webSearchApiKey      String?
   extractionModel      String?
+  /// USD por 1.000.000 de tokens de ENTRADA do modelo `model` ATUAL — não há histórico por
+  /// modelo, então trocar `model` sem atualizar este par deixa o custo calculado errado.
+  /// Decimal (não Int cents): custo por token é sub-centavo. null = custo não calculado.
+  inputPricePerMillionUsd  Decimal?            @db.Decimal(10, 4)
+  outputPricePerMillionUsd Decimal?            @db.Decimal(10, 4)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 }
@@ -372,17 +394,32 @@ model FavoriteQuestion {
 
 model AiGenerationLog {
   id           String     @id @default(cuid())
-  adminId      String
+  /// Renomeado de adminId: recebe o id de QUALQUER usuário que gerou (aluno ou admin), não só admin.
+  userId       String
   subjectId    String
   topicId      String
   difficulty   Difficulty
   quantity     Int
   model        String
+  /// Mega-prompt inteiro enviado à IA (instruções + contexto), mantido como estava.
   prompt       String
+  /// O que o usuário efetivamente digitou/pediu — mensagem de chat ou campo do formulário —
+  /// separado do mega-prompt acima, pra ficar legível em /admin/logs-ia.
+  userPrompt   String?
+  /// JSON normalizado das questões geradas (pós-parse), pra debug em /admin/logs-ia.
+  responseText String?
+  /// Soma de tokens de TODAS as chamadas ao provedor desta geração (lotes + reparo). null em
+  /// linhas antigas (antes desta coluna existir) ou quando o preço não estava configurado.
+  inputTokens  Int?
+  outputTokens Int?
+  /// Custo calculado com o preço configurado em AiProviderSetting NO MOMENTO da geração
+  /// (congelado, não recalcula se o preço mudar depois). null se preço não configurado ou se
+  /// a geração usou modelOverride (preço configurado é só do modelo default).
+  costUsd      Decimal?   @db.Decimal(10, 6)
   status       String
   errorMessage String?
   createdAt    DateTime   @default(now())
-  admin        User       @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   topic        Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
@@ -401,6 +438,13 @@ model AiUsageEvent {
   model        String?
   prompt       String?
   errorMessage String?
+  /// Mesma semântica de AiGenerationLog.inputTokens/outputTokens/costUsd — esta tabela é a
+  /// fonte de custo AGREGADO pro Dashboard/Analytics por cobrir chat+material+questões (hoje só
+  /// questões grava valor; quando chat/material também gravarem, os agregados passam a incluir
+  /// tudo sem precisar trocar de tabela).
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Decimal?           @db.Decimal(10, 6)
   createdAt    DateTime           @default(now())
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -778,6 +822,12 @@ model UserSubscription {
    * até cancelar — nenhuma mudança de plano deve reduzir acesso de assinatura vigente.
    */
   limitsOverride Json?
+  /**
+   * Motivo do cancelamento — só classificado a partir desta coluna existir; linhas canceladas
+   * antes disso ficam null ("não classificado"), sem reconstrução por heurística retroativa.
+   * Ver enum SubscriptionCancelReason.
+   */
+  cancelReason SubscriptionCancelReason?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -909,6 +959,66 @@ model ContactMessage {
 
   @@index([kind])
   @@index([handledAt])
+}
+
+enum PopupKind {
+  ANNOUNCEMENT
+  UPGRADE
+}
+
+enum PopupAudience {
+  ALL
+  FREE
+  PAYING
+}
+
+/// Popup exibido para usuários logados em (app). Elegibilidade calculada em
+/// src/lib/popups.ts::getEligiblePopupForUser — sempre filtra startsAt/endsAt
+/// independente de isActive (isActive é um kill-switch manual à parte da janela agendada).
+model Popup {
+  id           String        @id @default(cuid())
+  title        String
+  kind         PopupKind     @default(ANNOUNCEMENT)
+  eyebrow      String?
+  /// Corpo em markdown, renderizado via <MarkdownContent compact />.
+  body         String
+  imageUrl     String?
+  ctaLabel     String?
+  ctaUrl       String?
+  dismissLabel String        @default("Agora não")
+  audience     PopupAudience @default(ALL)
+  /// null = mostra só 1 vez pra sempre. 0 = mostra sempre que o app é aberto/recarregado.
+  /// N > 0 = só reaparece se `agora - lastShownAt >= N horas`.
+  repeatAfterHours Int?
+  isActive     Boolean       @default(true)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  /// Desempate quando mais de um popup está elegível: só o de maior prioridade é exibido.
+  priority     Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  states       PopupUserState[]
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+/// Estado mais recente de um popup por usuário — não é um log de todo evento, é 1 linha
+/// por (popup, usuário) sobrescrita a cada exibição/dispensa/clique.
+model PopupUserState {
+  id          String    @id @default(cuid())
+  popupId     String
+  userId      String
+  viewCount   Int       @default(0)
+  lastShownAt DateTime?
+  dismissedAt DateTime?
+  clickedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  popup       Popup     @relation(fields: [popupId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([popupId, userId])
+  @@index([userId])
 }
 
 enum TeamAccountStatus {

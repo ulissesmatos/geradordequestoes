@@ -1,4 +1,4 @@
-import { AiUsageEventStatus, Role, SubscriptionStatus } from "@prisma/client";
+import { AiUsageEventStatus, Role, SubscriptionCancelReason, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAppSettings } from "@/lib/app-settings";
@@ -14,6 +14,23 @@ export async function getActiveSubscription(userId: string) {
     include: { plan: true, coupon: true },
     orderBy: { createdAt: "desc" }
   });
+}
+
+/**
+ * Stripe grava o MESMO SubscriptionEventType.CANCELED tanto pra cancelamento voluntário
+ * (portal) quanto pra esgotamento de tentativas de cobrança (dunning) — só dá pra diferenciar
+ * olhando qual evento veio por último entre PAST_DUE e PAID nesta assinatura: se foi PAST_DUE
+ * sem PAID depois, o cancelamento foi por falta de pagamento.
+ */
+export async function inferStripeCancelReason(subscriptionId: string | null | undefined): Promise<SubscriptionCancelReason> {
+  if (!subscriptionId) return SubscriptionCancelReason.VOLUNTARY;
+  const lastSignal = await prisma.subscriptionEvent.findFirst({
+    where: { subscriptionId, type: { in: [SubscriptionEventType.PAST_DUE, SubscriptionEventType.PAID] } },
+    orderBy: { createdAt: "desc" }
+  });
+  return lastSignal?.type === SubscriptionEventType.PAST_DUE
+    ? SubscriptionCancelReason.PAYMENT_FAILED
+    : SubscriptionCancelReason.VOLUNTARY;
 }
 
 export async function hasActiveSubscription(user: { id: string; role?: Role }) {

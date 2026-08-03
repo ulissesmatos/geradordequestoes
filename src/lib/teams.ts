@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { PaymentProvider, SubscriptionStatus, TeamAccountStatus, TeamSeatStatus } from "@prisma/client";
+import { PaymentProvider, SubscriptionCancelReason, SubscriptionStatus, TeamAccountStatus, TeamSeatStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { activatePaidSubscription } from "@/lib/payments";
 
@@ -217,7 +217,7 @@ export async function cancelTeamAccount(teamAccountId: string): Promise<void> {
         planId: team.planId,
         status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] }
       },
-      data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+      data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.TEAM }
     });
   }
 

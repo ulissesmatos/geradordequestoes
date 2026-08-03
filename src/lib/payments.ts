@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import Stripe from "stripe";
-import { PaymentProvider, PaymentTransactionStatus, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
+import { PaymentProvider, PaymentTransactionStatus, SubscriptionCancelReason, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { recordAffiliateCommission } from "@/lib/affiliates";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto";
@@ -35,9 +35,12 @@ export async function activatePaidSubscription(input: {
   payload?: unknown;
   endsAt?: Date | null;
 }) {
+  // SUPERSEDED, não perda de cliente: essa função sempre roda porque uma assinatura NOVA está
+  // sendo ativada pro mesmo usuário (renovação, upgrade, primeira compra depois do trial) —
+  // nunca deve contar como churn.
   await prisma.userSubscription.updateMany({
     where: { userId: input.userId, status: SubscriptionStatus.ACTIVE },
-    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.SUPERSEDED }
   });
   const subscription = await prisma.userSubscription.create({
     data: {

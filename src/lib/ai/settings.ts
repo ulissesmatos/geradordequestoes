@@ -15,7 +15,14 @@ export async function getAiSettings() {
     webSearchEnabled: stored?.webSearchEnabled ?? false,
     webSearchApiKey: decryptSecret(stored?.webSearchApiKey) || "",
     /** Modelo dedicado à extração de questões de referências (vazio = modelo padrão). */
-    extractionModel: stored?.extractionModel || ""
+    extractionModel: stored?.extractionModel || "",
+    /**
+     * USD por 1M de tokens do modelo `model` acima — convertido de Decimal pra number aqui,
+     * uma vez só, pra ninguém mais precisar lidar com o tipo Decimal do Prisma. null = preço
+     * não configurado (quem calcula custo deve mostrar "—", nunca inventar número).
+     */
+    inputPricePerMillionUsd: stored?.inputPricePerMillionUsd != null ? stored.inputPricePerMillionUsd.toNumber() : null,
+    outputPricePerMillionUsd: stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toNumber() : null
   };
 }
 

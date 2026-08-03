@@ -1,10 +1,12 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionStatus } from "@prisma/client";
+import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PopupAudience, PopupKind, QuestionAnswer, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
+import { computeCostUsd, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
+import { formatReviewedExamplesContext, getReviewedExampleQuestions } from "@/lib/ai/reviewed-examples";
 import { logAdminAction } from "@/lib/audit";
 import { readCapabilitiesFromForm } from "@/lib/capabilities";
 import { resolveSecretUpdate } from "@/lib/crypto";
@@ -15,6 +17,8 @@ import { requireAdmin } from "@/lib/guards";
 import { cancelLinkedStripeSubscriptions } from "@/lib/payments";
 import { generateReadablePassword, issuePasswordResetCode, setUserPassword } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
+import { repeatAfterHoursFromForm } from "@/lib/popups";
+import { stripNullBytes } from "@/lib/sanitize";
 import { slugify } from "@/lib/utils";
 
 const subjectSchema = z.object({
@@ -277,9 +281,11 @@ export async function activateUserSubscriptionAction(formData: FormData) {
   // continua sendo cobrada e a próxima fatura paga reativa a linha local.
   const { errors: stripeErrors } = await cancelLinkedStripeSubscriptions(previouslyActive.map((s) => s.id));
 
+  // SUPERSEDED, não ADMIN: é o mesmo cliente continuando numa linha nova (troca de plano pelo
+  // admin), não perda de cliente — nunca deve entrar em métrica de churn.
   await prisma.userSubscription.updateMany({
     where: { userId, status: SubscriptionStatus.ACTIVE },
-    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.SUPERSEDED }
   });
 
   await prisma.userSubscription.create({
@@ -316,7 +322,7 @@ export async function cancelUserSubscriptionAction(formData: FormData) {
 
   await prisma.userSubscription.updateMany({
     where: { userId, status: SubscriptionStatus.ACTIVE },
-    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.ADMIN }
   });
 
   await logAdminAction(admin, {
@@ -353,14 +359,14 @@ export async function deleteUserAction(formData: FormData) {
   // Cancela assinaturas ativas antes da exclusão (fica registrado no histórico via ON DELETE CASCADE).
   await prisma.userSubscription.updateMany({
     where: { userId, status: SubscriptionStatus.ACTIVE },
-    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.ADMIN }
   });
 
   // Remove explicitamente os logs de IA para que o banco comece limpo.
   // As sessões de chat são apagadas em cascata pelo ON DELETE CASCADE do User,
   // mas fazemos aqui explicitamente antes para garantir a ordem.
   await prisma.aiChatSession.deleteMany({ where: { userId } });
-  await prisma.aiGenerationLog.deleteMany({ where: { adminId: userId } });
+  await prisma.aiGenerationLog.deleteMany({ where: { userId } });
   await prisma.aiUsageEvent.deleteMany({ where: { userId } });
 
   // Exclui o usuário — o restante (tentativas, favoritos, materiais, pagamentos, etc.) é removido via cascata.
@@ -698,6 +704,14 @@ export async function createCouponAction(formData: FormData) {
   revalidatePath("/admin/planos");
 }
 
+/** Campo vazio = preço não configurado (null); aceita vírgula ou ponto decimal. */
+function parseOptionalPrice(formData: FormData, field: string): number | null {
+  const raw = String(formData.get(field) ?? "").trim().replace(",", ".");
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 export async function updateAiProviderSettingsAction(formData: FormData) {
   const admin = await requireAdmin();
   const provider = formData.get("provider") as AiProvider;
@@ -714,6 +728,8 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   })();
   const baseUrl = isSelfReferencing ? "" : rawBaseUrl;
   const chatPresetUsageLevel = (formData.get("chatPresetUsageLevel") as AiChatPresetUsageLevel) || AiChatPresetUsageLevel.MEDIO;
+  const inputPricePerMillionUsd = parseOptionalPrice(formData, "inputPricePerMillionUsd");
+  const outputPricePerMillionUsd = parseOptionalPrice(formData, "outputPricePerMillionUsd");
 
   // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
   const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
@@ -730,7 +746,9 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,
       appName: appName || null,
-      chatPresetUsageLevel
+      chatPresetUsageLevel,
+      inputPricePerMillionUsd,
+      outputPricePerMillionUsd
     },
     create: {
       id: "default",
@@ -742,7 +760,9 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       baseUrl: baseUrl || null,
       siteUrl: siteUrl || null,
       appName: appName || null,
-      chatPresetUsageLevel
+      chatPresetUsageLevel,
+      inputPricePerMillionUsd,
+      outputPricePerMillionUsd
     }
   });
 
@@ -777,30 +797,41 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
   const difficulty = formData.get("difficulty") as Difficulty;
   const quantity = Math.min(Number(formData.get("quantity") ?? 5), 20);
   const extraInstructions = String(formData.get("extraInstructions") ?? "");
-  const [subject, topic] = await Promise.all([
+  const [subject, topic, reviewedExamples] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: subjectId } }),
-    prisma.topic.findUniqueOrThrow({ where: { id: topicId } })
+    prisma.topic.findUniqueOrThrow({ where: { id: topicId } }),
+    getReviewedExampleQuestions({ subjectId, topicId })
   ]);
 
   let logId: string | undefined;
+  let usageSoFar: TokenUsage = ZERO_USAGE;
   try {
     const generated = await generateQuestions({
       subject: subject.name,
       topic: topic.name,
       difficulty,
       quantity,
-      extraInstructions
+      extraInstructions,
+      reviewedExamplesContext: formatReviewedExamplesContext(reviewedExamples) || undefined,
+      onUsage: (usage) => {
+        usageSoFar = usage;
+      }
     });
 
     const log = await prisma.aiGenerationLog.create({
       data: {
-        adminId: admin.id,
+        userId: admin.id,
         subjectId,
         topicId,
         difficulty,
         quantity,
         model: generated.model,
-        prompt: generated.prompt,
+        prompt: stripNullBytes(generated.prompt),
+        userPrompt: stripNullBytes(extraInstructions) || null,
+        responseText: stripNullBytes(JSON.stringify(generated.questions)),
+        inputTokens: generated.usage.inputTokens,
+        outputTokens: generated.usage.outputTokens,
+        costUsd: generated.costUsd ?? undefined,
         status: "SUCCESS"
       }
     });
@@ -836,15 +867,20 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
       )
     );
   } catch (error) {
+    const costUsd = await computeCostUsd(usageSoFar);
     await prisma.aiGenerationLog.create({
       data: {
-        adminId: admin.id,
+        userId: admin.id,
         subjectId,
         topicId,
         difficulty,
         quantity,
         model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
         prompt: extraInstructions,
+        userPrompt: stripNullBytes(extraInstructions) || null,
+        inputTokens: usageSoFar.inputTokens,
+        outputTokens: usageSoFar.outputTokens,
+        costUsd: costUsd ?? undefined,
         status: "ERROR",
         errorMessage: error instanceof Error ? error.message : "Erro desconhecido"
       }
@@ -923,4 +959,83 @@ export async function deleteQuestionAction(formData: FormData) {
   await logAdminAction(admin, { action: "delete", entity: "Question", entityId: id });
   revalidatePath("/admin/questoes");
   revalidatePath("/admin/questoes/revisar");
+}
+
+function parseOptionalPopupDate(formData: FormData, field: string): Date | null {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error(`Data inválida em "${field}".`);
+  return date;
+}
+
+function popupDataFromForm(formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!title || !body) throw new Error("Título e corpo do popup são obrigatórios.");
+
+  const startsAt = parseOptionalPopupDate(formData, "startsAt");
+  const endsAt = parseOptionalPopupDate(formData, "endsAt");
+  if (startsAt && endsAt && endsAt <= startsAt) {
+    throw new Error("O fim da campanha deve ser depois do início.");
+  }
+
+  return {
+    title,
+    kind: formData.get("kind") as PopupKind,
+    eyebrow: String(formData.get("eyebrow") ?? "").trim() || null,
+    body,
+    imageUrl: String(formData.get("imageUrl") ?? "").trim() || null,
+    ctaLabel: String(formData.get("ctaLabel") ?? "").trim() || null,
+    ctaUrl: String(formData.get("ctaUrl") ?? "").trim() || null,
+    dismissLabel: String(formData.get("dismissLabel") ?? "").trim() || "Agora não",
+    audience: formData.get("audience") as PopupAudience,
+    repeatAfterHours: repeatAfterHoursFromForm(formData),
+    isActive: formData.get("isActive") === "on",
+    startsAt,
+    endsAt,
+    priority: Number(formData.get("priority") ?? 0)
+  };
+}
+
+export async function createPopupAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const data = popupDataFromForm(formData);
+  const popup = await prisma.popup.create({ data });
+  await logAdminAction(admin, { action: "create", entity: "Popup", entityId: popup.id, summary: popup.title });
+  revalidatePath("/admin/popups");
+}
+
+export async function updatePopupAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const current = await prisma.popup.findUnique({ where: { id } });
+  if (!current) throw new Error("Popup não encontrado.");
+
+  const data = popupDataFromForm(formData);
+  await prisma.popup.update({ where: { id }, data });
+  await logAdminAction(admin, { action: "update", entity: "Popup", entityId: id, summary: data.title });
+  revalidatePath("/admin/popups");
+}
+
+export async function deletePopupAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const popup = await prisma.popup.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Popup", entityId: id, summary: popup.title });
+  revalidatePath("/admin/popups");
+}
+
+/**
+ * Reseta o histórico de visualização de um popup — cobre o caso de editar um popup "só 1 vez"
+ * que parte da base já viu/dispensou: sem isso, essa parte nunca mais veria a versão nova.
+ */
+export async function resetPopupViewsAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const { count } = await prisma.popupUserState.deleteMany({ where: { popupId: id } });
+  await logAdminAction(admin, { action: "reset_views", entity: "Popup", entityId: id, summary: `${count} estado(s) removido(s)` });
+  revalidatePath("/admin/popups");
 }

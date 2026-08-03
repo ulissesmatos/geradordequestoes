@@ -3,6 +3,7 @@
 import { Difficulty, FeedbackType, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus, TrialUsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { computeCostUsd, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
 import { chargeTrialUsage, refundTrialUsage } from "@/lib/ai/usage";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -130,6 +131,9 @@ export async function generateUserQuestionsAction(
   // generateAndSaveQuestionSet (medidor QUESTIONS); cobrar as duas coisas aqui repetiria a
   // dupla cobrança que estamos corrigindo.
   let trialChargeId: string | null = null;
+  // Usage parcial: se a geração falhar depois de 1+ lotes bem-sucedidos num pedido grande,
+  // esse custo real não pode ficar sem registro em nenhuma tabela — ver catch abaixo.
+  let usageSoFar: TokenUsage = ZERO_USAGE;
   try {
     await assertCanGenerateWithAi(user);
     trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.QUESTION_GENERATION });
@@ -145,7 +149,10 @@ export async function generateUserQuestionsAction(
       prompt,
       title: title || undefined,
       context: context || undefined,
-      closeVariant
+      closeVariant,
+      onUsage: (usage) => {
+        usageSoFar = usage;
+      }
     });
     revalidatePath("/questoes/gerar");
     revalidatePath("/biblioteca");
@@ -159,16 +166,21 @@ export async function generateUserQuestionsAction(
   } catch (error) {
     // Geração não entregou o bloco: devolve a unidade cobrada.
     await refundTrialUsage(trialChargeId);
+    const costUsd = await computeCostUsd(usageSoFar);
     await prisma.aiGenerationLog
       .create({
         data: {
-          adminId: user.id,
+          userId: user.id,
           subjectId,
           topicId,
           difficulty,
           quantity,
           model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
           prompt,
+          userPrompt: prompt || null,
+          inputTokens: usageSoFar.inputTokens,
+          outputTokens: usageSoFar.outputTokens,
+          costUsd: costUsd ?? undefined,
           status: "USER_ERROR",
           errorMessage: error instanceof Error ? error.message : "Erro desconhecido"
         }

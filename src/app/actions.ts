@@ -228,3 +228,48 @@ export async function googleSignInAction() {
 export async function logoutAction() {
   await signOut({ redirectTo: "/" });
 }
+
+/**
+ * Telemetria de popups (mostrado/dispensado/clicado): chamadas fire-and-forget de dentro de
+ * um useEffect/onClick no PopupManager, sem <form> e sem navegação esperada — por isso usam
+ * auth() direto em vez de requireUser(), que faria redirect() e tentaria navegar a SPA à toa
+ * se a sessão tivesse caído. Best-effort: nunca deve quebrar a experiência do popup.
+ */
+export async function recordPopupShownAction(popupId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user?.id) return;
+  const userId = session.user.id;
+  await prisma.popupUserState
+    .upsert({
+      where: { popupId_userId: { popupId, userId } },
+      create: { popupId, userId, viewCount: 1, lastShownAt: new Date() },
+      update: { viewCount: { increment: 1 }, lastShownAt: new Date() }
+    })
+    .catch(() => undefined);
+}
+
+export async function recordPopupDismissedAction(popupId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user?.id) return;
+  const userId = session.user.id;
+  await prisma.popupUserState
+    .upsert({
+      where: { popupId_userId: { popupId, userId } },
+      create: { popupId, userId, viewCount: 1, lastShownAt: new Date(), dismissedAt: new Date() },
+      update: { dismissedAt: new Date() }
+    })
+    .catch(() => undefined);
+}
+
+export async function recordPopupClickedAction(popupId: string): Promise<void> {
+  const session = await auth();
+  if (!session?.user?.id) return;
+  const userId = session.user.id;
+  await prisma.popupUserState
+    .upsert({
+      where: { popupId_userId: { popupId, userId } },
+      create: { popupId, userId, viewCount: 1, lastShownAt: new Date(), clickedAt: new Date() },
+      update: { clickedAt: new Date() }
+    })
+    .catch(() => undefined);
+}

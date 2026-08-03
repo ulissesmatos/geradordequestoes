@@ -12,9 +12,15 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateQuestions, type ReferenceVariantSource } from "@/lib/ai/generateQuestions";
+import type { TokenUsage } from "@/lib/ai/pricing";
 import { recordAiUsageEvent } from "@/lib/ai/usage";
-import { formatReferenceContext, getReferenceContext, searchReferenceQuestions } from "@/lib/reference";
-import { deepStripNullBytes, stripNullBytes } from "@/lib/sanitize";
+import {
+  formatReviewedExamplesContext,
+  getReviewedExampleQuestions,
+  type ReviewedExampleQuestion
+} from "@/lib/ai/reviewed-examples";
+import { formatReferenceContext, getReferenceContext, searchReferenceQuestions, type ReferenceHit } from "@/lib/reference";
+import { deepStripNullBytes, stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { refundUsage, reserveUsage, resolveGenerationAllowance, settleUsage } from "@/lib/usage/ledger";
 
 /**
@@ -55,6 +61,11 @@ export async function generateAndSaveQuestionSet(input: {
   closeVariant?: boolean;
   /** Repassado a generateQuestions para a tela mostrar o que está acontecendo de fato. */
   onProgress?: (label: string) => void;
+  /**
+   * Repassado a generateQuestions — permite ao chamador registrar custo parcial se a geração
+   * falhar no meio de um bloco multi-lote (ver generateUserQuestionsAction).
+   */
+  onUsage?: (usage: TokenUsage) => void;
 }) {
   const [subject, topic, allowance] = await Promise.all([
     prisma.subject.findUniqueOrThrow({ where: { id: input.subjectId } }),
@@ -121,18 +132,26 @@ export async function generateAndSaveQuestionSet(input: {
     }
   }
 
-  // Grounding: busca questões reais de prova para âncora de estilo — canal separado do contexto do aluno.
-  // Só roda quando NÃO estamos no modo variação fiel (que já buscou suas próprias fontes acima).
+  // Grounding: busca questões reais de prova para âncora de estilo, e exemplares desta própria
+  // plataforma já revisados por um humano no mesmo assunto (src/lib/ai/reviewed-examples.ts) —
+  // dois canais de contexto separados do contexto do aluno, buscados em paralelo pra não somar
+  // latência. Só roda quando NÃO estamos no modo variação fiel (que já buscou suas próprias
+  // fontes acima).
   if (!variantSources) input.onProgress?.("Consultando provas reais no acervo…");
-  const { hits, usedStructuredQuestions } = variantSources
-    ? { hits: [], usedStructuredQuestions: true }
-    : await getReferenceContext({
-        subjectId: input.subjectId,
-        topicId: input.topicId,
-        query,
-        limit: referenceLimitFor(input.difficulty, quantity)
-      });
+  const [referenceResult, reviewedExamples] = variantSources
+    ? [{ hits: [] as ReferenceHit[], usedStructuredQuestions: true }, [] as ReviewedExampleQuestion[]]
+    : await Promise.all([
+        getReferenceContext({
+          subjectId: input.subjectId,
+          topicId: input.topicId,
+          query,
+          limit: referenceLimitFor(input.difficulty, quantity)
+        }),
+        getReviewedExampleQuestions({ subjectId: input.subjectId, topicId: input.topicId })
+      ]);
+  const { hits, usedStructuredQuestions } = referenceResult;
   const referenceBlock = formatReferenceContext(hits);
+  const reviewedExamplesBlock = formatReviewedExamplesContext(reviewedExamples);
   // Informação real e útil: o aluno fica sabendo que o lote está ancorado em prova de verdade.
   if (usedStructuredQuestions && hits.length > 0) {
     input.onProgress?.(
@@ -166,10 +185,12 @@ export async function generateAndSaveQuestionSet(input: {
       mode: input.mode,
       prompt: input.prompt,
       referenceContext: variantSources ? undefined : referenceBlock || undefined,
+      reviewedExamplesContext: variantSources ? undefined : reviewedExamplesBlock || undefined,
       referenceQuestions: variantSources,
       context: input.context?.slice(0, 12000),
       modelOverride: input.modelOverride,
-      onProgress: input.onProgress
+      onProgress: input.onProgress,
+      onUsage: input.onUsage
     });
 
     questionSet = await createQuestionSetRow({ input, subject, topic, generated, variantSources });
@@ -185,13 +206,18 @@ export async function generateAndSaveQuestionSet(input: {
 
   await prisma.aiGenerationLog.create({
     data: {
-      adminId: input.user.id,
+      userId: input.user.id,
       subjectId: input.subjectId,
       topicId: input.topicId,
       difficulty: input.difficulty,
       quantity: generated.questions.length,
       model: generated.model,
       prompt: stripNullBytes(generated.prompt),
+      userPrompt: stripNullBytesNullable(input.prompt) || null,
+      responseText: stripNullBytes(JSON.stringify(generated.questions)),
+      inputTokens: generated.usage.inputTokens,
+      outputTokens: generated.usage.outputTokens,
+      costUsd: generated.costUsd ?? undefined,
       status: input.user.role === "ADMIN" ? "SUCCESS" : "USER_SUCCESS"
     }
   });
@@ -199,7 +225,10 @@ export async function generateAndSaveQuestionSet(input: {
     user: input.user,
     type: AiUsageEventType.QUESTION_GENERATION,
     model: generated.model,
-    prompt: stripNullBytes(generated.prompt)
+    prompt: stripNullBytes(generated.prompt),
+    inputTokens: generated.usage.inputTokens,
+    outputTokens: generated.usage.outputTokens,
+    costUsd: generated.costUsd
   });
 
   return Object.assign(questionSet, {

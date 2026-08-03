@@ -2,6 +2,7 @@ import { AiProvider, type Difficulty, type QuestionAnswer, type QuestionFormat, 
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { computeCostUsd, sumUsage, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
 import { splitIntoBatches } from "@/lib/question-limits";
 import { normalizeDisplayText } from "@/lib/sanitize";
@@ -486,6 +487,13 @@ export async function generateQuestions(input: {
   /** Questões reais de prova para servir de âncora de estilo — bloco proeminente separado do contexto do aluno. */
   referenceContext?: string;
   /**
+   * Questões da própria plataforma, do mesmo assunto, já aprovadas por um humano (ver
+   * src/lib/ai/reviewed-examples.ts) — exemplo concreto de gabarito×justificativa consistentes,
+   * não só instrução abstrata de estilo. Só entra no modo padrão (buildPrompt); o modo variação
+   * fiel já está ancorado numa questão de referência concreta por item.
+   */
+  reviewedExamplesContext?: string;
+  /**
    * Modo "variação fiel": uma questão real por item, nesta ordem — a IA reaproveita boa parte do
    * enunciado original ajustando detalhes, em vez de só se inspirar no estilo. Quando presente,
    * substitui `quantity`/`referenceContext`: gera exatamente uma variação por item da lista.
@@ -498,6 +506,13 @@ export async function generateQuestions(input: {
    * completa: sem avisar, a espera dobra e parece que a tela travou.
    */
   onProgress?: (label: string) => void;
+  /**
+   * Chamado com o usage ACUMULADO depois de cada chamada real ao provedor (lote ou reparo) —
+   * não só no final. Permite ao chamador registrar custo parcial se a geração falhar no meio
+   * de um bloco multi-lote (sem isso, tokens de lotes que deram certo antes da falha ficariam
+   * sem nenhum registro em nenhuma tabela).
+   */
+  onUsage?: (usage: TokenUsage) => void;
 }) {
   const baseSettings = await getAiSettings();
   if (!baseSettings.apiKey) {
@@ -514,16 +529,25 @@ export async function generateQuestions(input: {
       ? buildVariantPrompt({ ...input, format, alternativesCount, referenceQuestions: input.referenceQuestions })
       : buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
 
-  const runProvider = (fullPrompt: string): Promise<RawGroup[]> => {
+  const runProvider = (fullPrompt: string): Promise<ProviderResult> => {
     if (settings.provider === AiProvider.CLAUDE) return generateWithClaude(settings, fullPrompt);
     if (settings.provider === AiProvider.OPENROUTER) return generateWithOpenRouter(settings, fullPrompt);
     return generateWithOpenAI(settings, fullPrompt);
   };
   const checkOptions = { languageSubject: isLanguageSubject(input.subject, input.topic) };
 
+  // Usage ACUMULADO de todas as chamadas reais ao provedor desta geração (lotes + reparo).
+  let cumulativeUsage: TokenUsage = ZERO_USAGE;
+  const reportUsage = (usage: TokenUsage) => {
+    cumulativeUsage = sumUsage(cumulativeUsage, usage);
+    input.onUsage?.(cumulativeUsage);
+  };
+
   /** Uma chamada + o loop de reparo dela. Reparo é por LOTE, então custa um lote, não o bloco. */
   const runBatch = async (batchPrompt: string, expected: number): Promise<RawGroup[]> => {
-    let groups = await runProvider(batchPrompt);
+    const first = await runProvider(batchPrompt);
+    reportUsage(first.usage);
+    let groups = first.groups;
 
     // Contratos verificados em código (custo zero: regex sobre o que já veio). Quando algum
     // quebra, manda refazer UMA vez apontando exatamente o que deu errado — os três contratos
@@ -542,10 +566,11 @@ export async function generateQuestions(input: {
         .filter(Boolean)
         .join("\n\n");
       const repaired = await runProvider(`${batchPrompt}\n\n${fixes}`);
+      reportUsage(repaired.usage);
       // Questão órfã ou com raciocínio vazado é descartada (item impossível de responder, ou
       // com gabarito possivelmente errado, é pior que entregar menos). Fórmula crua NÃO
       // derruba a questão: fica feia, mas continua respondível.
-      groups = repaired;
+      groups = repaired.groups;
       if (findOrphanQuestions(groups, checkOptions).length > 0) groups = dropOrphanQuestions(groups, checkOptions);
       if (findLeakedReasoningQuestions(groups).length > 0) groups = dropLeakedReasoningQuestions(groups);
     }
@@ -568,7 +593,17 @@ export async function generateQuestions(input: {
    */
   if (batchSizes.length === 1) {
     const groups = await runBatch(prompt, totalWanted);
-    return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups });
+    // modelOverride usa um modelo diferente do configurado em /admin/ia — o preço lá é só do
+    // modelo default, então calcular custo com ele seria mostrar um número errado.
+    const costUsd = input.modelOverride?.trim() ? null : await computeCostUsd(cumulativeUsage);
+    return normalizeGenerated({
+      provider: settings.provider,
+      model: settings.model,
+      prompt,
+      groups,
+      usage: cumulativeUsage,
+      costUsd
+    });
   }
 
   const allGroups: RawGroup[] = [];
@@ -614,7 +649,15 @@ export async function generateQuestions(input: {
     }
   }
 
-  return normalizeGenerated({ provider: settings.provider, model: settings.model, prompt, groups: allGroups });
+  const costUsd = input.modelOverride?.trim() ? null : await computeCostUsd(cumulativeUsage);
+  return normalizeGenerated({
+    provider: settings.provider,
+    model: settings.model,
+    prompt,
+    groups: allGroups,
+    usage: cumulativeUsage,
+    costUsd
+  });
 }
 
 /**
@@ -644,6 +687,7 @@ function buildPrompt(input: {
   extraInstructions?: string;
   context?: string;
   referenceContext?: string;
+  reviewedExamplesContext?: string;
   /** Enunciados já gerados nos lotes anteriores deste mesmo bloco. */
   avoidStatements?: string[];
 }) {
@@ -662,6 +706,7 @@ function buildPrompt(input: {
     input.referenceContext
       ? `QUESTÕES REAIS DE PROVA (use como âncora de estilo, dificuldade, fraseado e pegadinhas):\n${input.referenceContext}\n\nProduza questões NOVAS e originais nesse mesmo estilo da banca (Cebraspe); espelhe as pegadinhas e a estrutura; NÃO copie verbatim.`
       : "",
+    input.reviewedExamplesContext || "",
     input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
     input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
     input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",
@@ -750,10 +795,12 @@ function buildVariantPrompt(input: {
     .join("\n");
 }
 
+type ProviderResult = { groups: RawGroup[]; usage: TokenUsage };
+
 async function generateWithOpenAI(
   settings: Awaited<ReturnType<typeof getAiSettings>>,
   prompt: string
-): Promise<RawGroup[]> {
+): Promise<ProviderResult> {
   const openai = new OpenAI({
     apiKey: settings.apiKey,
     baseURL: settings.baseUrl || undefined
@@ -778,13 +825,19 @@ async function generateWithOpenAI(
     throw new Error("A IA não retornou uma estrutura válida.");
   }
 
-  return response.output_parsed.groups;
+  return {
+    groups: response.output_parsed.groups,
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0
+    }
+  };
 }
 
 async function generateWithClaude(
   settings: Awaited<ReturnType<typeof getAiSettings>>,
   prompt: string
-): Promise<RawGroup[]> {
+): Promise<ProviderResult> {
   const response = await fetch(settings.baseUrl || "https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -817,13 +870,19 @@ async function generateWithClaude(
   const toolUse = data.content?.find((block: { type?: string; name?: string }) => block.type === "tool_use" && block.name === "emit_questions");
   const parsed = generatedQuestionSchema.parse(toolUse?.input);
 
-  return parsed.groups;
+  return {
+    groups: parsed.groups,
+    usage: {
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0
+    }
+  };
 }
 
 async function generateWithOpenRouter(
   settings: Awaited<ReturnType<typeof getAiSettings>>,
   prompt: string
-): Promise<RawGroup[]> {
+): Promise<ProviderResult> {
   const response = await fetch(settings.baseUrl || "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -862,7 +921,13 @@ async function generateWithOpenRouter(
   if (!rawArgs) throw new Error("O provedor não retornou uma chamada de ferramenta válida.");
   const parsed = generatedQuestionSchema.parse(JSON.parse(rawArgs));
 
-  return parsed.groups;
+  return {
+    groups: parsed.groups,
+    usage: {
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0
+    }
+  };
 }
 
 function normalizeGenerated(result: {
@@ -870,6 +935,8 @@ function normalizeGenerated(result: {
   model: string;
   prompt: string;
   groups: { supportText?: string | null; questions: z.infer<typeof generatedItemSchema>[] }[];
+  usage: TokenUsage;
+  costUsd: number | null;
 }) {
   // Achata os grupos em questões individuais, carregando o supportText do grupo em cada uma —
   // texto null/curto demais (placeholder inútil) vira null em vez de "quase vazio".
@@ -894,6 +961,8 @@ function normalizeGenerated(result: {
     provider: result.provider,
     model: result.model,
     prompt: result.prompt,
+    usage: result.usage,
+    costUsd: result.costUsd,
     questions: flattened.map((question) => {
       if (question.format === "CERTO_ERRADO") {
         const answer = question.answer === "ERRADO" ? "ERRADO" : "CERTO";

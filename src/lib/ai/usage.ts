@@ -16,6 +16,10 @@ export async function recordAiUsageEvent(input: {
   model?: string;
   prompt?: string;
   errorMessage?: string;
+  /** Só geração de questões preenche isso por enquanto — ver src/lib/ai/pricing.ts. */
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number | null;
 }) {
   await prisma.aiUsageEvent.create({
     data: {
@@ -26,7 +30,10 @@ export async function recordAiUsageEvent(input: {
       // O prompt carrega o material de referência (vindo de PDF) e a resposta do modelo,
       // então é rota comum de byte NUL, que o Postgres rejeita em coluna text.
       prompt: stripNullBytesNullable(input.prompt)?.slice(0, 5000),
-      errorMessage: stripNullBytesNullable(input.errorMessage)?.slice(0, 2000)
+      errorMessage: stripNullBytesNullable(input.errorMessage)?.slice(0, 2000),
+      inputTokens: input.inputTokens,
+      outputTokens: input.outputTokens,
+      costUsd: input.costUsd ?? undefined
     }
   });
 }

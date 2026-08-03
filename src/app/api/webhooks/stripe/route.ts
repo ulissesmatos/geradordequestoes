@@ -4,6 +4,7 @@ import { incrementCouponUsage } from "@/lib/coupons";
 import { activatePaidSubscription, getPaymentSettings, recordPaymentTransaction } from "@/lib/payments";
 import { sendPaymentReceiptEmail } from "@/lib/email/notifications";
 import { prisma } from "@/lib/prisma";
+import { inferStripeCancelReason } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
 
@@ -77,17 +78,20 @@ export async function POST(request: Request) {
     const linked = await findLocalSubscriptionByExternalId(subscription.id);
     const userId = subscription.metadata?.userId ?? linked?.userId ?? null;
     if (userId) {
+      // Distingue cancelamento voluntário de esgotamento de cobrança (dunning) ANTES de
+      // cancelar — o Stripe manda o MESMO evento (subscription.deleted) nos dois casos.
+      const cancelReason = await inferStripeCancelReason(linked?.subscriptionId);
       // Escopo na assinatura local vinculada a ESTA assinatura Stripe: cancelar
       // todas as ativas do usuário derrubaria um plano novo (ex.: Pix) após upgrade.
       if (linked?.subscriptionId) {
         await prisma.userSubscription.updateMany({
           where: { id: linked.subscriptionId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } },
-          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason }
         });
       } else {
         await prisma.userSubscription.updateMany({
           where: { userId, status: SubscriptionStatus.ACTIVE },
-          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date() }
+          data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason }
         });
       }
       await prisma.subscriptionEvent.create({
@@ -110,11 +114,13 @@ export async function POST(request: Request) {
     if (userId) {
       const status = mapStripeSubscriptionStatus(subscription.status);
       if (status) {
+        const cancelReason =
+          status === SubscriptionStatus.CANCELED ? await inferStripeCancelReason(linked?.subscriptionId) : undefined;
         await prisma.userSubscription.updateMany({
           where: linked?.subscriptionId
             ? { id: linked.subscriptionId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } }
             : { userId, status: { in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] } },
-          data: { status, endsAt: status === SubscriptionStatus.CANCELED ? new Date() : undefined }
+          data: { status, endsAt: status === SubscriptionStatus.CANCELED ? new Date() : undefined, cancelReason }
         });
       }
       await prisma.subscriptionEvent.create({
