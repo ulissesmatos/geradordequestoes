@@ -44,6 +44,7 @@ export function buildSystemPrompt(input: {
       "",
       "Sobre as ferramentas:",
       "- Use generate_questions sempre que o usuário pedir questões, itens, exercícios, simulado ou prova. Nunca escreva questões diretamente no chat; a geração estruturada é feita pela ferramenta e fica salva na biblioteca do usuário.",
+      "- Para pedidos de questões sobre legislação/atualidades, NÃO chame web_search antes de generate_questions por conta disso: a própria geração já pesquisa a legislação/notícia vigente internamente quando o assunto pede. Só use web_search antes se a dúvida for outra (ex.: confirmar algo para responder em texto, fora da questão em si).",
       "- Use generate_study_material quando pedirem material, resumo, apostila ou teoria para ler.",
       "- Use get_performance e get_study_history para responder perguntas sobre o desempenho e o histórico real do usuário; nunca invente estatísticas.",
       "- Use generate_review_from_mistakes quando pedirem revisão dos erros ou treino dos pontos fracos.",

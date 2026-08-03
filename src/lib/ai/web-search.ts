@@ -9,8 +9,14 @@ export type WebSearchOutcome =
 /**
  * Busca na web via Tavily. Degradação segura: se desabilitada ou sem chave,
  * retorna `{ ok:false }` (a tool informa o modelo, sem lançar exceção).
+ *
+ * `depth`: "advanced" (padrão) traz trechos mais relevantes e completos — melhor para reduzir
+ * imprecisão/alucinação do modelo, mas custa mais créditos Tavily que "basic". O grounding
+ * automático de geração de questões (ver generateQuestions.ts) usa "basic" de propósito: é uma
+ * checagem de "isso mudou?", não pesquisa aprofundada, e já é cacheado por cima — não vale pagar
+ * o preço de "advanced" numa chamada que roda sozinha, sem o modelo decidir se vale a pena.
  */
-export async function webSearch(query: string, maxResults = 5): Promise<WebSearchOutcome> {
+export async function webSearch(query: string, maxResults = 5, depth: "basic" | "advanced" = "advanced"): Promise<WebSearchOutcome> {
   const settings = await getAiSettings();
   if (!settings.webSearchEnabled) return { ok: false, reason: "disabled", message: "Busca na web desativada." };
 
@@ -25,9 +31,7 @@ export async function webSearch(query: string, maxResults = 5): Promise<WebSearc
         api_key: apiKey,
         query,
         max_results: Math.min(Math.max(maxResults, 1), 8),
-        // "advanced" traz trechos mais relevantes e completos — melhor para reduzir
-        // imprecisão/alucinação do modelo (custa mais créditos Tavily que "basic").
-        search_depth: "advanced",
+        search_depth: depth,
         include_answer: false
       })
     });

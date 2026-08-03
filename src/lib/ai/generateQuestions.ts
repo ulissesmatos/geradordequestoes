@@ -1,9 +1,11 @@
-import { AiProvider, type Difficulty, type QuestionAnswer, type QuestionFormat, type QuestionSetMode } from "@prisma/client";
+import { AiProvider, Prisma, type Difficulty, type QuestionAnswer, type QuestionFormat, type QuestionSetMode } from "@prisma/client";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { computeCostUsd, sumUsage, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
+import { webSearch, type WebSearchResult } from "@/lib/ai/web-search";
+import { prisma } from "@/lib/prisma";
 import { splitIntoBatches } from "@/lib/question-limits";
 import { normalizeDisplayText } from "@/lib/sanitize";
 
@@ -131,13 +133,127 @@ const PORTUGUESE_SUPPORT_TEXT_INSTRUCTION = [
   "Só use supportText null (e dependsOnSupportText: false) quando a questão for puramente teórica e não exigir nenhum texto-base — ex.: 'A crase é a fusão da preposição \"a\" com o artigo \"a\".'"
 ].join("\n");
 
-/** Detecção determinística de matéria/assunto que exige texto de apoio para itens de análise. */
-function isLanguageSubject(subject: string, topic: string): boolean {
-  const haystack = `${subject} ${topic}`
+/** Normaliza pra comparação por regex: minúsculas, sem acento. */
+function normalizeForMatch(text: string): string {
+  return text
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
+}
+
+/** Detecção determinística de matéria/assunto que exige texto de apoio para itens de análise. */
+function isLanguageSubject(subject: string, topic: string): boolean {
+  const haystack = normalizeForMatch(`${subject} ${topic}`);
   return /portugu|reda[cç]|interpretac|gramat|linguistic|lingua |texto|literatura/.test(haystack);
+}
+
+/**
+ * Informática/tecnologia: matéria cujo conteúdo correto depende da versão do software (Windows,
+ * Office, navegadores, sistemas móveis) — evolui com o tempo. Sem isso, a IA "herda" a versão
+ * antiga de uma questão real usada como âncora de estilo (ex. uma prova real sobre Windows 7) e
+ * gera o lote inteiro sobre aquela versão desatualizada, mesmo quando o usuário só pediu
+ * "questões sobre Windows" — quem faz concurso hoje precisa de Windows 10/11, não 7.
+ */
+function isVersionSensitiveTechTopic(subject: string, topic: string): boolean {
+  const haystack = normalizeForMatch(`${subject} ${topic}`);
+  return /inform[áa]tica|tecnologia da informa[çc][ãa]o|\bti\b/.test(haystack);
+}
+
+/**
+ * Legislação: matéria/assunto cujo conteúdo correto é um texto normativo vigente, que muda por
+ * emenda, reforma ou nova lei — diferente de doutrina/princípios, que fica estável por anos. Só
+ * dispara quando há um sinal concreto de norma específica (não a área do Direito inteira), pra
+ * não forçar busca na web em todo assunto de Direito indiscriminadamente.
+ */
+function isLegislationSensitiveTopic(subject: string, topic: string): boolean {
+  const haystack = normalizeForMatch(`${subject} ${topic}`);
+  return /legisla[çc][ãa]o|\blei\b|\bleis\b|estatuto|c[óo]digo|\bclt\b|constitui[çc][ãa]o|emenda constitucional|\bdecreto\b|regimento interno|resolu[çc][ãa]o|instru[çc][ãa]o normativa|s[úu]mula|reforma (?:trabalhista|previdenci[áa]ria|administrativa)/.test(
+    haystack
+  );
+}
+
+/** Atualidades/conhecimentos gerais: por definição, é sobre o que aconteceu recentemente. */
+function isCurrentEventsTopic(subject: string, topic: string): boolean {
+  const haystack = normalizeForMatch(`${subject} ${topic}`);
+  return /atualidades|conhecimentos gerais/.test(haystack);
+}
+
+/**
+ * Só entra no modo padrão (buildPrompt) — nunca na variação fiel, onde o objetivo é justamente
+ * ser fiel à questão real de referência (que pode legitimamente ser sobre uma versão antiga,
+ * ex. praticar um item real de prova antiga). Prioridade clara: pedido explícito do usuário >
+ * exemplo de referência > versão atual por padrão.
+ */
+const TECH_VERSION_INSTRUCTION = [
+  "Matéria de Informática/Tecnologia — versão do software:",
+  "Se o pedido do usuário e o assunto NÃO especificarem uma versão exata de sistema operacional, aplicativo ou navegador, gere a questão sobre a versão ATUAL e amplamente usada hoje (ex.: Windows 10 ou 11 — nunca Windows 7/8/XP/Vista; Microsoft 365/Office atual — não Office 2003/2007/2010; navegadores nas versões atuais).",
+  'Mesmo que as "QUESTÕES REAIS DE PROVA" usadas como referência de estilo acima mencionem uma versão antiga, NÃO herde essa versão — adapte o enunciado para a versão atual.',
+  "Exceção: se o usuário pedir EXPLICITAMENTE uma versão específica (ex.: 'questões sobre Windows 7' ou 'Excel 2010'), respeite o pedido dele e gere sobre essa versão mesmo que não seja a mais recente."
+].join("\n");
+
+/** TTL do cache de grounding por tipo — legislação muda devagar; atualidades precisa ficar fresca. */
+const GROUNDING_CACHE_TTL_HOURS: Record<"legislation" | "current_events", number> = {
+  legislation: 72,
+  current_events: 12
+};
+
+function formatSearchResults(results: WebSearchResult[]): string | null {
+  if (results.length === 0) return null;
+  return results
+    .map((r, i) => `${i + 1}. ${r.title}${r.publishedDate ? ` (${r.publishedDate})` : ""} — ${r.url}\n${r.content}`)
+    .join("\n\n");
+}
+
+/**
+ * Busca na web (Tavily, via src/lib/ai/web-search.ts) usada como grounding OBRIGATÓRIO — não é
+ * uma tool que a IA decide chamar, é disparada em código sempre que o assunto bate em
+ * isLegislationSensitiveTopic/isCurrentEventsTopic, porque não dá pra confiar que o modelo "sabe"
+ * que uma lei mudou depois do corte de treinamento dele. Uma busca só por geração (não por
+ * lote/batch), reaproveitada em todos os lotes do mesmo bloco.
+ *
+ * CONTROLE DE CUSTO (o motivo de existir separado de um webSearch() direto): cacheada em
+ * AiWebSearchCache por matéria/assunto — de propósito SEM o texto livre do pedido do usuário nem
+ * o id dele, pra pedidos parecidos de usuários diferentes reaproveitarem a mesma busca em vez de
+ * multiplicar chamadas ao Tavily por conta da mesma "Direito Administrativo / Lei 8.112" pedida
+ * por gente diferente. Usa depth "basic" (mais barato que o "advanced" do chat) por ser uma
+ * checagem de "isso mudou?", não pesquisa aprofundada. Degrada bem: se a busca estiver desligada,
+ * sem chave, ou não achar nada, devolve null (e isso também fica cacheado, pra não tentar de novo
+ * a cada geração) e a geração segue normalmente.
+ */
+async function fetchGroundingContext(input: { subject: string; topic: string; kind: "legislation" | "current_events" }): Promise<string | null> {
+  const cacheKey = `${input.kind}:${normalizeForMatch(input.subject)}:${normalizeForMatch(input.topic)}`;
+  const ttlHours = GROUNDING_CACHE_TTL_HOURS[input.kind];
+
+  const cached = await prisma.aiWebSearchCache.findUnique({ where: { cacheKey } });
+  if (cached && Date.now() - cached.createdAt.getTime() < ttlHours * 3_600_000) {
+    return formatSearchResults((cached.resultsJson as WebSearchResult[] | null) ?? []);
+  }
+
+  const year = new Date().getFullYear();
+  const query =
+    input.kind === "legislation"
+      ? `${input.subject} ${input.topic} texto de lei atualizado vigente ${year}`
+      : `${input.subject} ${input.topic} notícias recentes ${year}`;
+  const outcome = await webSearch(query, 3, "basic");
+  const results = outcome.ok ? outcome.results : [];
+
+  const resultsJson = results.length > 0 ? results : Prisma.JsonNull;
+  await prisma.aiWebSearchCache.upsert({
+    where: { cacheKey },
+    create: { cacheKey, query, resultsJson },
+    update: { query, resultsJson, createdAt: new Date() }
+  });
+
+  return formatSearchResults(results);
+}
+
+function buildGroundingInstruction(groundingContext: string | null): string {
+  if (!groundingContext) return "";
+  return [
+    "PESQUISA ATUALIZADA NA WEB (informação real e recente — priorize isto sobre qualquer versão que você \"lembre\" do treinamento, que pode estar desatualizada):",
+    groundingContext,
+    "Use essas informações para garantir que o conteúdo da questão reflita a legislação/situação VIGENTE. Se a busca não trouxer nada específico o suficiente, gere a questão com cautela, evitando citar número de artigo/dispositivo específico do qual você não tenha certeza absoluta."
+  ].join("\n");
 }
 
 /**
@@ -524,10 +640,24 @@ export async function generateQuestions(input: {
 
   const format = input.format ?? "CERTO_ERRADO";
   const alternativesCount = clampAlternatives(input.alternativesCount ?? 4);
+
+  // Busca OBRIGATÓRIA (não é uma tool que a IA decide chamar) quando o assunto é
+  // legislação/atualidades — uma vez só por geração, reaproveitada em todos os lotes, e cacheada
+  // por matéria/assunto entre gerações diferentes (ver fetchGroundingContext) pra não estourar o
+  // consumo do Tavily. Degrada bem (null) se a busca estiver desligada ou sem chave.
+  let groundingContext: string | null = null;
+  if (isLegislationSensitiveTopic(input.subject, input.topic)) {
+    input.onProgress?.("Consultando legislação atualizada na web…");
+    groundingContext = await fetchGroundingContext({ subject: input.subject, topic: input.topic, kind: "legislation" });
+  } else if (isCurrentEventsTopic(input.subject, input.topic)) {
+    input.onProgress?.("Consultando notícias recentes na web…");
+    groundingContext = await fetchGroundingContext({ subject: input.subject, topic: input.topic, kind: "current_events" });
+  }
+
   const prompt =
     input.referenceQuestions && input.referenceQuestions.length > 0
-      ? buildVariantPrompt({ ...input, format, alternativesCount, referenceQuestions: input.referenceQuestions })
-      : buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext });
+      ? buildVariantPrompt({ ...input, format, alternativesCount, referenceQuestions: input.referenceQuestions, groundingContext })
+      : buildPrompt({ ...input, format, alternativesCount, referenceContext: input.referenceContext, groundingContext });
 
   const runProvider = (fullPrompt: string): Promise<ProviderResult> => {
     if (settings.provider === AiProvider.CLAUDE) return generateWithClaude(settings, fullPrompt);
@@ -625,7 +755,8 @@ export async function generateQuestions(input: {
             format,
             alternativesCount,
             // Fatia as fontes: cada lote gera a variação das SUAS questões de referência.
-            referenceQuestions: input.referenceQuestions.slice(generatedCount, generatedCount + batchSize)
+            referenceQuestions: input.referenceQuestions.slice(generatedCount, generatedCount + batchSize),
+            groundingContext
           })
         : buildPrompt({
             ...input,
@@ -633,6 +764,7 @@ export async function generateQuestions(input: {
             alternativesCount,
             quantity: batchSize,
             referenceContext: input.referenceContext,
+            groundingContext,
             avoidStatements: generatedStatements
           });
 
@@ -690,6 +822,8 @@ function buildPrompt(input: {
   reviewedExamplesContext?: string;
   /** Enunciados já gerados nos lotes anteriores deste mesmo bloco. */
   avoidStatements?: string[];
+  /** Resultado de webSearch, quando o assunto bate em legislação/atualidades — ver fetchGroundingContext. */
+  groundingContext?: string | null;
 }) {
   const formatInstruction =
     input.format === "CERTO_ERRADO"
@@ -706,6 +840,8 @@ function buildPrompt(input: {
     input.referenceContext
       ? `QUESTÕES REAIS DE PROVA (use como âncora de estilo, dificuldade, fraseado e pegadinhas):\n${input.referenceContext}\n\nProduza questões NOVAS e originais nesse mesmo estilo da banca (Cebraspe); espelhe as pegadinhas e a estrutura; NÃO copie verbatim.`
       : "",
+    isVersionSensitiveTechTopic(input.subject, input.topic) ? TECH_VERSION_INSTRUCTION : "",
+    buildGroundingInstruction(input.groundingContext ?? null),
     input.reviewedExamplesContext || "",
     input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
     input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
@@ -745,6 +881,8 @@ function buildVariantPrompt(input: {
   extraInstructions?: string;
   context?: string;
   referenceQuestions: ReferenceVariantSource[];
+  /** Resultado de webSearch, quando o assunto bate em legislação/atualidades — ver fetchGroundingContext. */
+  groundingContext?: string | null;
 }) {
   const formatInstruction =
     input.format === "CERTO_ERRADO"
@@ -780,7 +918,11 @@ function buildVariantPrompt(input: {
     "- Se a questão de referência tinha um \"Texto de apoio original\", sua variação também deve ter um texto de apoio (adaptado do original, com os mesmos ajustes de nomes/números/datas) — coloque-o no supportText do group dessa questão, não deixe null. Se a referência NÃO tinha texto de apoio, use supportText null.",
     "- Mantenha o mesmo nível de dificuldade e o mesmo tipo de pegadinha da questão original.",
     "- CRÍTICO: NÃO copie o gabarito original cegamente. Releia SOMENTE o enunciado que você reescreveu, do zero, e determine se ele é CERTO ou ERRADO (ou qual alternativa é correta) com base apenas no texto novo. Pequenas mudanças de palavra (ex.: trocar \"todos\" por \"alguns\", negar uma condição, trocar um verbo, inverter uma ordem) podem inverter o gabarito — se isso acontecer, ajuste a resposta e a justificativa para refletir o NOVO enunciado, não o original.",
+    input.groundingContext
+      ? "- Se a questão de referência versa sobre legislação, confira o gabarito também contra a PESQUISA ATUALIZADA NA WEB abaixo: se a norma citada tiver sido revogada ou alterada desde a prova original, ajuste o enunciado/gabarito da variação para refletir o texto vigente, mesmo que isso diferencie o resultado da questão original."
+      : "",
     `- Preencha "sourceIndex" com o número (1 a ${input.referenceQuestions.length}) da questão de referência que serviu de base, na mesma ordem em que apareceram acima.`,
+    buildGroundingInstruction(input.groundingContext ?? null),
     input.prompt ? `Pedido do usuário: ${input.prompt}` : "",
     input.extraInstructions ? `Instruções adicionais: ${input.extraInstructions}` : "",
     input.context ? `Contexto do aluno (histórico/desempenho): ${input.context}` : "",

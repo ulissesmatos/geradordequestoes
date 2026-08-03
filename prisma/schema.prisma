@@ -425,6 +425,26 @@ model AiGenerationLog {
 }
 
 /**
+ * Cache da busca na web (Tavily) usada como grounding obrigatório na geração de questões de
+ * legislação/atualidades (ver src/lib/ai/generateQuestions.ts::fetchGroundingContext). Existe só
+ * pra controlar custo: sem isso, cada geração de "Direito Administrativo / Lei 8.112" — de
+ * QUALQUER usuário, a qualquer hora — dispara uma busca nova no Tavily, mesmo que outro aluno
+ * tenha pedido o mesmo assunto minutos antes. A chave é por assunto/matéria, não por usuário nem
+ * pelo texto livre do pedido, de propósito: é isso que permite reaproveitar entre usuários
+ * diferentes. TTL fica em código (fetchGroundingContext), não aqui — esta tabela só guarda.
+ */
+model AiWebSearchCache {
+  id          String   @id @default(cuid())
+  cacheKey    String   @unique
+  query       String
+  /// null também é cacheado (busca sem resultado) pra não repetir uma tentativa que já falhou.
+  resultsJson Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/**
  * Log BRUTO de chamadas de IA: uma linha por chamada ao provedor. Alimenta /admin/logs-ia e o
  * limite DIÁRIO dos planos pagos. Não serve para medir a cota do trial — uma única mensagem do
  * usuário pode gerar várias linhas aqui (resposta do chat + geração de questões, por exemplo).
