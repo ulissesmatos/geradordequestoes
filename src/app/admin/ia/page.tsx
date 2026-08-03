@@ -30,6 +30,8 @@ export default async function AiSettingsPage() {
     siteUrl: null,
     appName: "Questões Certo/Errado"
   };
+  const inputPriceValue = stored?.inputPricePerMillionUsd != null ? stored.inputPricePerMillionUsd.toString() : "";
+  const outputPriceValue = stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toString() : "";
 
   return (
     <div className="space-y-6">
@@ -97,6 +99,41 @@ export default async function AiSettingsPage() {
                 X-Title (OpenRouter)
                 <Input name="appName" defaultValue={settings.appName ?? ""} placeholder="Seu app" />
               </label>
+            </div>
+
+            <div className="space-y-2 rounded-md border border-[var(--border)] p-4">
+              <div>
+                <p className="text-sm font-semibold">Preço do modelo (custo real nos logs)</p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  USD por 1 milhão de tokens — confira na página de pricing do provedor. Sem histórico por modelo:{" "}
+                  <strong>atualize estes dois campos sempre que trocar de modelo acima</strong>, senão o custo calculado nos
+                  logs fica errado.
+                </p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1 text-sm font-medium">
+                  Entrada (US$/1M tokens)
+                  <Input
+                    name="inputPricePerMillionUsd"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    defaultValue={inputPriceValue}
+                    placeholder="Ex.: 2.00"
+                  />
+                </label>
+                <label className="space-y-1 text-sm font-medium">
+                  Saída (US$/1M tokens)
+                  <Input
+                    name="outputPricePerMillionUsd"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    defaultValue={outputPriceValue}
+                    placeholder="Ex.: 12.00"
+                  />
+                </label>
+              </div>
             </div>
 
             <datalist id="ai-model-presets">
