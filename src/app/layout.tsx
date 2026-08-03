@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { archivo, figtree } from "@/lib/fonts";
 import { getAppSettings } from "@/lib/app-settings";
@@ -78,7 +79,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="pt-BR" className={`${inter.variable} ${archivo.variable} ${figtree.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <ClientErrorReporter />
         {children}
       </body>
