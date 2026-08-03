@@ -17,10 +17,12 @@ import {
   Inbox,
   ListChecks,
   Mail,
+  Megaphone,
   Menu,
   ScrollText,
   Settings,
   Timer,
+  TrendingUp,
   Users,
   X
 } from "lucide-react";
@@ -34,6 +36,7 @@ const groups = [
     label: "Operação",
     links: [
       { href: "/admin", label: "Dashboard", icon: BarChart3 },
+      { href: "/admin/analytics", label: "Analytics", icon: TrendingUp },
       { href: "/admin/usuarios", label: "Usuários", icon: Users },
       { href: "/admin/contato", label: "Contato", icon: Inbox }
     ]
@@ -76,6 +79,7 @@ const groups = [
     label: "Plataforma",
     links: [
       { href: "/admin/email", label: "E-mail", icon: Mail },
+      { href: "/admin/popups", label: "Popups", icon: Megaphone },
       { href: "/admin/auditoria", label: "Auditoria", icon: ScrollText },
       { href: "/admin/erros-cliente", label: "Erros do navegador", icon: Bug },
       { href: "/admin/branding", label: "Branding", icon: Settings }

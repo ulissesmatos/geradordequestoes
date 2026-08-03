@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { AiUsageEventStatus, QuestionStatus, SubscriptionStatus } from "@prisma/client";
+import { AiUsageEventStatus, QuestionStatus } from "@prisma/client";
 import { AdminPageHeader } from "@/components/admin/page-header";
+import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAiCostSummary } from "@/lib/analytics/ai-cost";
+import { activeSubscriptionWhere } from "@/lib/analytics/revenue";
 import { prisma } from "@/lib/prisma";
 import { getRevenueSummary } from "@/lib/revenue";
 
@@ -17,10 +20,11 @@ export default async function AdminHomePage() {
     materials,
     transactions,
     revenue,
-    aiSettings
+    aiSettings,
+    aiCost
   ] = await Promise.all([
     prisma.user.count(),
-    prisma.userSubscription.count({ where: { status: SubscriptionStatus.ACTIVE, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } }),
+    prisma.userSubscription.count({ where: activeSubscriptionWhere() }),
     prisma.question.count(),
     prisma.question.count({ where: { status: QuestionStatus.PENDING_REVIEW } }),
     prisma.question.count({ where: { status: QuestionStatus.APPROVED } }),
@@ -29,7 +33,8 @@ export default async function AdminHomePage() {
     prisma.studyMaterial.count(),
     prisma.paymentTransaction.count(),
     getRevenueSummary(),
-    prisma.aiProviderSetting.findUnique({ where: { id: "default" } })
+    prisma.aiProviderSetting.findUnique({ where: { id: "default" } }),
+    getAiCostSummary()
   ]);
 
   const cards = [
@@ -46,7 +51,15 @@ export default async function AdminHomePage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Dashboard" description="Visão geral da plataforma." />
+      <AdminPageHeader
+        title="Dashboard"
+        description="Visão geral da plataforma."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/admin/analytics">Ver Analytics completo →</Link>
+          </Button>
+        }
+      />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Receita fora do laço: só ela precisa explicar o que ficou de fora da conta. */}
         <Card>
@@ -83,6 +96,28 @@ export default async function AdminHomePage() {
             </CardHeader>
           </Card>
         ))}
+        <Card>
+          <CardHeader>
+            <CardTitle>{formatUsd(aiCost.monthUsd)}</CardTitle>
+            <CardDescription>
+              Custo de IA este mês
+              <span className="mt-1 block text-xs">Cobre só geração de questões — chat e material ainda não são medidos.</span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{formatUsd(aiCost.totalUsd)}</CardTitle>
+            <CardDescription>
+              Custo de IA total
+              <span className="mt-1 block text-xs">
+                <Link href="/admin/analytics/ia" className="underline">
+                  Ver tendência e custo por modelo
+                </Link>
+              </span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
       <Card>
         <CardHeader>
@@ -99,4 +134,8 @@ export default async function AdminHomePage() {
 
 function formatMoney(cents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+}
+
+function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
 }

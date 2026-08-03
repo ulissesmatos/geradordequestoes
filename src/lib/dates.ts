@@ -40,6 +40,17 @@ export function dayKeyInBrazil(reference: Date = new Date()): string {
   return dayKeyFormatter.format(reference);
 }
 
+const monthKeyFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BRAZIL_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit"
+});
+
+/** Mês do calendário brasileiro no formato "YYYY-MM" — usado pra bucketizar tendências mensais. */
+export function monthKeyInBrazil(reference: Date = new Date()): string {
+  return monthKeyFormatter.format(reference);
+}
+
 /** Offset do fuso em minutos no instante dado (-180 no horário padrão de Brasília). */
 function zoneOffsetMinutes(instant: Date): number {
   const parts = partsFormatter.formatToParts(instant);
@@ -161,4 +172,10 @@ export function formatDateTimeBR(date: DateInput | null | undefined, dateStyle: 
 export function formatDayMonthBR(date: DateInput | null | undefined): string {
   if (date == null) return "—";
   return brazilFormatter({ day: "2-digit", month: "2-digit" }).format(new Date(date));
+}
+
+/** Rótulo curto de mês a partir da chave "YYYY-MM" (ver monthKeyInBrazil) — ex. "ago/26". Usado nos eixos dos gráficos de tendência de /admin/analytics. */
+export function formatMonthKeyBR(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  return brazilFormatter({ month: "short", year: "2-digit" }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
