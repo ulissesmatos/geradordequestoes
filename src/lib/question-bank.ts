@@ -92,19 +92,14 @@ export async function listBankQuestions(filters: BankFilters) {
   };
 }
 
-/** Selo de confiança da questão (exibido na lista e no runner). */
-export function buildSourceBadge(question: {
-  sourceReferenceQuestion?: { document: { title: string } } | null;
-  reviewedById?: string | null;
-}): string | undefined {
-  const parts: string[] = [];
-  if (question.sourceReferenceQuestion) {
-    parts.push(`Baseada em prova real · ${question.sourceReferenceQuestion.document.title}`);
-  }
-  if (question.reviewedById) {
-    parts.push("Revisada pela equipe");
-  }
-  return parts.length ? parts.join(" · ") : undefined;
+/**
+ * Selo de "baseada em prova real" (exibido na lista e no runner). O selo de "revisada pela
+ * equipe" NÃO entra aqui de propósito — vira um badge fixo próprio (ver ReviewedBadge),
+ * mostrado sempre (inclusive antes de responder), não só depois de responder como este texto.
+ */
+export function buildSourceBadge(question: { sourceReferenceQuestion?: { document: { title: string } } | null }): string | undefined {
+  if (!question.sourceReferenceQuestion) return undefined;
+  return `Baseada em prova real · ${question.sourceReferenceQuestion.document.title}`;
 }
 
 export type TrialBankStatus = {

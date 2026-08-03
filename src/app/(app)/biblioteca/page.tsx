@@ -139,7 +139,8 @@ export default async function LibraryPage({
 
     const questionsWithMeta = selectedSet.questions.map((q) => ({
       ...q,
-      isFavorited: favSet.has(q.id)
+      isFavorited: favSet.has(q.id),
+      isReviewed: Boolean(q.reviewedById)
     }));
 
     // review mode: pass previous answers as initialAnswers

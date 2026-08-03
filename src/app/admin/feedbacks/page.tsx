@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertTriangle, ChevronDown, Pencil } from "lucide-react";
 import { updateQuestionFeedbackStatusAction } from "@/app/admin/admin-actions";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPageHeader } from "@/components/admin/page-header";
+import { QuestionReviewForm } from "@/components/admin/question-review-form";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,11 +37,17 @@ export default async function AdminFeedbacksPage({ searchParams }: { searchParam
         question: {
           select: {
             id: true,
+            updatedAt: true,
             statement: true,
+            supportText: true,
             answer: true,
+            difficulty: true,
             status: true,
+            explanation: true,
+            reviewedById: true,
             subject: { select: { name: true } },
-            topic: { select: { name: true } }
+            topic: { select: { name: true } },
+            options: { select: { id: true, label: true, text: true, isCorrect: true }, orderBy: { order: "asc" } }
           }
         }
       },
@@ -90,6 +97,7 @@ export default async function AdminFeedbacksPage({ searchParams }: { searchParam
                       {typeLabels[fb.type] ?? fb.type}
                     </StatusBadge>
                     <StatusBadge tone={statusTone(fb.status)}>{fb.status}</StatusBadge>
+                    {fb.question.reviewedById && <StatusBadge tone="success">Questão revisada</StatusBadge>}
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {fb.question.subject.name} / {fb.question.topic.name}
                     </span>
@@ -105,14 +113,20 @@ export default async function AdminFeedbacksPage({ searchParams }: { searchParam
                   <p className="whitespace-pre-wrap rounded-md bg-[var(--surface-subtle)] p-3 text-sm">{fb.message}</p>
                 )}
 
+                <details className="group rounded-md border border-[var(--border)]" open={isGabarito && fb.status === "PENDING"}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-semibold [&::-webkit-details-marker]:hidden hover:bg-[var(--surface-subtle)]">
+                    <span className="flex items-center gap-1.5">
+                      <Pencil className="h-3.5 w-3.5" />
+                      Editar / revisar esta questão
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="border-t border-[var(--border)] p-3">
+                    <QuestionReviewForm question={fb.question} />
+                  </div>
+                </details>
+
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href="/admin/questoes/revisar"
-                    className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-semibold hover:bg-[var(--surface-subtle)]"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Revisar questões
-                  </Link>
                   {fb.status !== "REVIEWED" && (
                     <form action={updateQuestionFeedbackStatusAction}>
                       <input type="hidden" name="id" value={fb.id} />

@@ -81,7 +81,8 @@ export default async function PracticeBankPage({
         questions={result.questions.map((question) => ({
           ...question,
           isFavorited: favSet.has(question.id),
-          sourceBadge: buildSourceBadge(question)
+          sourceBadge: buildSourceBadge(question),
+          isReviewed: Boolean(question.reviewedById)
         }))}
         mode="study"
       />

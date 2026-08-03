@@ -98,7 +98,7 @@ async function LoggedInView({ questionSetId, userId }: { questionSetId: string; 
     hasActiveSubscription({ id: userId })
   ]);
 
-  const questionsWithMeta = questions.map((q) => ({ ...q, isFavorited: q.favorites.length > 0 }));
+  const questionsWithMeta = questions.map((q) => ({ ...q, isFavorited: q.favorites.length > 0, isReviewed: Boolean(q.reviewedById) }));
 
   return (
     <div className="space-y-4">

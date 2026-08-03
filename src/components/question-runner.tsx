@@ -7,6 +7,7 @@ import { answerQuestionAction } from "@/app/(app)/actions/question-actions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { MathText } from "@/components/math-text";
 import { ReportQuestionButton } from "@/components/report-question-button";
+import { ReviewedBadge } from "@/components/reviewed-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDayMonthBR } from "@/lib/dates";
@@ -34,6 +35,8 @@ type RunnerQuestion = {
   isFavorited?: boolean;
   /** Selo de confiança (ex.: "Baseada em prova real · Prova PC-MA 2023"). */
   sourceBadge?: string;
+  /** true quando um admin já revisou/aprovou o gabarito manualmente (ver ReviewedBadge). */
+  isReviewed?: boolean;
 };
 
 type SelectedAnswer = {
@@ -163,7 +166,10 @@ export function QuestionRunner({
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
+                      {question.isReviewed && <ReviewedBadge />}
+                    </div>
                     <div className="flex items-center gap-1">
                       <ReportQuestionButton questionId={question.id} />
                       <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
@@ -270,9 +276,12 @@ export function QuestionRunner({
             <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
           </div>
         </div>
-        <p className="text-sm text-[var(--muted-foreground)]">
-          {current.subject.name} / {current.topic.name} / {current.format === "MULTIPLA_ESCOLHA" ? "Múltipla escolha" : "Certo/Errado"}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {current.subject.name} / {current.topic.name} / {current.format === "MULTIPLA_ESCOLHA" ? "Múltipla escolha" : "Certo/Errado"}
+          </p>
+          {current.isReviewed && <ReviewedBadge />}
+        </div>
         {mode === "simulado" && (
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">Simulado — correção ao final</p>
         )}

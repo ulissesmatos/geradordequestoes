@@ -47,7 +47,7 @@ export default async function ReviewPage({
       <div className="space-y-4">
         <BackToSummary />
         <QuestionRunner
-          questions={questions.map((q) => ({ ...q, isFavorited: favSet.has(q.id) }))}
+          questions={questions.map((q) => ({ ...q, isFavorited: favSet.has(q.id), isReviewed: Boolean(q.reviewedById) }))}
           mode="study"
           reviewMode
         />
