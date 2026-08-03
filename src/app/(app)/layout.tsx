@@ -2,9 +2,11 @@ import { Role } from "@prisma/client";
 import { AppNav } from "@/components/app-nav";
 import { AppNavVisibility } from "@/components/app-nav-visibility";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
+import { PopupManager } from "@/components/popup-manager";
 import { SaasableAssets } from "@/components/saasable/saasable-assets";
 import { getAppSettings } from "@/lib/app-settings";
 import { requireUser } from "@/lib/guards";
+import { getEligiblePopupForUser } from "@/lib/popups";
 import { getStreak } from "@/lib/streaks";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +15,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const [user, appSettings] = await Promise.all([requireUser(), getAppSettings()]);
   const needsEmailVerification = user.role !== Role.ADMIN && !user.emailVerified;
   // Sequência no header de todas as telas do aluno: é o lembrete passivo que mantém o
-  // hábito vivo sem precisar de e-mail nem notificação.
-  const streak = await getStreak(user.id);
+  // hábito vivo sem precisar de e-mail nem notificação. getEligiblePopupForUser depende do
+  // user já resolvido, então só entra nesse segundo Promise.all (não dá pra paralelizar com
+  // o requireUser() do primeiro).
+  const [streak, popup] = await Promise.all([getStreak(user.id), getEligiblePopupForUser(user)]);
   return (
     <>
       {/* Fontes/ícones da SaasAble aqui, mas layout/densidade das telas do aluno ficam
@@ -33,6 +37,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         </AppNavVisibility>
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
       </div>
+      <PopupManager popup={popup} />
     </>
   );
 }
