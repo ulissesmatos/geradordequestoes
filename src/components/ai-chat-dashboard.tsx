@@ -578,7 +578,12 @@ export function AiChatDashboard({
         userName={userName}
         isAdmin={isAdmin}
         showUpgrade={Boolean(usage.isTrial)}
-        middleSlot={sessionList}
+        middleSlot={
+          <div className="pt-1">
+            <p className="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Recentes</p>
+            {sessionList}
+          </div>
+        }
       />
 
       <main
