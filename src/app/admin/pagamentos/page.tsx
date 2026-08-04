@@ -368,7 +368,6 @@ function CheckoutRow({
                       readOnly
                       value={tx.qr_code}
                       rows={3}
-                      onFocus={(e) => e.currentTarget.select()}
                       className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2 font-mono text-xs text-[var(--muted-foreground)]"
                       aria-label="Código Pix copia e cola"
                     />
