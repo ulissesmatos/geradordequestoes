@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { CheckCircle2, ChevronDown, MessageCircle, QrCode, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import {
   issueUserPixChargeAction,
   toggleTransactionRevenueAction,
@@ -9,9 +9,8 @@ import {
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminTabs, type AdminTabDef } from "@/components/admin/admin-tabs";
 import { AdminPageHeader } from "@/components/admin/page-header";
-import { CopyButton } from "@/components/admin/copy-button";
+import { CheckoutRow } from "@/components/admin/checkout-row";
 import { SecretInput } from "@/components/admin/secret-input";
-import { StatusBadge } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,13 +19,8 @@ import { prisma } from "@/lib/prisma";
 import { maskSecret } from "@/lib/crypto";
 import { formatDateTimeBR } from "@/lib/dates";
 import { getRevenueSummary } from "@/lib/revenue";
-import { onlyDigits } from "@/lib/validation/cpf";
 
 const PAGE_SIZE = 20;
-
-type PixMetadata = {
-  point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string } };
-};
 
 const TABS: AdminTabDef[] = [
   { value: "config", label: "Configuração" },
@@ -298,107 +292,6 @@ async function CheckoutsTab({ page, total, q }: { page: number; total: number; q
       </div>
       <AdminPagination page={page} totalPages={totalPages} buildHref={buildHref} />
     </div>
-  );
-}
-
-function checkoutDisplayStatus(status: string, expiresAt: Date | null): { label: string; tone: "success" | "warning" | "danger" | "neutral" } {
-  if (status === "COMPLETED") return { label: "Aprovado", tone: "success" };
-  if (status === "CANCELED" || status === "ERROR") return { label: status === "CANCELED" ? "Cancelado" : "Erro", tone: "danger" };
-  // O checkout nunca transiciona pra EXPIRED sozinho no banco — calculamos aqui na leitura em
-  // vez de rodar um job só pra isso.
-  if (status === "PENDING" && expiresAt && expiresAt.getTime() < Date.now()) return { label: "Expirado", tone: "neutral" };
-  return { label: "Pendente", tone: "warning" };
-}
-
-function CheckoutRow({
-  checkout
-}: {
-  checkout: Prisma.PaymentCheckoutSessionGetPayload<{ include: { user: true; plan: true } }>;
-}) {
-  const display = checkoutDisplayStatus(checkout.status, checkout.expiresAt);
-  const metadata = (checkout.metadata ?? {}) as PixMetadata;
-  const tx = checkout.provider === "MERCADO_PAGO" ? metadata.point_of_interaction?.transaction_data : undefined;
-  const hasPix = Boolean(tx?.qr_code || tx?.qr_code_base64);
-  const waPhone = onlyDigits(checkout.user.phone ?? "");
-  const waMessage = tx?.qr_code
-    ? `Olá! Segue o código Pix para pagar o plano ${checkout.plan.name} (${formatMoney(checkout.amountCents)}):\n\n${tx.qr_code}`
-    : "";
-
-  return (
-    <Card className="overflow-hidden">
-      <details className="group">
-        <summary className="cursor-pointer list-none p-4 [&::-webkit-details-marker]:hidden hover:bg-[var(--surface-subtle)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <StatusBadge tone={display.tone}>{display.label}</StatusBadge>
-                <StatusBadge tone="neutral">{checkout.provider}</StatusBadge>
-                {hasPix && (
-                  <StatusBadge tone="info">
-                    <QrCode className="h-3 w-3" /> Pix disponível
-                  </StatusBadge>
-                )}
-              </div>
-              <p className="text-sm font-medium">
-                {checkout.user.email} · {checkout.plan.name}
-              </p>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                {formatMoney(checkout.amountCents)} · criado em {formatDate(checkout.createdAt)}
-                {checkout.expiresAt ? ` · expira em ${formatDate(checkout.expiresAt)}` : ""}
-              </p>
-            </div>
-            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform group-open:rotate-180" />
-          </div>
-        </summary>
-        <div className="border-t border-[var(--border)] p-4">
-          {hasPix ? (
-            <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-              {tx?.qr_code_base64 && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={`data:image/png;base64,${tx.qr_code_base64}`}
-                  alt="QR Code Pix"
-                  className="h-40 w-40 rounded-lg border border-[var(--border)] bg-white p-2"
-                />
-              )}
-              <div className="space-y-2">
-                {tx?.qr_code && (
-                  <>
-                    <textarea
-                      readOnly
-                      value={tx.qr_code}
-                      rows={3}
-                      className="w-full resize-none rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] p-2 font-mono text-xs text-[var(--muted-foreground)]"
-                      aria-label="Código Pix copia e cola"
-                    />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CopyButton value={tx.qr_code} label="Copiar código Pix" />
-                      {waPhone && (
-                        <a
-                          href={`https://wa.me/55${waPhone}?text=${encodeURIComponent(waMessage)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-xs font-semibold transition hover:bg-[var(--surface-subtle)]"
-                        >
-                          <MessageCircle className="h-3 w-3" />
-                          Enviar por WhatsApp
-                        </a>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-[var(--muted-foreground)]">
-              {checkout.provider === "MERCADO_PAGO"
-                ? "Este checkout não tem QR Code local (provavelmente foi criado no modo Checkout Pro, que redireciona para a página do Mercado Pago)."
-                : "Checkout via Stripe — pagamento por cartão, sem QR Pix."}
-            </p>
-          )}
-        </div>
-      </details>
-    </Card>
   );
 }
 

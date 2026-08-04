@@ -628,12 +628,15 @@ export async function toggleTransactionRevenueAction(formData: FormData) {
  */
 export async function issueUserPixChargeAction(formData: FormData) {
   const admin = await requireAdmin();
+  // userId (hidden, quando a action é chamada de dentro da própria página do usuário) tem
+  // prioridade sobre email (busca livre, usada em Admin → Pagamentos quando não se sabe o id).
+  const userId = String(formData.get("userId") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const planId = String(formData.get("planId") ?? "");
-  if (!email) throw new Error("Informe o e-mail do usuário.");
+  if (!userId && !email) throw new Error("Informe o e-mail do usuário.");
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new Error(`Nenhum usuário encontrado com o e-mail ${email}.`);
+  const user = userId ? await prisma.user.findUnique({ where: { id: userId } }) : await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error(userId ? "Usuário não encontrado." : `Nenhum usuário encontrado com o e-mail ${email}.`);
 
   const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
   if (!plan) throw new Error("Selecione um plano.");
@@ -703,6 +706,7 @@ export async function issueUserPixChargeAction(formData: FormData) {
     summary: `cobrança Pix avulsa de R$ ${(amountCents / 100).toFixed(2)} para ${user.email} (${plan.name})`
   });
   revalidatePath("/admin/pagamentos");
+  revalidatePath("/admin/usuarios/[id]", "page");
 }
 
 export async function updatePaymentGatewaySettingsAction(formData: FormData) {

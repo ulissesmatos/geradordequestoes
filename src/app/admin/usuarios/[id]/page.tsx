@@ -2,15 +2,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Role } from "@prisma/client";
 import { ArrowLeft } from "lucide-react";
-import { activateUserSubscriptionAction, cancelUserSubscriptionAction, updateUserAction } from "@/app/admin/admin-actions";
+import {
+  activateUserSubscriptionAction,
+  cancelUserSubscriptionAction,
+  issueUserPixChargeAction,
+  updateUserAction
+} from "@/app/admin/admin-actions";
 import { AdminPagination } from "@/components/admin/admin-pagination";
 import { AdminPasswordTools } from "@/components/admin/admin-password-tools";
 import { AdminTabs, type AdminTabDef } from "@/components/admin/admin-tabs";
+import { CheckoutRow } from "@/components/admin/checkout-row";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatDateBR, formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
@@ -123,7 +130,7 @@ export default async function UserDetailPage({
       {activeTab === "perfil" && <PerfilTab user={user} />}
       {activeTab === "assinatura" && <AssinaturaTab userId={id} page={page} />}
       {activeTab === "senha" && <SenhaTab userId={id} hasPassword={Boolean(user.passwordHash)} />}
-      {activeTab === "transacoes" && <TransacoesTab userId={id} page={page} />}
+      {activeTab === "transacoes" && <TransacoesTab userId={id} page={page} hasCpf={Boolean(user.cpf)} />}
       {activeTab === "perigo" && <PerigoTab userId={id} userName={user.name} />}
     </div>
   );
@@ -308,8 +315,8 @@ function SenhaTab({ userId, hasPassword }: { userId: string; hasPassword: boolea
   );
 }
 
-async function TransacoesTab({ userId, page }: { userId: string; page: number }) {
-  const [transactions, total] = await Promise.all([
+async function TransacoesTab({ userId, page, hasCpf }: { userId: string; page: number; hasCpf: boolean }) {
+  const [transactions, total, checkouts, plans] = await Promise.all([
     prisma.paymentTransaction.findMany({
       where: { userId },
       include: { plan: true },
@@ -317,12 +324,59 @@ async function TransacoesTab({ userId, page }: { userId: string; page: number })
       skip: (page - 1) * TRANSACTIONS_PAGE_SIZE,
       take: TRANSACTIONS_PAGE_SIZE
     }),
-    prisma.paymentTransaction.count({ where: { userId } })
+    prisma.paymentTransaction.count({ where: { userId } }),
+    prisma.paymentCheckoutSession.findMany({
+      where: { userId },
+      include: { user: true, plan: true },
+      orderBy: { createdAt: "desc" },
+      take: 10
+    }),
+    prisma.subscriptionPlan.findMany({ where: { isActive: true }, orderBy: { priceCents: "asc" } })
   ]);
   const totalPages = Math.max(1, Math.ceil(total / TRANSACTIONS_PAGE_SIZE));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Nova cobrança Pix</CardTitle>
+          <CardDescription>
+            Gera um Pix pra esse cliente, mesmo que ele nunca tenha tentado pagar antes. O QR e o código copia-e-cola
+            aparecem na lista logo abaixo pra você copiar e mandar manualmente — um e-mail com o código também sai
+            automaticamente para ele.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={issueUserPixChargeAction} className="grid gap-3 md:grid-cols-3">
+            <input type="hidden" name="userId" value={userId} />
+            <Select name="planId" required defaultValue="" className="md:col-span-2">
+              <option value="" disabled>
+                Plano
+              </option>
+              {plans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name} — {formatMoney(plan.priceCents)}
+                </option>
+              ))}
+            </Select>
+            <Input name="amount" type="number" step="0.01" min="1" placeholder="Valor (opcional)" />
+            {!hasCpf && (
+              <Input name="cpf" placeholder="CPF do cliente (obrigatório — ele ainda não tem um salvo)" required className="md:col-span-3" />
+            )}
+            <SubmitButton>Gerar Pix</SubmitButton>
+          </form>
+        </CardContent>
+      </Card>
+
+      {checkouts.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-[var(--muted-foreground)]">Checkouts Pix recentes</h3>
+          {checkouts.map((checkout) => (
+            <CheckoutRow key={checkout.id} checkout={checkout} showUserEmail={false} />
+          ))}
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Transações</CardTitle>
