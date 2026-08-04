@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, BookOpen, Bot, Check, FileText, FolderOpen, Image as ImageIcon, Link2, Loader2, Menu, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Settings, Share2, Sparkles, Timer, Trash2, User, X } from "lucide-react";
+import { ArrowUp, Bot, Check, FileText, Image as ImageIcon, Link2, Loader2, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import {
   deleteChatSessionAction,
@@ -11,14 +11,14 @@ import {
   shareChatSessionAction
 } from "@/app/(app)/actions/chat-actions";
 import { BotAvatar } from "@/components/bot-avatar";
-import { LogoutButton } from "@/components/logout-button";
 import { MarkdownContent } from "@/components/markdown-content";
+import { MobileNavDrawer } from "@/components/mobile-nav-drawer";
+import { MobileTopBar } from "@/components/mobile-top-bar";
 import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Sheet } from "@/components/ui/sheet";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
 import { dayKeyInBrazil } from "@/lib/dates";
@@ -570,35 +570,16 @@ export function AiChatDashboard({
         {sidebarOpen ? sessionList : <div className="flex-1" />}
       </aside>
 
-      {/* Drawer mobile único: novo chat + histórico + navegação do app (estilo ChatGPT) */}
-      <div className="md:hidden">
-        <Sheet open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} side="left" className="w-80 border-r border-[var(--border)] bg-[var(--surface)]">
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] p-3">
-            <span className="text-sm font-semibold">Chats</span>
-            <Button variant="ghost" size="icon" title="Fechar menu" onClick={() => setMobileMenuOpen(false)}>
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
-          <div className="p-2">
-            <Button asChild variant="outline" className="w-full" onClick={() => setMobileMenuOpen(false)}>
-              <Link href="/ai?new=1">
-                <MessageSquarePlus className="h-4 w-4" />
-                Novo chat
-              </Link>
-            </Button>
-          </div>
-          {sessionList}
-          <nav className="border-t border-[var(--border)] p-2">
-            <DrawerNavLink href="/ai" icon={Sparkles} label="Chat IA" onNavigate={() => setMobileMenuOpen(false)} />
-            <DrawerNavLink href="/simulados" icon={Timer} label="Simulados" onNavigate={() => setMobileMenuOpen(false)} />
-            <DrawerNavLink href="/biblioteca" icon={FolderOpen} label="Biblioteca" onNavigate={() => setMobileMenuOpen(false)} />
-            <DrawerNavLink href="/materiais" icon={BookOpen} label="Materiais" onNavigate={() => setMobileMenuOpen(false)} />
-            <DrawerNavLink href="/perfil" icon={User} label="Perfil e assinatura" onNavigate={() => setMobileMenuOpen(false)} />
-            {isAdmin && <DrawerNavLink href="/admin" icon={Settings} label="Admin" onNavigate={() => setMobileMenuOpen(false)} />}
-            <LogoutButton className="mt-1 flex w-full items-center rounded-md px-3 py-2.5 text-left text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]" />
-          </nav>
-        </Sheet>
-      </div>
+      {/* Drawer mobile único, compartilhado com o resto do app (ver AppNav) — mesmo padrão em
+          toda página, com o histórico de conversas entrando no meio (middleSlot). */}
+      <MobileNavDrawer
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        userName={userName}
+        isAdmin={isAdmin}
+        showUpgrade={Boolean(usage.isTrial)}
+        middleSlot={sessionList}
+      />
 
       <main
         className="relative flex min-w-0 flex-1 flex-col"
@@ -612,28 +593,10 @@ export function AiChatDashboard({
             <p className="text-sm font-semibold text-[var(--primary-soft-foreground)]">Solte imagens ou PDFs para anexar</p>
           </div>
         )}
-        {/* Mini-header mobile: só o essencial (abrir histórico + título + novo chat). Compartilhar
-            mora no "..." de cada conversa na sidebar — não precisa de uma barra própria aqui. */}
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
-          <button
-            type="button"
-            aria-label="Abrir menu"
-            onClick={() => setMobileMenuOpen(true)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-[var(--foreground)]">
-            {activeSessionTitle}
-          </span>
-          <Link
-            href="/ai?new=1"
-            aria-label="Novo chat"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-          >
-            <MessageSquarePlus className="h-5 w-5" />
-          </Link>
-        </div>
+        {/* Mini-header mobile compartilhado com o resto do app (ver AppNav) — aqui o título é a
+            conversa ativa em vez do nome da página. Compartilhar mora no "..." de cada conversa
+            na sidebar — não precisa de uma barra própria aqui. */}
+        <MobileTopBar title={activeSessionTitle} onOpenMenu={() => setMobileMenuOpen(true)} />
 
         {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
 
@@ -827,28 +790,6 @@ export function AiChatDashboard({
   );
 }
 
-function DrawerNavLink({
-  href,
-  icon: Icon,
-  label,
-  onNavigate
-}: {
-  href: string;
-  icon: typeof Sparkles;
-  label: string;
-  onNavigate: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onNavigate}
-      className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </Link>
-  );
-}
 
 function SessionRow({
   session,

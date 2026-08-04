@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { AppLogo } from "@/components/app-logo";
+import { AppNavMobile } from "@/components/app-nav-mobile";
 import { LogoutButton } from "@/components/logout-button";
 import { NavDropdown } from "@/components/nav-dropdown";
 import { buttonVariants } from "@/components/ui/button";
-import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 /**
@@ -55,9 +55,6 @@ const accountPanelClass =
   "absolute right-0 top-[calc(100%+6px)] z-40 w-56 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg";
 
 const panelItemClass = "flex items-start gap-3 rounded-md px-3 py-2.5 hover:bg-[var(--surface-subtle)]";
-const mobileItemClass =
-  "flex items-center gap-3 rounded-md px-3 py-3 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]";
-const mobileSectionClass = "px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]";
 
 function PanelLink({ href, label, description, icon }: NavLeaf) {
   return (
@@ -72,13 +69,18 @@ function PanelLink({ href, label, description, icon }: NavLeaf) {
 }
 
 export function AppNav({
+  userName,
   isAdmin = false,
+  hasActiveSubscription = false,
   logoUrl = "/brand/logo.png",
   appName = "Gerador de Questões",
   streak,
   streakActiveToday = false
 }: {
+  userName: string;
   isAdmin?: boolean;
+  /** false = trial/sem assinatura paga — mostra o CTA de upgrade no drawer mobile. */
+  hasActiveSubscription?: boolean;
   logoUrl?: string;
   appName?: string;
   /** Dias seguidos de estudo. undefined esconde o badge. */
@@ -87,7 +89,9 @@ export function AppNav({
 }) {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
-      <div className="relative flex w-full items-center justify-between gap-3 px-4 py-3 md:px-6">
+      <AppNavMobile userName={userName} isAdmin={isAdmin} showUpgrade={!hasActiveSubscription} />
+
+      <div className="relative hidden w-full items-center justify-between gap-3 px-4 py-3 md:flex md:px-6">
         <Link className="flex items-center" href="/desempenho">
           <AppLogo
             lightSrc={logoUrl}
@@ -97,52 +101,7 @@ export function AppNav({
           />
         </Link>
 
-        {/* ── Mobile: hambúrguer com a lista completa ── */}
-        <div className="md:hidden">
-          <DropdownMenu
-            ariaLabel="Abrir menu"
-            triggerClassName="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
-            trigger={<i className="ti ti-menu-2 text-xl leading-none" />}
-            panelClassName="absolute right-0 top-[calc(100%+8px)] z-40 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg"
-          >
-            {navItems.map((item) =>
-              item.children ? (
-                <div key={item.label}>
-                  <p className={mobileSectionClass}>{item.label}</p>
-                  {item.children.map((child) => (
-                    <Link key={child.href} href={child.href} className={mobileItemClass}>
-                      <i className={cn("ti text-base leading-none", child.icon)} />
-                      {child.label}
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <Link key={item.href} href={item.href} className={mobileItemClass}>
-                  <i className={cn("ti text-base leading-none", item.icon)} />
-                  {item.label}
-                </Link>
-              )
-            )}
-            <div className="my-1 h-px bg-[var(--border)]" />
-            <Link href="/perfil" className={mobileItemClass}>
-              <i className="ti ti-user text-base leading-none" />
-              Perfil e assinatura
-            </Link>
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className="mt-1 flex items-center gap-3 rounded-md bg-[var(--accent-soft)] px-3 py-3 text-sm font-semibold text-[var(--accent-foreground)] hover:bg-[var(--accent-soft-hover)]"
-              >
-                <i className="ti ti-settings text-base leading-none" />
-                Admin
-              </Link>
-            )}
-            <LogoutButton className="mt-1 flex w-full items-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-left text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]" />
-          </DropdownMenu>
-        </div>
-
-        {/* ── Desktop: itens simples e dropdowns com estilo único ── */}
-        <nav className="hidden flex-wrap items-center gap-1 md:flex">
+        <nav className="flex flex-wrap items-center gap-1">
           {/* Sequência sempre à vista: escondida numa aba, ela não sustenta hábito nenhum. */}
           {streak !== undefined && streak > 0 && (
             <Link

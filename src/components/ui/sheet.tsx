@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -29,7 +30,13 @@ export function Sheet({ open, onClose, side = "left", className, children }: Pro
 
   if (!open) return null;
 
-  return (
+  // Portal pro body: um Sheet aberto de dentro de um header com backdrop-blur (ou qualquer
+  // ancestral com transform/filter/backdrop-filter) fica preso ali — essas propriedades viram
+  // containing block de `position: fixed`, então `inset-0` passa a valer relativo ao ancestral
+  // em vez da viewport, e o drawer aparece encolhido atrás do conteúdo da página. Mesmo motivo
+  // documentado em Dialog (src/components/ui/dialog.tsx); portal evita isso independente de onde
+  // o Sheet é aberto.
+  return createPortal(
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden="true" />
       <div
@@ -41,6 +48,7 @@ export function Sheet({ open, onClose, side = "left", className, children }: Pro
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
