@@ -96,7 +96,10 @@ export function MobileNavDrawer({
   middleSlot?: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const primaryItems = NAV_DESTINATIONS.filter((item) => !item.secondary);
+  // Chat IA vem primeiro (com "Novo chat" logo abaixo dele) por pedido explícito — é o motivo
+  // do drawer existir na maioria das vezes. O resto dos itens de topo (hoje só Painel) vem depois.
+  const chatItem = NAV_DESTINATIONS.find((item) => item.href === "/ai")!;
+  const otherPrimaryItems = NAV_DESTINATIONS.filter((item) => !item.secondary && item.href !== chatItem.href);
   const secondaryItems = NAV_DESTINATIONS.filter((item) => item.secondary);
   const secondaryHasActive = secondaryItems.some((item) => isRouteActive(pathname, item.href));
 
@@ -122,6 +125,7 @@ export function MobileNavDrawer({
             rolam juntos, a navegação some pra cima ao rolar pra baixo, igual ao ChatGPT. */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <nav className="space-y-0.5 px-2 pb-3">
+            <NavLink item={chatItem} active={isRouteActive(pathname, chatItem.href)} onClick={onClose} />
             <Link
               href="/ai?new=1"
               onClick={onClose}
@@ -130,7 +134,7 @@ export function MobileNavDrawer({
               <MessageSquarePlus className="h-4 w-4 shrink-0" />
               Novo chat
             </Link>
-            {primaryItems.map((item) => (
+            {otherPrimaryItems.map((item) => (
               <NavLink key={item.href} item={item} active={isRouteActive(pathname, item.href)} onClick={onClose} />
             ))}
             <details className="group" open={secondaryHasActive}>
