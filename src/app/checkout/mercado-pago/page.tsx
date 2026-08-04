@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckoutCpfStep } from "@/app/checkout/mercado-pago/cpf-step";
 import { requireUser } from "@/lib/guards";
 import { validateCoupon } from "@/lib/coupons";
+import { sendPixCodeEmail } from "@/lib/email/notifications";
 import { createPixPayment } from "@/lib/mercado-pago";
 import { appUrl, findStripeSubscriptionId, getPaymentSettings, remainingCreditCents } from "@/lib/payments";
 import { getActiveSubscription } from "@/lib/subscriptions";
@@ -123,6 +124,18 @@ export default async function MercadoPagoCheckoutPage({ searchParams }: { search
     await prisma.paymentCheckoutSession.update({
       where: { id: localCheckout.id },
       data: { externalId: payment.id, metadata: payment.raw as object }
+    });
+    // Best-effort (nunca lança) — mas precisa de AWAIT: em ambiente serverless, um redirect()
+    // logo depois encerra a invocação, e uma promise disparada sem esperar ("fire and forget")
+    // não tem garantia de terminar antes do processo morrer. O e-mail é só uma cópia de
+    // segurança pra o cliente não perder o código se fechar a aba, mas precisa de fato sair.
+    await sendPixCodeEmail({
+      userId: user.id,
+      planId: plan.id,
+      amountCents,
+      qrCode: payment.qrCode,
+      qrCodeBase64: payment.qrCodeBase64,
+      expiresAt: localCheckout.expiresAt
     });
     redirect(`/checkout/pix/${localCheckout.id}`);
   }

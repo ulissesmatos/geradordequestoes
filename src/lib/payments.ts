@@ -173,26 +173,118 @@ export async function findStripeSubscriptionId(localSubscriptionId: string) {
  * a próxima fatura paga (invoice.paid) reativa a linha local, "desfazendo" o cancelamento.
  * Best-effort: erro ao cancelar uma (ex.: já cancelada no Stripe) não interrompe as demais
  * nem o cancelamento local — só volta na lista de erros para quem chamou decidir se avisa o admin.
+ *
+ * `respectCancelMode` (default false, propositalmente): só quando true é que
+ * PaymentGatewaySetting.stripeCancelMode = AT_PERIOD_END faz isso usar
+ * `cancel_at_period_end` em vez de cancelar na hora — e nesse caso a assinatura entra em
+ * `deferredIds` (ainda ACTIVE no Stripe até o período acabar; quem chamou NÃO deve marcar
+ * CANCELED localmente ainda, isso é papel do webhook customer.subscription.deleted quando o
+ * período realmente terminar). Deixado false por padrão porque activateUserSubscriptionAction
+ * usa esta função pra encerrar uma assinatura Stripe ANTIGA ao ativar uma NOVA na hora — adiar
+ * esse cancelamento cobraria a assinatura antiga em paralelo com a nova (cobrança duplicada).
  */
-export async function cancelLinkedStripeSubscriptions(localSubscriptionIds: string[]): Promise<{ errors: string[] }> {
+export async function cancelLinkedStripeSubscriptions(
+  localSubscriptionIds: string[],
+  options: { respectCancelMode?: boolean } = {}
+): Promise<{ errors: string[]; deferredIds: string[] }> {
   const errors: string[] = [];
+  const deferredIds: string[] = [];
   const uniqueIds = [...new Set(localSubscriptionIds)];
-  if (uniqueIds.length === 0) return { errors };
+  if (uniqueIds.length === 0) return { errors, deferredIds };
 
   const settings = await getPaymentSettings();
-  if (!settings.stripeSecretKey) return { errors };
+  if (!settings.stripeSecretKey) return { errors, deferredIds };
   const stripe = new Stripe(settings.stripeSecretKey);
+  const atPeriodEnd = Boolean(options.respectCancelMode) && settings.stripeCancelMode === "AT_PERIOD_END";
 
   for (const subscriptionId of uniqueIds) {
     const stripeSubId = await findStripeSubscriptionId(subscriptionId);
     if (!stripeSubId) continue;
     try {
-      await stripe.subscriptions.cancel(stripeSubId);
+      if (atPeriodEnd) {
+        await stripe.subscriptions.update(stripeSubId, { cancel_at_period_end: true });
+        deferredIds.push(subscriptionId);
+      } else {
+        await stripe.subscriptions.cancel(stripeSubId);
+      }
     } catch (error) {
       errors.push(`${stripeSubId}: ${error instanceof Error ? error.message : "erro desconhecido"}`);
     }
   }
-  return { errors };
+  return { errors, deferredIds };
+}
+
+/**
+ * Sincroniza cancelMode/prorationBehavior (PaymentGatewaySetting) com a billingPortal.configuration
+ * da Stripe — é isso que efetivamente muda o comportamento do portal self-service do cliente
+ * (checkout/stripe/portal/page.tsx não muda: ele só abre a sessão, a config é que manda).
+ *
+ * Atualiza a configuração EXISTENTE (a que já salvamos, ou a default da conta) em vez de criar
+ * uma do zero, pra preservar outros recursos do portal (atualizar cartão, histórico de faturas
+ * etc.) que o admin possa já ter configurado direto no Dashboard da Stripe — criar do zero
+ * desligaria tudo isso silenciosamente.
+ */
+export async function syncStripePortalPolicy(input: {
+  stripe: Stripe;
+  cancelMode: "IMMEDIATE" | "AT_PERIOD_END";
+  prorationBehavior: "NONE" | "CREATE_PRORATIONS";
+  existingConfigurationId: string | null;
+}): Promise<string> {
+  const { stripe } = input;
+  const cancelStripeMode = input.cancelMode === "AT_PERIOD_END" ? ("at_period_end" as const) : ("immediately" as const);
+  const updateProration = input.prorationBehavior === "CREATE_PRORATIONS" ? ("create_prorations" as const) : ("none" as const);
+  // A Stripe rejeita/ignora proração em cancelamento agendado pro fim do período — só é válida
+  // com mode "immediately". Ver docs do parâmetro subscription_cancel.proration_behavior.
+  const cancelProration = cancelStripeMode === "immediately" ? updateProration : ("none" as const);
+
+  // Planos com preço Stripe configurado são o que popula "trocar de plano" no portal.
+  const plans = await prisma.subscriptionPlan.findMany({
+    where: { isActive: true, stripePriceId: { not: null } }
+  });
+  const products = await Promise.all(
+    plans.map(async (plan) => {
+      const price = await stripe.prices.retrieve(plan.stripePriceId as string);
+      const productId = typeof price.product === "string" ? price.product : price.product.id;
+      return { product: productId, prices: [plan.stripePriceId as string] };
+    })
+  );
+
+  const existing = input.existingConfigurationId
+    ? await stripe.billingPortal.configurations.retrieve(input.existingConfigurationId).catch(() => null)
+    : ((await stripe.billingPortal.configurations.list({ is_default: true, limit: 1 })).data[0] ?? null);
+
+  const features = {
+    ...(existing
+      ? {
+          customer_update: existing.features.customer_update,
+          invoice_history: existing.features.invoice_history,
+          payment_method_update: existing.features.payment_method_update
+        }
+      : {
+          invoice_history: { enabled: true },
+          payment_method_update: { enabled: true },
+          customer_update: { enabled: true, allowed_updates: ["email" as const] }
+        }),
+    subscription_cancel: {
+      enabled: true,
+      mode: cancelStripeMode,
+      proration_behavior: cancelProration
+    },
+    subscription_update: {
+      enabled: products.length > 0,
+      default_allowed_updates: ["price" as const],
+      proration_behavior: updateProration,
+      products
+    }
+  };
+
+  if (existing) {
+    const updated = await stripe.billingPortal.configurations.update(existing.id, { features });
+    return updated.id;
+  }
+  // Sem configuração prévia (conta nova, nunca customizada no Dashboard): cria uma do zero.
+  const created = await stripe.billingPortal.configurations.create({ features });
+  return created.id;
 }
 
 export function validateMercadoPagoSignature(input: {

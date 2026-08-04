@@ -140,6 +140,82 @@ export function paymentReceiptTemplate(input: {
   return { subject, html: layout(input.appName, body), text };
 }
 
+/**
+ * Bloco do QR + copia-e-cola compartilhado entre pixCodeGeneratedTemplate e
+ * pixPaymentPendingTemplate. A imagem embutida como data URI é a MESMA string que já vai pro
+ * <img> da página de checkout — funciona na maioria dos clientes de e-mail, mas alguns webmails
+ * corporativos removem imagens embutidas; por isso o código copia-e-cola (texto puro,
+ * selecionável) SEMPRE vem junto, nunca só a imagem.
+ */
+function pixQrBlock(input: { amountCents: number; qrCode: string | null; qrCodeBase64: string | null; expiresAt: Date | null }): string {
+  const image = input.qrCodeBase64
+    ? `<p style="margin:0 0 16px;text-align:center;"><img src="data:image/png;base64,${input.qrCodeBase64}" width="220" height="220" alt="QR Code Pix" style="display:inline-block;border:1px solid #e2e8e8;border-radius:10px;padding:8px;background:#ffffff;" /></p>`
+    : "";
+  const code = input.qrCode
+    ? `<p style="margin:0 0 6px;color:#64748b;font-size:13px;">Ou copie o código Pix (copia e cola):</p>
+       <p style="margin:0 0 16px;padding:12px;background:#f4f6f6;border-radius:8px;font-family:monospace;font-size:12px;word-break:break-all;color:#0f1720;">${escapeHtml(input.qrCode)}</p>`
+    : "";
+  return `
+    <p style="margin:0 0 4px;color:#64748b;font-size:13px;">Valor</p>
+    <p style="margin:0 0 16px;font-size:22px;font-weight:700;">${formatBRL(input.amountCents)}</p>
+    ${image}
+    ${code}
+    ${input.expiresAt ? `<p style="margin:0 0 16px;color:#64748b;font-size:13px;">Válido até <strong>${formatDateBR(input.expiresAt)}</strong>.</p>` : ""}
+  `;
+}
+
+export function pixCodeGeneratedTemplate(input: {
+  appName: string;
+  planName: string;
+  amountCents: number;
+  qrCode: string | null;
+  qrCodeBase64: string | null;
+  expiresAt: Date | null;
+}): EmailTemplate {
+  const subject = `Seu Pix para o plano ${input.planName} · ${input.appName}`;
+  const body = `
+    <p style="margin:0 0 16px;">Aqui está o QR Code Pix para pagar o plano <strong>${escapeHtml(input.planName)}</strong>. Escaneie com o app do seu banco ou use o código copia-e-cola abaixo.</p>
+    ${pixQrBlock(input)}
+    <p style="margin:0;color:#64748b;font-size:13px;">Assim que o pagamento for aprovado, seu acesso é liberado automaticamente — você recebe um e-mail de confirmação.</p>
+  `;
+  const text = [
+    `Pix para o plano ${input.planName} em ${input.appName}.`,
+    `Valor: ${formatBRL(input.amountCents)}`,
+    input.qrCode ? `Código copia-e-cola: ${input.qrCode}` : "",
+    input.expiresAt ? `Válido até: ${formatDateBR(input.expiresAt)}` : "",
+    "Assim que aprovado, o acesso libera automaticamente."
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { subject, html: layout(input.appName, body), text };
+}
+
+export function pixPaymentPendingTemplate(input: {
+  appName: string;
+  planName: string;
+  amountCents: number;
+  qrCode: string | null;
+  qrCodeBase64: string | null;
+  expiresAt: Date | null;
+}): EmailTemplate {
+  const subject = `Seu pagamento Pix ainda está pendente · ${input.appName}`;
+  const body = `
+    <p style="margin:0 0 16px;">Notamos que o Pix do plano <strong>${escapeHtml(input.planName)}</strong> ainda não foi pago. Se você já pagou, pode ignorar este e-mail — a confirmação pode levar alguns minutos.</p>
+    ${pixQrBlock(input)}
+    <p style="margin:0;color:#64748b;font-size:13px;">Se o código expirar, gere um novo pagamento na página de planos.</p>
+  `;
+  const text = [
+    `Seu Pix do plano ${input.planName} em ${input.appName} ainda está pendente.`,
+    `Valor: ${formatBRL(input.amountCents)}`,
+    input.qrCode ? `Código copia-e-cola: ${input.qrCode}` : "",
+    input.expiresAt ? `Válido até: ${formatDateBR(input.expiresAt)}` : "",
+    "Se já pagou, ignore este e-mail. Se expirar, gere um novo pagamento na página de planos."
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { subject, html: layout(input.appName, body), text };
+}
+
 export function subscriptionExpiringTemplate(input: {
   appName: string;
   planName: string;

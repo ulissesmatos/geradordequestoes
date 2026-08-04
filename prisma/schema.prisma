@@ -934,15 +934,38 @@ enum MercadoPagoCheckoutMode {
   TRANSPARENT
 }
 
+enum StripeCancelMode {
+  IMMEDIATE
+  AT_PERIOD_END
+}
+
+enum StripeProrationBehavior {
+  NONE
+  CREATE_PRORATIONS
+}
+
 model PaymentGatewaySetting {
   id                          String          @id @default("default")
   stripeSecretKey             String?
   stripeWebhookSecret         String?
   stripePortalEnabled         Boolean         @default(true)
+  /// Modo de cancelamento aplicado tanto ao botão "Cancelar" do admin quanto ao portal
+  /// self-service da Stripe (sincronizado via billingPortal.configurations — ver
+  /// stripePortalConfigurationId). AT_PERIOD_END = cliente mantém acesso até o fim do
+  /// período já pago; IMMEDIATE = corte na hora.
+  stripeCancelMode            StripeCancelMode @default(AT_PERIOD_END)
+  /// Regra de proração ao trocar de plano pelo portal self-service da Stripe.
+  stripeProrationBehavior     StripeProrationBehavior @default(CREATE_PRORATIONS)
+  /// Id da billingPortal.configuration criada na Stripe pra refletir stripeCancelMode/
+  /// stripeProrationBehavior — guardado pra fazer update nela em vez de criar uma nova
+  /// configuração a cada vez que o admin salva.
+  stripePortalConfigurationId String?
   mercadoPagoAccessToken      String?
   mercadoPagoWebhookSecret    String?
   mercadoPagoPublicKey        String?
   mercadoPagoCheckoutMode     MercadoPagoCheckoutMode @default(CHECKOUT_PRO)
+  /// Horas de pendência de um Pix antes do cron de lembrete (ver /api/cron/pix-payment-reminders) disparar o e-mail.
+  pixReminderAfterHours       Int             @default(3)
   testMode                    Boolean         @default(true)
   createdAt                   DateTime        @default(now())
   updatedAt                   DateTime        @updatedAt
@@ -1233,6 +1256,8 @@ model PaymentCheckoutSession {
   couponId           String?
   // Quanto o cupom abateu nesta tentativa específica (o valor do cupom pode mudar depois).
   discountCents      Int?
+  /// Marca o envio do lembrete de Pix pendente (ver /api/cron/pix-payment-reminders) — evita reenvio.
+  reminderSentAt     DateTime?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)

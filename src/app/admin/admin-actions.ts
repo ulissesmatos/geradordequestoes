@@ -1,8 +1,9 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PopupAudience, PopupKind, QuestionAnswer, QuestionFormat, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
+import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PaymentProvider, PopupAudience, PopupKind, QuestionAnswer, QuestionFormat, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import Stripe from "stripe";
 import { z } from "zod";
 import { generateQuestions } from "@/lib/ai/generateQuestions";
 import { computeCostUsd, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
@@ -12,14 +13,17 @@ import { readCapabilitiesFromForm } from "@/lib/capabilities";
 import { resolveSecretUpdate } from "@/lib/crypto";
 import { getAppSettings } from "@/lib/app-settings";
 import { sendEmail } from "@/lib/email/send";
+import { sendPixCodeEmail } from "@/lib/email/notifications";
 import { adminPasswordChangedTemplate, testEmailTemplate } from "@/lib/email/templates";
 import { requireAdmin } from "@/lib/guards";
-import { cancelLinkedStripeSubscriptions } from "@/lib/payments";
+import { createPixPayment } from "@/lib/mercado-pago";
+import { appUrl, cancelLinkedStripeSubscriptions, getPaymentSettings, syncStripePortalPolicy } from "@/lib/payments";
 import { generateReadablePassword, issuePasswordResetCode, setUserPassword } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
 import { repeatAfterHoursFromForm } from "@/lib/popups";
 import { stripNullBytes } from "@/lib/sanitize";
 import { slugify } from "@/lib/utils";
+import { isValidCpf, onlyDigits } from "@/lib/validation/cpf";
 
 const subjectSchema = z.object({
   name: z.string().min(2),
@@ -335,19 +339,37 @@ export async function cancelUserSubscriptionAction(formData: FormData) {
   });
   // Cancela no Stripe ANTES de marcar como cancelada localmente — senão o Stripe
   // continua cobrando o cliente e a próxima fatura paga reativa a linha local,
-  // desfazendo o cancelamento sem avisar ninguém.
-  const { errors: stripeErrors } = await cancelLinkedStripeSubscriptions(activeSubscriptions.map((s) => s.id));
-
-  await prisma.userSubscription.updateMany({
-    where: { userId, status: SubscriptionStatus.ACTIVE },
-    data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.ADMIN }
+  // desfazendo o cancelamento sem avisar ninguém. respectCancelMode:true porque este É o
+  // cancelamento "de verdade" (sem substituição) — aqui vale a política configurada em
+  // Admin → Pagamentos (imediato ou no fim do período).
+  const { errors: stripeErrors, deferredIds } = await cancelLinkedStripeSubscriptions(activeSubscriptions.map((s) => s.id), {
+    respectCancelMode: true
   });
+  const deferredSet = new Set(deferredIds);
+
+  // As adiadas pro fim do período continuam ACTIVE aqui de propósito: no Stripe elas seguem
+  // válidas (e cobrando) até lá, e cortar o acesso local agora deixaria o cliente pagando sem
+  // acesso. O webhook customer.subscription.deleted marca CANCELED quando o período acabar de
+  // verdade (ver mapStripeSubscriptionStatus em src/app/api/webhooks/stripe/route.ts).
+  const idsToCancelNow = activeSubscriptions.filter((s) => !deferredSet.has(s.id)).map((s) => s.id);
+  if (idsToCancelNow.length > 0) {
+    await prisma.userSubscription.updateMany({
+      where: { id: { in: idsToCancelNow } },
+      data: { status: SubscriptionStatus.CANCELED, endsAt: new Date(), cancelReason: SubscriptionCancelReason.ADMIN }
+    });
+  }
 
   await logAdminAction(admin, {
     action: "cancel_subscription",
     entity: "User",
     entityId: userId,
-    summary: stripeErrors.length ? `falha ao cancelar no Stripe: ${stripeErrors.join("; ")}` : undefined
+    summary:
+      [
+        stripeErrors.length ? `falha ao cancelar no Stripe: ${stripeErrors.join("; ")}` : "",
+        deferredIds.length ? `${deferredIds.length} assinatura(s) agendada(s) para o fim do período pago` : ""
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined
   });
   revalidatePath("/admin/usuarios");
   revalidatePath("/admin/usuarios/[id]", "page");
@@ -598,6 +620,91 @@ export async function toggleTransactionRevenueAction(formData: FormData) {
   revalidatePath("/admin");
 }
 
+/**
+ * Cobrança Pix avulsa: gera um PaymentCheckoutSession igual ao que o próprio cliente cria em
+ * checkout/mercado-pago/page.tsx (mesmo modelo, mesmo externalReference) — o webhook/polling do
+ * Mercado Pago (applyMercadoPagoPayment) já sabe ativar a assinatura e mandar o recibo quando
+ * aprovado, sem nenhum código novo. Molde: issueTeamChargeAction (src/app/admin/teams/actions.ts).
+ */
+export async function issueUserPixChargeAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const planId = String(formData.get("planId") ?? "");
+  if (!email) throw new Error("Informe o e-mail do usuário.");
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error(`Nenhum usuário encontrado com o e-mail ${email}.`);
+
+  const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+  if (!plan) throw new Error("Selecione um plano.");
+
+  const amountCents = Math.round(Number(formData.get("amount") ?? 0) * 100) || plan.priceCents;
+  if (amountCents < 100) throw new Error("Informe um valor de pelo menos R$ 1,00.");
+
+  // Pix exige CPF do pagador. Se o usuário não tiver um salvo, usa o que o admin digitou
+  // no mesmo form (e já aproveita para salvar no perfil dele).
+  let cpf = onlyDigits(user.cpf ?? "");
+  if (cpf.length !== 11) {
+    const typedCpf = onlyDigits(String(formData.get("cpf") ?? ""));
+    if (!isValidCpf(typedCpf)) {
+      throw new Error(`${user.email} não tem CPF salvo — informe um CPF válido para gerar o Pix.`);
+    }
+    cpf = typedCpf;
+    await prisma.user.update({ where: { id: user.id }, data: { cpf } });
+  }
+
+  const settings = await getPaymentSettings();
+  if (!settings.mercadoPagoAccessToken) {
+    throw new Error("Configure o Access Token do Mercado Pago em Admin → Pagamentos para emitir cobranças Pix.");
+  }
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const checkout = await prisma.paymentCheckoutSession.create({
+    data: { userId: user.id, planId: plan.id, provider: PaymentProvider.MERCADO_PAGO, amountCents, expiresAt }
+  });
+
+  const [firstName, ...restName] = (user.name ?? "").trim().split(/\s+/);
+  const lastName = restName.join(" ");
+
+  try {
+    const payment = await createPixPayment({
+      accessToken: settings.mercadoPagoAccessToken,
+      amountCents,
+      description: `${plan.name} (cobrança emitida pelo admin)`,
+      payer: { email: user.email, firstName, lastName: lastName || undefined, cpf },
+      externalReference: checkout.id,
+      notificationUrl: `${appUrl()}/api/webhooks/mercado-pago`,
+      expiresAt
+    });
+    await prisma.paymentCheckoutSession.update({
+      where: { id: checkout.id },
+      data: { externalId: payment.id, metadata: payment.raw as object }
+    });
+    // Best-effort — mesmo que o e-mail falhe, a cobrança já está criada e visível/copiável no
+    // painel; o admin também pode mandar manualmente.
+    await sendPixCodeEmail({
+      userId: user.id,
+      planId: plan.id,
+      amountCents,
+      qrCode: payment.qrCode,
+      qrCodeBase64: payment.qrCodeBase64,
+      expiresAt
+    });
+  } catch (error) {
+    // Falhou no Mercado Pago: remove a sessão órfã para não poluir a lista.
+    await prisma.paymentCheckoutSession.delete({ where: { id: checkout.id } }).catch(() => {});
+    throw error;
+  }
+
+  await logAdminAction(admin, {
+    action: "create",
+    entity: "PaymentCheckoutSession",
+    entityId: checkout.id,
+    summary: `cobrança Pix avulsa de R$ ${(amountCents / 100).toFixed(2)} para ${user.email} (${plan.name})`
+  });
+  revalidatePath("/admin/pagamentos");
+}
+
 export async function updatePaymentGatewaySettingsAction(formData: FormData) {
   const admin = await requireAdmin();
   const stripeSecretKey = String(formData.get("stripeSecretKey") ?? "").trim();
@@ -618,6 +725,7 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
     String(formData.get("mercadoPagoCheckoutMode") ?? "") === "TRANSPARENT"
       ? MercadoPagoCheckoutMode.TRANSPARENT
       : MercadoPagoCheckoutMode.CHECKOUT_PRO;
+  const pixReminderAfterHours = Math.max(1, Math.round(Number(formData.get("pixReminderAfterHours") ?? 3)) || 3);
 
   await prisma.paymentGatewaySetting.upsert({
     where: { id: "default" },
@@ -625,6 +733,7 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
       ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
       mercadoPagoCheckoutMode,
+      pixReminderAfterHours,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
     },
@@ -633,11 +742,60 @@ export async function updatePaymentGatewaySettingsAction(formData: FormData) {
       ...secretUpdates,
       mercadoPagoPublicKey: mercadoPagoPublicKey || null,
       mercadoPagoCheckoutMode,
+      pixReminderAfterHours,
       stripePortalEnabled: formData.get("stripePortalEnabled") === "on",
       testMode: formData.get("testMode") === "on"
     }
   });
   await logAdminAction(admin, { action: "update", entity: "PaymentGatewaySetting", summary: "chaves de pagamento atualizadas" });
+  revalidatePath("/admin/pagamentos");
+}
+
+/**
+ * Salva a política de cancelamento/proração e sincroniza com a billingPortal.configuration da
+ * Stripe (syncStripePortalPolicy, em src/lib/payments.ts) — é essa config que efetivamente
+ * governa o portal self-service do cliente. Ação separada de updatePaymentGatewaySettingsAction
+ * de propósito: essa aqui faz uma chamada de rede à Stripe (pode falhar por config incompleta,
+ * ex. sem plano com stripePriceId), e um erro ali não deve impedir salvar as chaves de API.
+ */
+export async function updateStripePortalPolicyAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const cancelMode = String(formData.get("stripeCancelMode") ?? "") === "IMMEDIATE" ? "IMMEDIATE" : "AT_PERIOD_END";
+  const prorationBehavior = String(formData.get("stripeProrationBehavior") ?? "") === "NONE" ? "NONE" : "CREATE_PRORATIONS";
+
+  const settings = await getPaymentSettings();
+  if (!settings.stripeSecretKey) {
+    throw new Error("Configure a Secret key da Stripe antes de definir a política de cancelamento/proração.");
+  }
+
+  const stripe = new Stripe(settings.stripeSecretKey);
+  let configurationId = settings.stripePortalConfigurationId;
+  try {
+    configurationId = await syncStripePortalPolicy({
+      stripe,
+      cancelMode,
+      prorationBehavior,
+      existingConfigurationId: settings.stripePortalConfigurationId
+    });
+  } catch (error) {
+    throw new Error(
+      `Salvo localmente, mas falhou ao sincronizar com a Stripe: ${error instanceof Error ? error.message : "erro desconhecido"}`
+    );
+  } finally {
+    // Grava mesmo se a sincronização falhar: cancelUserSubscriptionAction lê esses campos
+    // direto do banco (não depende da config da Stripe), então o cancelamento manual do admin
+    // já respeita a escolha mesmo que o portal self-service não tenha sincronizado ainda.
+    await prisma.paymentGatewaySetting.update({
+      where: { id: "default" },
+      data: { stripeCancelMode: cancelMode, stripeProrationBehavior: prorationBehavior, stripePortalConfigurationId: configurationId }
+    });
+  }
+
+  await logAdminAction(admin, {
+    action: "update",
+    entity: "PaymentGatewaySetting",
+    summary: `cancelamento=${cancelMode}; proração=${prorationBehavior}`
+  });
   revalidatePath("/admin/pagamentos");
 }
 
