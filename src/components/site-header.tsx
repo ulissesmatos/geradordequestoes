@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Menu, User } from "lucide-react";
 import { auth } from "@/auth";
+import { AppLogo } from "@/components/app-logo";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -30,13 +30,11 @@ export async function SiteHeader({ logoUrl, appName, showPlans = true, sticky = 
     >
       <div className="relative mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
         <Link href="/" className="flex items-center gap-3">
-          <Image
-            src={logoUrl}
+          <AppLogo
+            lightSrc={logoUrl}
+            darkSrc="/brand/logo-white.png"
             alt={appName}
-            width={744}
-            height={179}
             className="h-11 w-auto max-w-[210px] object-contain md:h-14 md:max-w-[290px]"
-            priority
           />
         </Link>
 
