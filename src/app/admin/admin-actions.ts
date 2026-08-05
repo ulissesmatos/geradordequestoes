@@ -1,6 +1,24 @@
 "use server";
 
-import { AiChatPresetUsageLevel, AiProvider, CouponType, Difficulty, EmailProvider, MercadoPagoCheckoutMode, PaymentProvider, PopupAudience, PopupKind, QuestionAnswer, QuestionFormat, QuestionStatus, Role, SourceType, SubscriptionCancelReason, SubscriptionStatus } from "@prisma/client";
+import {
+  AiChatPresetUsageLevel,
+  AiProvider,
+  CouponType,
+  Difficulty,
+  EmailProvider,
+  MercadoPagoCheckoutMode,
+  PaymentProvider,
+  PopupAudience,
+  PopupKind,
+  QuestionAnswer,
+  QuestionFormat,
+  QuestionSetShareVisibility,
+  QuestionStatus,
+  Role,
+  SourceType,
+  SubscriptionCancelReason,
+  SubscriptionStatus
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
@@ -1218,4 +1236,48 @@ export async function resetPopupViewsAction(formData: FormData) {
   const { count } = await prisma.popupUserState.deleteMany({ where: { popupId: id } });
   await logAdminAction(admin, { action: "reset_views", entity: "Popup", entityId: id, summary: `${count} estado(s) removido(s)` });
   revalidatePath("/admin/popups");
+}
+
+/**
+ * Painel /admin/compartilhamentos: diferente de updateQuestionSetShareVisibility (lib/question-
+ * set-share.ts, que exige ser o DONO do link), aqui o admin ajusta o link de QUALQUER usuário —
+ * é ferramenta de moderação, não de autoatendimento. Chamada direto do client component (não é
+ * um <form action>), por isso recebe os argumentos posicionais em vez de FormData.
+ */
+export async function adminUpdateQuestionSetShareVisibilityAction(
+  shareId: string,
+  visibilityRaw: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requireAdmin();
+
+  const visibility = (Object.values(QuestionSetShareVisibility) as string[]).includes(visibilityRaw)
+    ? (visibilityRaw as QuestionSetShareVisibility)
+    : null;
+  if (!visibility) return { ok: false, error: "Opção de visibilidade inválida." };
+
+  const share = await prisma.questionSetShare.update({ where: { id: shareId }, data: { visibility } }).catch(() => null);
+  if (!share) return { ok: false, error: "Link não encontrado." };
+
+  await logAdminAction(admin, { action: "update", entity: "QuestionSetShare", entityId: shareId, summary: `visibility=${visibility}` });
+  revalidatePath("/admin/compartilhamentos");
+  return { ok: true };
+}
+
+export async function adminRevokeQuestionSetShareAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.questionSetShare.update({ where: { id }, data: { revokedAt: new Date() } });
+  await logAdminAction(admin, { action: "revoke", entity: "QuestionSetShare", entityId: id });
+  revalidatePath("/admin/compartilhamentos");
+}
+
+/** Reverte um revoke feito por engano — o revoke em si já é "reversível" por natureza (soft-delete). */
+export async function adminReactivateQuestionSetShareAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.questionSetShare.update({ where: { id }, data: { revokedAt: null } });
+  await logAdminAction(admin, { action: "reactivate", entity: "QuestionSetShare", entityId: id });
+  revalidatePath("/admin/compartilhamentos");
 }

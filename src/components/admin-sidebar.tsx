@@ -21,6 +21,7 @@ import {
   Menu,
   ScrollText,
   Settings,
+  Share2,
   Timer,
   TrendingUp,
   Users,
@@ -57,7 +58,8 @@ const groups = [
       { href: "/admin/questoes/gerar", label: "Gerar questões", icon: Bot },
       { href: "/admin/questoes/revisar", label: "Revisar questões", icon: ListChecks },
       { href: "/admin/feedbacks", label: "Feedback de questões", icon: Flag },
-      { href: "/admin/simulados", label: "Simulados", icon: Timer }
+      { href: "/admin/simulados", label: "Simulados", icon: Timer },
+      { href: "/admin/compartilhamentos", label: "Compartilhamentos", icon: Share2 }
     ]
   },
   {
