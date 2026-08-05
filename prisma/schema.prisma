@@ -575,19 +575,40 @@ model QuestionSet {
 }
 
 /**
+ * Quem enxerga e responde um link de bloco compartilhado. Só quem cria o link como ADMIN pode
+ * escolher — dono comum sempre cria como LOGGED_IN (comportamento histórico, inalterado).
+ *
+ *   EVERYONE   — inclusive anônimo, sem nenhuma restrição (nem cota diária de trial).
+ *   LOGGED_IN  — exclui anônimo (só preview da 1ª questão, sem responder); logado (grátis ou
+ *                pago) responde tudo. Default histórico e o que todo share de não-admin usa.
+ *   PAID_ONLY  — anônimo responde só a 1ª; logado sem assinatura responde as
+ *                SHARE_PAID_ONLY_FREE_QUESTIONS primeiras (ver question-limits.ts) e vê o
+ *                resto bloqueado com CTA; assinante (ou admin) responde tudo.
+ */
+enum QuestionSetShareVisibility {
+  EVERYONE
+  LOGGED_IN
+  PAID_ONLY
+}
+
+/**
  * Link público de um bloco de questões (estilo "share" do ChatGPT), com acesso em camadas
  * resolvido em answerQuestionAction: visitante anônimo só vê a 1ª questão (sem gabarito,
  * omitido já na consulta); logado sem plano responde tudo com CTA de assinar; assinante
  * responde sem fricção. `id` é o próprio token da URL (/q/<id>).
  */
 model QuestionSetShare {
-  id            String      @id @default(cuid())
-  questionSetId String      @unique
+  id            String                     @id @default(cuid())
+  questionSetId String                     @unique
   userId        String
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime                   @default(now())
   revokedAt     DateTime?
-  questionSet   QuestionSet @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Default LOGGED_IN casa com o comportamento histórico (pré-existente à esta coluna); shares
+  // de admin nascem EVERYONE (ver createOrReactivateQuestionSetShare) — a migration que criou
+  // esta coluna já retroage os shares de admin existentes para EVERYONE também.
+  visibility    QuestionSetShareVisibility @default(LOGGED_IN)
+  questionSet   QuestionSet                @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
+  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum MockExamStatus {

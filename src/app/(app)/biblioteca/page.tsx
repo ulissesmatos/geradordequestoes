@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
-import { QuestionSetMode, QuestionSetStatus } from "@prisma/client";
+import { QuestionSetMode, QuestionSetShareVisibility, QuestionSetStatus, Role } from "@prisma/client";
 import { FavoriteDetailGrid } from "@/components/favorite-detail-grid";
 import { QuestionRunner } from "@/components/question-runner";
+import { QuestionSetShareVisibilityControl } from "@/components/question-set-share-visibility";
 import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,7 +92,7 @@ export default async function LibraryPage({
           },
           orderBy: { orderInSet: "asc" }
         },
-        share: { select: { id: true, revokedAt: true } }
+        share: { select: { id: true, revokedAt: true, visibility: true } }
       }
     });
 
@@ -166,7 +167,11 @@ export default async function LibraryPage({
           </Button>
           <ShareLinkModal
             title="Compartilhar bloco de questões"
-            description="Qualquer pessoa com o link vê a primeira questão. Quem criar conta consegue responder o bloco inteiro."
+            description={
+              user.role === Role.ADMIN
+                ? "Escolha abaixo quem pode ver e responder este link."
+                : "Qualquer pessoa com o link vê a primeira questão. Quem criar conta consegue responder o bloco inteiro."
+            }
             revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
             initialShareUrl={
               selectedSet.share && !selectedSet.share.revokedAt
@@ -175,7 +180,14 @@ export default async function LibraryPage({
             }
             createAction={shareQuestionSetAction.bind(null, selectedSet.id)}
             revokeAction={revokeQuestionSetShareAction.bind(null, selectedSet.id)}
-          />
+          >
+            {user.role === Role.ADMIN && (
+              <QuestionSetShareVisibilityControl
+                questionSetId={selectedSet.id}
+                initialVisibility={selectedSet.share?.visibility ?? QuestionSetShareVisibility.EVERYONE}
+              />
+            )}
+          </ShareLinkModal>
         </div>
         <QuestionRunner
           questions={questionsWithMeta}

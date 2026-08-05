@@ -1,6 +1,16 @@
 "use server";
 
-import { Difficulty, FeedbackType, QuestionAnswer, QuestionFormat, QuestionSetMode, QuestionStatus, TrialUsageKind } from "@prisma/client";
+import {
+  Difficulty,
+  FeedbackType,
+  QuestionAnswer,
+  QuestionFormat,
+  QuestionSetMode,
+  QuestionSetShareVisibility,
+  QuestionStatus,
+  Role,
+  TrialUsageKind
+} from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { computeCostUsd, ZERO_USAGE, type TokenUsage } from "@/lib/ai/pricing";
@@ -12,13 +22,14 @@ import { generateAndSaveQuestionSet } from "@/lib/question-sets";
 import {
   createOrReactivateQuestionSetShare,
   revokeQuestionSetShare,
+  updateQuestionSetShareVisibility,
   type RevokeActionResult,
   type ShareActionResult
 } from "@/lib/question-set-share";
-import { QUESTION_LIMITS } from "@/lib/question-limits";
+import { QUESTION_LIMITS, SHARE_PAID_ONLY_FREE_QUESTIONS } from "@/lib/question-limits";
 import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { applyAttemptToReviewState } from "@/lib/review";
-import { assertCanGenerateWithAi } from "@/lib/subscriptions";
+import { assertCanGenerateWithAi, hasActiveSubscription } from "@/lib/subscriptions";
 
 const attemptSchema = z.object({
   questionId: z.string(),
@@ -54,14 +65,36 @@ export async function answerQuestionAction(formData: FormData): Promise<AnswerQu
         { questionSet: { share: { revokedAt: null } } }
       ]
     },
-    include: { options: true }
+    include: {
+      options: true,
+      questionSet: { select: { share: { select: { visibility: true } } } }
+    }
   });
   if (!question) return { ok: false, error: "Questão não encontrada ou indisponível." };
+
+  const shareVisibility = question.questionSet?.share?.visibility;
+
+  // Bloco compartilhado como "só assinantes": conta sem assinatura (nem admin) só responde as
+  // N primeiras — dono do bloco original está isento (createdById === user.id nunca cai aqui
+  // porque hasActiveSubscription(admin) já é true, mas a ordem das checagens evita qualquer
+  // ambiguidade quando um admin decide testar o próprio link sem estar "assinante").
+  if (shareVisibility === QuestionSetShareVisibility.PAID_ONLY) {
+    const entitled = await hasActiveSubscription(user);
+    if (!entitled && (question.orderInSet ?? 1) > SHARE_PAID_ONLY_FREE_QUESTIONS) {
+      return {
+        ok: false,
+        limitReached: true,
+        error: `Este bloco é exclusivo para assinantes. As ${SHARE_PAID_ONLY_FREE_QUESTIONS} primeiras questões são gratuitas — assine um plano para responder o restante.`
+      };
+    }
+  }
 
   // Limite diário do trial no banco público: já cobre questão compartilhada de outro usuário
   // por construção — `createdById` continua sendo o dono ORIGINAL, então essa condição dispara
   // tanto para o banco público quanto para um bloco alheio recém-liberado pelo OR acima.
-  if (question.createdById !== user.id) {
+  // Link "liberado para todos" (EVERYONE) é exceção deliberada: quem criou esse link como admin
+  // quer um bloco sem NENHUMA fricção, então nem a cota diária do trial se aplica aqui.
+  if (question.createdById !== user.id && shareVisibility !== QuestionSetShareVisibility.EVERYONE) {
     const bankStatus = await getTrialBankStatus(user);
     if (bankStatus.isTrial && bankStatus.remaining !== null && bankStatus.remaining <= 0) {
       return {
@@ -249,7 +282,7 @@ export async function archiveQuestionSetAction(formData: FormData) {
  */
 export async function shareQuestionSetAction(questionSetId: string): Promise<ShareActionResult> {
   const user = await requireUser();
-  const result = await createOrReactivateQuestionSetShare(user.id, questionSetId);
+  const result = await createOrReactivateQuestionSetShare(user, questionSetId);
   if (result.ok) revalidatePath("/biblioteca");
   return result;
 }
@@ -257,6 +290,28 @@ export async function shareQuestionSetAction(questionSetId: string): Promise<Sha
 export async function revokeQuestionSetShareAction(questionSetId: string): Promise<RevokeActionResult> {
   const user = await requireUser();
   const result = await revokeQuestionSetShare(user.id, questionSetId);
+  if (result.ok) revalidatePath("/biblioteca");
+  return result;
+}
+
+/**
+ * Só admin escolhe quem vê o link (ver QuestionSetShareVisibilityControl) — dono comum nunca
+ * chama esta action, o controle nem aparece pra ele na UI, mas a checagem de role aqui é a
+ * garantia real (a UI é só conveniência).
+ */
+export async function updateQuestionSetShareVisibilityAction(
+  questionSetId: string,
+  visibilityRaw: string
+): Promise<RevokeActionResult> {
+  const user = await requireUser();
+  if (user.role !== Role.ADMIN) return { ok: false, error: "Apenas administradores podem ajustar quem vê este link." };
+
+  const visibility = (Object.values(QuestionSetShareVisibility) as string[]).includes(visibilityRaw)
+    ? (visibilityRaw as QuestionSetShareVisibility)
+    : null;
+  if (!visibility) return { ok: false, error: "Opção de visibilidade inválida." };
+
+  const result = await updateQuestionSetShareVisibility(user.id, questionSetId, visibility);
   if (result.ok) revalidatePath("/biblioteca");
   return result;
 }

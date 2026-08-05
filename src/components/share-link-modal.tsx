@@ -30,7 +30,8 @@ export function ShareLinkModal({
   createAction,
   revokeAction,
   open: openProp,
-  onOpenChange
+  onOpenChange,
+  children
 }: {
   triggerLabel?: string;
   trigger?: ReactNode;
@@ -50,6 +51,8 @@ export function ShareLinkModal({
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Controles extras (ex.: seletor de visibilidade de admin), só aparecem com o link ativo. */
+  children?: ReactNode;
 }) {
   const controlled = openProp !== undefined;
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -145,6 +148,7 @@ export function ShareLinkModal({
                 >
                   Revogar link
                 </button>
+                {children}
               </>
             )}
 

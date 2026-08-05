@@ -25,6 +25,14 @@ export const QUESTION_LIMITS = {
 } as const;
 
 /**
+ * Bloco compartilhado como "só assinantes" (QuestionSetShareVisibility.PAID_ONLY): quantas
+ * questões uma conta logada SEM assinatura ainda responde de graça antes do paywall. Vive
+ * aqui (não em question-actions.ts) porque tanto o gate no servidor quanto a UI de bloqueio
+ * do QuestionRunner precisam do mesmo número.
+ */
+export const SHARE_PAID_ONLY_FREE_QUESTIONS = 5;
+
+/**
  * Divide o total pedido em lotes, evitando sobra minúscula.
  *
  * Um lote final de 1 ou 2 questões sai pior: o prompt pede estrutura de grupo e bloco de

@@ -49,7 +49,11 @@ export function QuestionRunner({
   questions,
   mode,
   initialAnswers,
-  reviewMode = false
+  reviewMode = false,
+  persistAnswers = true,
+  showTools = true,
+  lockedFrom,
+  lockHref = "/pricing"
 }: {
   questions: RunnerQuestion[];
   mode: "study" | "simulado";
@@ -58,6 +62,15 @@ export function QuestionRunner({
    *  data futura), então a tela final mostra quando cada questão volta a aparecer — senão
    *  "0 revisões pendentes" logo depois de acertar parece que os acertos sumiram. */
   reviewMode?: boolean;
+  /** false = resposta só fica no estado local do navegador, sem chamar o servidor — usado no
+   *  link público (/q/<id>) para visitante sem conta, que não tem onde persistir uma tentativa. */
+  persistAnswers?: boolean;
+  /** false esconde favoritar/reportar — ambos exigem conta, então somem para visitante anônimo. */
+  showTools?: boolean;
+  /** 1-based: a partir desta posição a questão fica atrás de um paywall (bloco compartilhado
+   *  como "só assinantes" respondido por conta gratuita). undefined = nada bloqueado. */
+  lockedFrom?: number;
+  lockHref?: string;
 }) {
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>(initialAnswers ?? {});
@@ -103,9 +116,13 @@ export function QuestionRunner({
   }
 
   if (finished) {
+    // Denominador do aproveitamento ignora questões bloqueadas — sem isso, um bloco "só
+    // assinantes" pela metade travado parece um desempenho ruim em vez de um paywall.
+    const unlockedTotal = lockedFrom ? Math.max(0, Math.min(questions.length, lockedFrom - 1)) : questions.length;
+    const lockedCount = questions.length - unlockedTotal;
     const answeredCount = questions.filter((question) => answers[question.id]).length;
     const wrong = answeredCount - score;
-    const percent = Math.round((score / questions.length) * 100);
+    const percent = unlockedTotal > 0 ? Math.round((score / unlockedTotal) * 100) : 0;
     return (
       <div className="space-y-4">
         <Card>
@@ -118,8 +135,14 @@ export function QuestionRunner({
                 <div>
                   <p className="text-2xl font-bold">{percent}% de aproveitamento</p>
                   <p className="text-sm text-[var(--muted-foreground)]">
-                    Você respondeu {answeredCount} de {questions.length} {questions.length === 1 ? "questão" : "questões"}.
+                    Você respondeu {answeredCount} de {unlockedTotal} {unlockedTotal === 1 ? "questão" : "questões"}.
                   </p>
+                  {lockedCount > 0 && (
+                    <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-[var(--primary)]">
+                      <Lock className="h-3.5 w-3.5 shrink-0" />
+                      {lockedCount === 1 ? "Mais 1 questão bloqueada" : `Mais ${lockedCount} questões bloqueadas`} — assine para desbloquear.
+                    </p>
+                  )}
                   {reviewMode && (
                     <p className="mt-1 text-sm text-[var(--muted-foreground)]">
                       Cada questão já saiu da fila de hoje e voltou para uma data futura — quem você acertou demora mais
@@ -155,6 +178,27 @@ export function QuestionRunner({
             {questions.map((question, questionIndex) => {
               const selected = answers[question.id];
               const correct = getCorrectLabel(question);
+              const isLocked = lockedFrom != null && questionIndex + 1 >= lockedFrom;
+
+              if (isLocked) {
+                return (
+                  <div key={question.id} className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
+                      {showTools && <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />}
+                    </div>
+                    <p className="mt-1 opacity-60"><MathText text={question.statement} /></p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-3">
+                      <Lock className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+                      <p className="flex-1 text-sm text-[var(--primary-soft-foreground)]">Gabarito e explicação liberados para assinantes.</p>
+                      <Button asChild size="sm">
+                        <Link href={lockHref}>Ver planos →</Link>
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={question.id}
@@ -170,10 +214,12 @@ export function QuestionRunner({
                       <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
                       {question.isReviewed && <ReviewedBadge />}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <ReportQuestionButton questionId={question.id} />
-                      <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
-                    </div>
+                    {showTools && (
+                      <div className="flex items-center gap-1">
+                        <ReportQuestionButton questionId={question.id} />
+                        <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />
+                      </div>
+                    )}
                   </div>
                   {question.supportText && (
                     <div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
@@ -215,6 +261,7 @@ export function QuestionRunner({
 
   const showFeedback = mode === "study" && selected;
   const options = getRenderableOptions(current);
+  const isLocked = lockedFrom != null && index + 1 >= lockedFrom;
 
   function submit(payload: { label: string; value: string; isCorrect: boolean; userAnswer?: "CERTO" | "ERRADO"; optionId?: string }) {
     const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
@@ -223,6 +270,9 @@ export function QuestionRunner({
       ...previous,
       [questionId]: { label: payload.label, value: payload.value, isCorrect: payload.isCorrect }
     }));
+    // Visitante sem conta: não existe onde persistir a tentativa, então a correção fica só no
+    // estado local do navegador — sem round-trip ao servidor, sem chance de erro pra reverter.
+    if (!persistAnswers) return;
     startTransition(async () => {
       const formData = new FormData();
       formData.set("questionId", questionId);
@@ -271,10 +321,12 @@ export function QuestionRunner({
               {formatElapsed(elapsedSeconds)}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            <ReportQuestionButton questionId={current.id} />
-            <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
-          </div>
+          {showTools && (
+            <div className="flex items-center gap-1">
+              <ReportQuestionButton questionId={current.id} />
+              <FavoriteButton questionId={current.id} initialFavorited={current.isFavorited ?? false} />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm text-[var(--muted-foreground)]">
@@ -308,66 +360,86 @@ export function QuestionRunner({
           </div>
         )}
         <p className="text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>
-        {answerError && (
-          <div
-            className={cn(
-              "rounded-md border p-4",
-              answerError.limitReached
-                ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]"
-                : "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
-            )}
-          >
-            <p className="flex items-center gap-2 font-semibold">
-              {answerError.limitReached && <Lock className="h-4 w-4" />}
-              {answerError.limitReached ? "Limite diário do teste gratuito atingido" : "Não foi possível registrar a resposta"}
-            </p>
-            <p className="mt-1 text-sm">{answerError.message}</p>
-            {answerError.limitReached && (
-              <Button asChild size="sm" className="mt-3">
-                <Link href="/pricing">Ver planos →</Link>
-              </Button>
-            )}
-          </div>
-        )}
-        <div className="grid gap-3">
-          {options.map((option) => (
-            <Button
-              key={option.key}
-              disabled={Boolean(selected) || isPending || answerError?.limitReached}
-              size="lg"
-              variant="outline"
-              aria-pressed={selected?.label === option.label}
-              className={`h-auto justify-start whitespace-normal py-4 text-left ${
-                selected?.label === option.label ? "border-[var(--primary)] ring-2 ring-[var(--primary)] !opacity-100" : ""
-              }`}
-              onClick={() => submit(option)}
-            >
-              {option.icon}
-              <span className="font-bold">{option.label})</span>
-              <span><MathText text={option.value} /></span>
-            </Button>
-          ))}
-        </div>
-        {showFeedback && (
-          <div
-            className={
-              selected.isCorrect
-                ? "rounded-md border border-[var(--success)] bg-[var(--success-soft)] p-4 text-[var(--success-soft-foreground)]"
-                : "rounded-md border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-[var(--danger-soft-foreground)]"
-            }
-          >
-            <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
-            <p className="mt-2 text-sm"><MathText text={current.explanation} /></p>
-            {current.sourceBadge && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs font-medium opacity-80">
-                <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
-                {current.sourceBadge}
+        {isLocked ? (
+          <>
+            <div className="flex flex-col items-center gap-3 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-6 text-center">
+              <Lock className="h-8 w-8 text-[var(--primary)]" />
+              <p className="font-semibold text-[var(--primary-soft-foreground)]">Esta questão é exclusiva para assinantes</p>
+              <p className="text-sm text-[var(--primary-soft-foreground)]">
+                Ela já está salva aqui — assine um plano para responder e ver o gabarito com a explicação.
               </p>
+              <Button asChild size="sm">
+                <Link href={lockHref}>Ver planos →</Link>
+              </Button>
+            </div>
+            <Button variant="outline" onClick={next}>
+              {index + 1 === questions.length ? "Ver resultado" : "Próxima questão"}
+            </Button>
+          </>
+        ) : (
+          <>
+            {answerError && (
+              <div
+                className={cn(
+                  "rounded-md border p-4",
+                  answerError.limitReached
+                    ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]"
+                    : "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
+                )}
+              >
+                <p className="flex items-center gap-2 font-semibold">
+                  {answerError.limitReached && <Lock className="h-4 w-4" />}
+                  {answerError.limitReached ? "Limite diário do teste gratuito atingido" : "Não foi possível registrar a resposta"}
+                </p>
+                <p className="mt-1 text-sm">{answerError.message}</p>
+                {answerError.limitReached && (
+                  <Button asChild size="sm" className="mt-3">
+                    <Link href="/pricing">Ver planos →</Link>
+                  </Button>
+                )}
+              </div>
             )}
-          </div>
-        )}
-        {selected && (
-          <Button onClick={next}>{index + 1 === questions.length ? "Finalizar" : "Próxima questão"}</Button>
+            <div className="grid gap-3">
+              {options.map((option) => (
+                <Button
+                  key={option.key}
+                  disabled={Boolean(selected) || isPending || answerError?.limitReached}
+                  size="lg"
+                  variant="outline"
+                  aria-pressed={selected?.label === option.label}
+                  className={`h-auto justify-start whitespace-normal py-4 text-left ${
+                    selected?.label === option.label ? "border-[var(--primary)] ring-2 ring-[var(--primary)] !opacity-100" : ""
+                  }`}
+                  onClick={() => submit(option)}
+                >
+                  {option.icon}
+                  <span className="font-bold">{option.label})</span>
+                  <span><MathText text={option.value} /></span>
+                </Button>
+              ))}
+            </div>
+            {showFeedback && (
+              <div
+                className={
+                  selected.isCorrect
+                    ? "rounded-md border border-[var(--success)] bg-[var(--success-soft)] p-4 text-[var(--success-soft-foreground)]"
+                    : "rounded-md border border-[var(--danger-soft-border)] bg-[var(--danger-soft)] p-4 text-[var(--danger-soft-foreground)]"
+                }
+              >
+                <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
+                <p className="mt-2 text-sm"><MathText text={current.explanation} /></p>
+                {current.sourceBadge && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium opacity-80">
+                    <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+                    {current.sourceBadge}
+                  </p>
+                )}
+              </div>
+            )}
+            {selected && (
+              <Button onClick={next}>{index + 1 === questions.length ? "Finalizar" : "Próxima questão"}</Button>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
