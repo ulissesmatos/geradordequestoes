@@ -39,6 +39,15 @@ export async function getAiCostSummary(): Promise<{
   };
 }
 
+/** Custo de IA (USD) num período arbitrário — usado pelo DRE, que soma por mês/intervalo livre. */
+export async function getAiCostForRange(range: { from: Date; to: Date }): Promise<number> {
+  const agg = await prisma.aiUsageEvent.aggregate({
+    where: { createdAt: { gte: range.from, lte: range.to } },
+    _sum: { costUsd: true }
+  });
+  return agg._sum.costUsd?.toNumber() ?? 0;
+}
+
 export async function getAiCostTrend(
   months = 12
 ): Promise<{ month: string; costUsd: number; inputTokens: number; outputTokens: number }[]> {

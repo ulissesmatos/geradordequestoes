@@ -6,6 +6,8 @@ import {
   CouponType,
   Difficulty,
   EmailProvider,
+  ExpenseCategory,
+  MarketingChannel,
   MercadoPagoCheckoutMode,
   PaymentProvider,
   PopupAudience,
@@ -1280,4 +1282,158 @@ export async function adminReactivateQuestionSetShareAction(formData: FormData) 
   await prisma.questionSetShare.update({ where: { id }, data: { revokedAt: null } });
   await logAdminAction(admin, { action: "reactivate", entity: "QuestionSetShare", entityId: id });
   revalidatePath("/admin/compartilhamentos");
+}
+
+// ── Financeiro: despesas & campanhas de marketing ───────────────────────────
+
+function parseMoneyToCents(formData: FormData, field: string): number {
+  return Math.round(Number(formData.get(field) ?? 0) * 100);
+}
+
+function parseRequiredDate(formData: FormData, field: string, label: string): Date {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) throw new Error(`${label} é obrigatório.`);
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error(`Data inválida em "${label}".`);
+  return date;
+}
+
+function parseOptionalDate(formData: FormData, field: string): Date | null {
+  const raw = String(formData.get(field) ?? "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new Error(`Data inválida em "${field}".`);
+  return date;
+}
+
+function revalidateFinancialPaths() {
+  revalidatePath("/admin/despesas");
+  revalidatePath("/admin/campanhas");
+  revalidatePath("/admin/analytics/caixa");
+  revalidatePath("/admin");
+}
+
+export async function createExpenseAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) throw new Error("Descrição é obrigatória.");
+  const amountCents = parseMoneyToCents(formData, "amount");
+  if (amountCents <= 0) throw new Error("Valor deve ser maior que zero.");
+
+  const expense = await prisma.expense.create({
+    data: {
+      description,
+      category: formData.get("category") as ExpenseCategory,
+      amountCents,
+      competenceDate: parseRequiredDate(formData, "competenceDate", "Data de competência"),
+      paidAt: parseOptionalDate(formData, "paidAt"),
+      isRecurring: formData.get("isRecurring") === "on",
+      vendor: String(formData.get("vendor") ?? "").trim() || null,
+      campaignId: String(formData.get("campaignId") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      createdById: admin.id
+    }
+  });
+  await logAdminAction(admin, {
+    action: "create",
+    entity: "Expense",
+    entityId: expense.id,
+    summary: `${description} — R$ ${(amountCents / 100).toFixed(2)}`
+  });
+  revalidateFinancialPaths();
+}
+
+export async function updateExpenseAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("expenseId") ?? "");
+  if (!id) return;
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) throw new Error("Descrição é obrigatória.");
+  const amountCents = parseMoneyToCents(formData, "amount");
+  if (amountCents <= 0) throw new Error("Valor deve ser maior que zero.");
+
+  await prisma.expense.update({
+    where: { id },
+    data: {
+      description,
+      category: formData.get("category") as ExpenseCategory,
+      amountCents,
+      competenceDate: parseRequiredDate(formData, "competenceDate", "Data de competência"),
+      paidAt: parseOptionalDate(formData, "paidAt"),
+      isRecurring: formData.get("isRecurring") === "on",
+      vendor: String(formData.get("vendor") ?? "").trim() || null,
+      campaignId: String(formData.get("campaignId") ?? "").trim() || null,
+      notes: String(formData.get("notes") ?? "").trim() || null
+    }
+  });
+  await logAdminAction(admin, { action: "update", entity: "Expense", entityId: id, summary: description });
+  revalidateFinancialPaths();
+}
+
+/** Redireciona sempre pra lista: usada tanto na lista (no-op de navegação) quanto na tela de edição
+ * de uma despesa individual (onde, sem redirect, a página ficaria apontando pra um registro que não existe mais). */
+export async function deleteExpenseAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const expense = await prisma.expense.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "Expense", entityId: id, summary: expense.description });
+  revalidateFinancialPaths();
+  redirect("/admin/despesas");
+}
+
+export async function createCampaignAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("Nome é obrigatório.");
+  const budgetRaw = String(formData.get("budget") ?? "").trim();
+
+  const campaign = await prisma.marketingCampaign.create({
+    data: {
+      name,
+      channel: formData.get("channel") as MarketingChannel,
+      startDate: parseRequiredDate(formData, "startDate", "Data de início"),
+      endDate: parseOptionalDate(formData, "endDate"),
+      budgetCents: budgetRaw ? Math.round(Number(budgetRaw) * 100) : null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      isActive: formData.get("isActive") === "on"
+    }
+  });
+  await logAdminAction(admin, { action: "create", entity: "MarketingCampaign", entityId: campaign.id, summary: name });
+  revalidatePath("/admin/campanhas");
+}
+
+export async function updateCampaignAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("campaignId") ?? "");
+  if (!id) return;
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) throw new Error("Nome é obrigatório.");
+  const budgetRaw = String(formData.get("budget") ?? "").trim();
+
+  await prisma.marketingCampaign.update({
+    where: { id },
+    data: {
+      name,
+      channel: formData.get("channel") as MarketingChannel,
+      startDate: parseRequiredDate(formData, "startDate", "Data de início"),
+      endDate: parseOptionalDate(formData, "endDate"),
+      budgetCents: budgetRaw ? Math.round(Number(budgetRaw) * 100) : null,
+      notes: String(formData.get("notes") ?? "").trim() || null,
+      isActive: formData.get("isActive") === "on"
+    }
+  });
+  await logAdminAction(admin, { action: "update", entity: "MarketingCampaign", entityId: id, summary: name });
+  revalidatePath("/admin/campanhas");
+}
+
+/** Despesas linkadas ficam (só desvinculam — ver onDelete: SetNull no schema), nunca somem. */
+export async function deleteCampaignAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const campaign = await prisma.marketingCampaign.delete({ where: { id } });
+  await logAdminAction(admin, { action: "delete", entity: "MarketingCampaign", entityId: id, summary: campaign.name });
+  revalidatePath("/admin/campanhas");
+  revalidatePath("/admin/despesas");
 }

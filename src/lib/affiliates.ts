@@ -99,6 +99,15 @@ export async function recordAffiliateCommission(transaction: {
   }
 }
 
+/** Total de comissão de afiliado gerada no período — entra no DRE como custo de aquisição. */
+export async function getAffiliateCommissionTotal(range?: { from: Date; to: Date }): Promise<number> {
+  const agg = await prisma.affiliateCommission.aggregate({
+    where: range ? { createdAt: { gte: range.from, lte: range.to } } : {},
+    _sum: { amountCents: true }
+  });
+  return agg._sum.amountCents ?? 0;
+}
+
 export type AffiliateReferralDetail = {
   userId: string;
   name: string;

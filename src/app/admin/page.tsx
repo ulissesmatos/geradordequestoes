@@ -4,7 +4,9 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAiCostSummary } from "@/lib/analytics/ai-cost";
+import { getFinancialSummary } from "@/lib/analytics/financials";
 import { activeSubscriptionWhere } from "@/lib/analytics/revenue";
+import { startOfMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getRevenueSummary } from "@/lib/revenue";
 
@@ -21,7 +23,8 @@ export default async function AdminHomePage() {
     transactions,
     revenue,
     aiSettings,
-    aiCost
+    aiCost,
+    financialSummary
   ] = await Promise.all([
     prisma.user.count(),
     prisma.userSubscription.count({ where: activeSubscriptionWhere() }),
@@ -34,7 +37,8 @@ export default async function AdminHomePage() {
     prisma.paymentTransaction.count(),
     getRevenueSummary(),
     prisma.aiProviderSetting.findUnique({ where: { id: "default" } }),
-    getAiCostSummary()
+    getAiCostSummary(),
+    getFinancialSummary({ from: startOfMonthInBrazil(), to: new Date() })
   ]);
 
   const cards = [
@@ -84,6 +88,32 @@ export default async function AdminHomePage() {
                     </Link>
                   </>
                 )}
+              </span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{formatMoney(financialSummary.totalExpenseCents)}</CardTitle>
+            <CardDescription>
+              Despesas do mês
+              <span className="mt-1 block text-xs">
+                <Link href="/admin/despesas" className="underline">
+                  Ver lançamentos
+                </Link>
+              </span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{formatMoney(financialSummary.netCents)}</CardTitle>
+            <CardDescription>
+              Resultado líquido do mês
+              <span className="mt-1 block text-xs">
+                <Link href="/admin/analytics/caixa" className="underline">
+                  Ver Caixa & DRE completo
+                </Link>
               </span>
             </CardDescription>
           </CardHeader>

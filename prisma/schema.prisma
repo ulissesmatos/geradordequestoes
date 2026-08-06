@@ -152,6 +152,30 @@ enum CouponType {
   FIXED
 }
 
+enum ExpenseCategory {
+  MARKETING
+  INFRAESTRUTURA
+  FERRAMENTAS_SAAS
+  FOLHA_PESSOAL
+  TAXAS_GATEWAY
+  IMPOSTOS
+  JURIDICO_CONTABILIDADE
+  OUTROS
+}
+
+enum MarketingChannel {
+  GOOGLE_ADS
+  META_ADS
+  TIKTOK_ADS
+  YOUTUBE_ADS
+  ORGANICO_SOCIAL
+  EMAIL
+  SEO
+  AFILIADOS
+  INDICACAO
+  OUTRO
+}
+
 model User {
   id                String             @id @default(cuid())
   name              String
@@ -205,6 +229,7 @@ model User {
   chatShares         ChatShare[]
   questionSetShares  QuestionSetShare[]
   popupStates        PopupUserState[]
+  loggedExpenses     Expense[]          @relation("ExpenseCreatedBy")
 }
 
 model EmailVerificationCode {
@@ -1381,6 +1406,51 @@ model AffiliateWithdrawal {
 
   @@index([affiliateId, createdAt])
   @@index([status])
+}
+
+/// Campanha/canal de marketing. O gasto real é a soma das Expense (categoria MARKETING)
+/// linkadas via campaignId — não existe um campo de "gasto" separado aqui, pra não ter
+/// duas fontes divergentes pro mesmo número.
+model MarketingCampaign {
+  id          String             @id @default(cuid())
+  name        String
+  channel     MarketingChannel
+  startDate   DateTime
+  endDate     DateTime?
+  budgetCents Int?
+  notes       String?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  expenses    Expense[]
+}
+
+/// Livro-caixa de SAÍDA (despesas manuais) — contraparte de PaymentTransaction, que só
+/// cobre entrada. Custo de IA (AiUsageEvent) e comissão de afiliado (AffiliateCommission)
+/// já são rastreados em suas próprias tabelas e entram no DRE automaticamente sem passar
+/// por aqui, pra não duplicar lançamento.
+model Expense {
+  id             String             @id @default(cuid())
+  description    String
+  category       ExpenseCategory
+  amountCents    Int
+  /// Mês/data de competência (a que período contábil a despesa pertence) — é o que
+  /// alimenta o DRE e os gráficos, não createdAt (quando foi digitada no sistema).
+  competenceDate DateTime
+  /// null = ainda não paga (compromisso futuro/a pagar). Preenchido = saída de caixa real.
+  paidAt         DateTime?
+  isRecurring    Boolean            @default(false)
+  vendor         String?
+  campaignId     String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  campaign       MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdBy      User?              @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([category, competenceDate])
+  @@index([campaignId])
 }
 
 model SubscriptionEvent {

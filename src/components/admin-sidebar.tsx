@@ -19,12 +19,15 @@ import {
   Mail,
   Megaphone,
   Menu,
+  Receipt,
   ScrollText,
   Settings,
   Share2,
+  Target,
   Timer,
   TrendingUp,
   Users,
+  Wallet,
   X
 } from "lucide-react";
 import { logoutAction } from "@/app/actions";
@@ -43,10 +46,13 @@ const groups = [
     ]
   },
   {
-    label: "Receita",
+    label: "Financeiro",
     links: [
+      { href: "/admin/analytics/caixa", label: "Caixa & DRE", icon: Wallet },
       { href: "/admin/planos", label: "Planos & Pricing", icon: CreditCard },
       { href: "/admin/pagamentos", label: "Pagamentos", icon: CreditCard },
+      { href: "/admin/despesas", label: "Despesas", icon: Receipt },
+      { href: "/admin/campanhas", label: "Campanhas", icon: Target },
       { href: "/admin/afiliados", label: "Afiliados", icon: Handshake },
       { href: "/admin/teams", label: "Teams / Empresas", icon: Building2 }
     ]

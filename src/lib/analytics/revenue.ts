@@ -107,6 +107,20 @@ export async function getNewSubscribersTrend(months = 12): Promise<{ month: stri
   });
 }
 
+/**
+ * Novos assinantes PAGANTES num intervalo arbitrário (não em buckets mensais) — mesma regra de
+ * getNewSubscribersTrend (primeira UserSubscription do usuário), usada como denominador do CAC.
+ */
+export async function getNewPayingCustomersCount(range: { from: Date; to: Date }): Promise<number> {
+  const firstSubscriptionByUser = await prisma.userSubscription.groupBy({
+    by: ["userId"],
+    _min: { createdAt: true }
+  });
+  return firstSubscriptionByUser.filter(
+    (row) => row._min.createdAt && row._min.createdAt >= range.from && row._min.createdAt <= range.to
+  ).length;
+}
+
 /** Conversão simples trial → pago: usuários com pelo menos 1 transação aprovada / total. */
 export async function getTrialToPayConversion(): Promise<{ payingUsers: number; totalUsers: number; rate: number }> {
   const [totalUsers, payingUsers] = await Promise.all([

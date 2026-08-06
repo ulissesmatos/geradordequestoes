@@ -21,14 +21,15 @@ export type RevenueSummary = {
   excludedCount: number;
 };
 
-export async function getRevenueSummary(): Promise<RevenueSummary> {
+export async function getRevenueSummary(range?: { from: Date; to: Date }): Promise<RevenueSummary> {
+  const paidInRange = range ? { paidAt: { gte: range.from, lte: range.to } } : {};
   const [real, excluded] = await Promise.all([
     prisma.paymentTransaction.aggregate({
-      where: approvedRevenueWhere(),
+      where: { ...approvedRevenueWhere(), ...paidInRange },
       _sum: { amountCents: true }
     }),
     prisma.paymentTransaction.aggregate({
-      where: { status: PaymentTransactionStatus.APPROVED, countsAsRevenue: false },
+      where: { status: PaymentTransactionStatus.APPROVED, countsAsRevenue: false, ...paidInRange },
       _sum: { amountCents: true },
       _count: true
     })
