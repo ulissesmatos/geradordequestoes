@@ -94,6 +94,15 @@ export default async function AdminHomePage() {
         </Card>
         <Card>
           <CardHeader>
+            <CardTitle>{formatMoney(financialSummary.revenueCents)}</CardTitle>
+            <CardDescription>
+              Receita do mês
+              <span className="mt-1 block text-xs">Só o mês corrente — o card de Receita registrada acima é o total histórico.</span>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
             <CardTitle>{formatMoney(financialSummary.totalExpenseCents)}</CardTitle>
             <CardDescription>
               Despesas do mês
