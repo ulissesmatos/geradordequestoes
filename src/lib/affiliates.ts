@@ -108,6 +108,19 @@ export async function getAffiliateCommissionTotal(range?: { from: Date; to: Date
   return agg._sum.amountCents ?? 0;
 }
 
+/**
+ * Soma de saques de afiliado JÁ PAGOS — usada no saldo de caixa acumulado. Comissão gerada mas
+ * ainda não sacada (REQUESTED) não desconta: esse dinheiro ainda está na conta da empresa, só
+ * virou uma dívida (o afiliado tem direito a ele, mas ainda não retirou).
+ */
+export async function getPaidAffiliateWithdrawalTotal(): Promise<number> {
+  const agg = await prisma.affiliateWithdrawal.aggregate({
+    where: { status: AffiliateWithdrawalStatus.PAID },
+    _sum: { amountCents: true }
+  });
+  return agg._sum.amountCents ?? 0;
+}
+
 export type AffiliateReferralDetail = {
   userId: string;
   name: string;

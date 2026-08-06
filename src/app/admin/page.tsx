@@ -4,6 +4,7 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAiCostSummary } from "@/lib/analytics/ai-cost";
+import { getCashBalance } from "@/lib/analytics/financials";
 import { activeSubscriptionWhere } from "@/lib/analytics/revenue";
 import { prisma } from "@/lib/prisma";
 import { getRevenueSummary } from "@/lib/revenue";
@@ -21,7 +22,8 @@ export default async function AdminHomePage() {
     transactions,
     revenue,
     aiSettings,
-    aiCost
+    aiCost,
+    cashBalance
   ] = await Promise.all([
     prisma.user.count(),
     prisma.userSubscription.count({ where: activeSubscriptionWhere() }),
@@ -34,7 +36,8 @@ export default async function AdminHomePage() {
     prisma.paymentTransaction.count(),
     getRevenueSummary(),
     prisma.aiProviderSetting.findUnique({ where: { id: "default" } }),
-    getAiCostSummary()
+    getAiCostSummary(),
+    getCashBalance()
   ]);
 
   const cards = [
@@ -60,6 +63,27 @@ export default async function AdminHomePage() {
           </Button>
         }
       />
+
+      {/* Saldo de caixa: número "estilo conta bancária" — tudo que já entrou menos tudo que já
+          efetivamente saiu, acumulado desde sempre. Fica sozinho, em destaque, separado da grade
+          de contadores abaixo porque é o número que resume a saúde financeira num relance. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-4xl">{formatMoney(cashBalance.cashBalanceCents)}</CardTitle>
+          <CardDescription>
+            Saldo de caixa
+            <span className="mt-1 block text-xs">
+              {formatMoney(cashBalance.revenueCents)} recebido − {formatMoney(cashBalance.paidExpenseCents)} em despesas pagas
+              {cashBalance.paidAffiliateWithdrawalCents > 0 && <> − {formatMoney(cashBalance.paidAffiliateWithdrawalCents)} em saques de afiliado</>}
+              , desde sempre.{" "}
+              <Link href="/admin/analytics/caixa" className="underline">
+                Ver Caixa & DRE completo
+              </Link>
+            </span>
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Receita fora do laço: só ela precisa explicar o que ficou de fora da conta. */}
         <Card>
@@ -84,10 +108,6 @@ export default async function AdminHomePage() {
                     </Link>
                   </>
                 )}
-                {" · "}
-                <Link href="/admin/analytics/caixa" className="underline">
-                  Detalhe por mês (Caixa & DRE)
-                </Link>
               </span>
             </CardDescription>
           </CardHeader>

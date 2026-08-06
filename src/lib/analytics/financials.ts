@@ -1,9 +1,9 @@
 import { PaymentTransactionStatus } from "@prisma/client";
-import { getAffiliateCommissionTotal } from "@/lib/affiliates";
+import { getAffiliateCommissionTotal, getPaidAffiliateWithdrawalTotal } from "@/lib/affiliates";
 import { getAiCostForRange } from "@/lib/analytics/ai-cost";
 import { getMarketingSpendForRange } from "@/lib/analytics/campaigns";
 import { getCancelReasonBreakdown } from "@/lib/analytics/churn";
-import { getExpenseTotal } from "@/lib/analytics/expenses";
+import { getExpenseTotal, getPaidExpenseTotal } from "@/lib/analytics/expenses";
 import { activeSubscriptionWhere, getMrrCents, getNewPayingCustomersCount } from "@/lib/analytics/revenue";
 import { monthKeyInBrazil, startOfMonthInBrazil, startOfNextMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
@@ -52,6 +52,33 @@ export async function getFinancialSummary(range: { from: Date; to: Date }): Prom
     marginPercent: revenueCents > 0 ? netCents / revenueCents : 0,
     aiCostUsd
   };
+}
+
+export type CashBalance = {
+  cashBalanceCents: number;
+  revenueCents: number;
+  paidExpenseCents: number;
+  paidAffiliateWithdrawalCents: number;
+};
+
+/**
+ * Saldo de caixa acumulado — o "extrato de banco" da empresa: tudo que já entrou menos tudo que
+ * já efetivamente SAIU, desde sempre. Diferente de getFinancialSummary (que reseta por período,
+ * regime de competência) e de "Receita registrada" (que só soma entrada, nunca desconta nada).
+ *
+ * Só conta como saída o que já saiu de verdade: despesa sem `paidAt` ("a pagar") e comissão de
+ * afiliado ainda não sacada (sem AffiliateWithdrawal PAID) não descontam — esse dinheiro ainda
+ * está na conta da empresa, só virou um compromisso.
+ */
+export async function getCashBalance(): Promise<CashBalance> {
+  const [revenue, paidExpenseCents, paidAffiliateWithdrawalCents] = await Promise.all([
+    getRevenueSummary(),
+    getPaidExpenseTotal(),
+    getPaidAffiliateWithdrawalTotal()
+  ]);
+  const revenueCents = revenue.realCents;
+  const cashBalanceCents = revenueCents - paidExpenseCents - paidAffiliateWithdrawalCents;
+  return { cashBalanceCents, revenueCents, paidExpenseCents, paidAffiliateWithdrawalCents };
 }
 
 export type FinancialKpis = {

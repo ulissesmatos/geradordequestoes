@@ -30,6 +30,19 @@ export async function getExpensesByCategory(
     .sort((a, b) => b.amountCents - a.amountCents);
 }
 
+/**
+ * Soma de despesas JÁ PAGAS (`paidAt` preenchido), sem filtro de competência — usada no saldo
+ * de caixa acumulado. Despesa lançada mas ainda "a pagar" (`paidAt` vazio) não conta aqui: esse
+ * dinheiro ainda não saiu da conta da empresa.
+ */
+export async function getPaidExpenseTotal(): Promise<number> {
+  const agg = await prisma.expense.aggregate({
+    where: { paidAt: { not: null } },
+    _sum: { amountCents: true }
+  });
+  return agg._sum.amountCents ?? 0;
+}
+
 export async function getExpenseTrend(months = 12): Promise<{ month: string; amountCents: number }[]> {
   const now = new Date();
   const since = startOfMonthInBrazil(monthsAgo(months - 1, now));

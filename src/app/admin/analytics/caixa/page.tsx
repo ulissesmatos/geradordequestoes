@@ -4,7 +4,7 @@ import { CategoryBarChart, CHART_COLORS, TrendLineChart } from "@/components/adm
 import { StatTile } from "@/components/performance-charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getExpensesByCategory } from "@/lib/analytics/expenses";
-import { getCashFlowTrend, getFinancialKpis, getFinancialSummary } from "@/lib/analytics/financials";
+import { getCashBalance, getCashFlowTrend, getFinancialKpis, getFinancialSummary } from "@/lib/analytics/financials";
 import { startOfMonthInBrazil } from "@/lib/dates";
 import { expenseCategoryLabel } from "@/lib/labels";
 
@@ -23,7 +23,8 @@ function formatPercent(value: number) {
 export default async function CashflowAnalyticsPage() {
   const monthStart = startOfMonthInBrazil();
   const now = new Date();
-  const [summary, kpis, cashFlow, expensesByCategory] = await Promise.all([
+  const [cashBalance, summary, kpis, cashFlow, expensesByCategory] = await Promise.all([
+    getCashBalance(),
     getFinancialSummary({ from: monthStart, to: now }),
     getFinancialKpis(),
     getCashFlowTrend(12),
@@ -42,8 +43,20 @@ export default async function CashflowAnalyticsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Caixa & DRE"
-        description="Receita menos despesa do mês corrente, e os indicadores de SaaS que dependem disso (ARR, ARPU, LTV, CAC). Custo de IA aparece à parte, em USD — o resto do painel é em BRL e não há cotação cadastrada para somar os dois."
+        description="Saldo de caixa acumulado (desde sempre) e resultado do mês corrente (reseta todo mês), mais os indicadores de SaaS que dependem disso (ARR, ARPU, LTV, CAC). Custo de IA aparece à parte, em USD — o resto do painel é em BRL e não há cotação cadastrada para somar os dois."
       />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-4xl">{formatBRL(cashBalance.cashBalanceCents)}</CardTitle>
+          <p className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Saldo de caixa acumulado</p>
+          <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+            {formatBRL(cashBalance.revenueCents)} recebido − {formatBRL(cashBalance.paidExpenseCents)} em despesas pagas
+            {cashBalance.paidAffiliateWithdrawalCents > 0 && <> − {formatBRL(cashBalance.paidAffiliateWithdrawalCents)} em saques de afiliado</>}
+            , desde sempre — diferente do &quot;Resultado líquido (mês)&quot; abaixo, que reseta todo mês.
+          </p>
+        </CardHeader>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile value={formatBRL(summary.revenueCents)} label="Receita bruta (mês)" />
