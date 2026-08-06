@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import { dayKeyInBrazil, shiftDayKey } from "@/lib/dates";
 import type { DailyActivityRow, SubjectBreakdownRow } from "@/lib/performance";
 
@@ -10,10 +11,42 @@ import type { DailyActivityRow, SubjectBreakdownRow } from "@/lib/performance";
 const COLOR_CORRECT = "#0d9488";
 const COLOR_WRONG = "#f43f5e";
 
-export function StatTile({ value, label, hint }: { value: string; label: string; hint?: string }) {
+/** neutral = tom padrão (info); positive/negative = estado (bom/ruim), nunca decorativo. */
+type StatTone = "neutral" | "positive" | "negative";
+
+const TONE_VALUE_CLASS: Record<StatTone, string> = {
+  neutral: "text-[var(--foreground)]",
+  positive: "text-[var(--success)]",
+  negative: "text-[var(--destructive)]"
+};
+
+const TONE_BADGE_CLASS: Record<StatTone, string> = {
+  neutral: "bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]",
+  positive: "bg-[var(--success-soft)] text-[var(--success-soft-foreground)]",
+  negative: "bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
+};
+
+export function StatTile({
+  value,
+  label,
+  hint,
+  icon: Icon,
+  tone = "neutral"
+}: {
+  value: string;
+  label: string;
+  hint?: string;
+  icon?: LucideIcon;
+  tone?: StatTone;
+}) {
   return (
     <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4">
-      <p className="text-2xl font-bold">{value}</p>
+      {Icon && (
+        <div className={`mb-3 inline-flex h-9 w-9 items-center justify-center rounded-full ${TONE_BADGE_CLASS[tone]}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      )}
+      <p className={`text-2xl font-bold ${Icon ? TONE_VALUE_CLASS[tone] : ""}`}>{value}</p>
       <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{label}</p>
       {hint && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{hint}</p>}
     </div>

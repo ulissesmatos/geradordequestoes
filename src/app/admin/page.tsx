@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { AiUsageEventStatus, QuestionStatus } from "@prisma/client";
+import { Landmark, Receipt, Scale, TrendingUp, Wallet } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
+import { StatTile } from "@/components/performance-charts";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAiCostSummary } from "@/lib/analytics/ai-cost";
-import { getCashBalance } from "@/lib/analytics/financials";
+import { getCashBalance, getFinancialSummary } from "@/lib/analytics/financials";
 import { activeSubscriptionWhere } from "@/lib/analytics/revenue";
+import { formatMonthKeyBR, monthKeyInBrazil, startOfMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getRevenueSummary } from "@/lib/revenue";
 
 export default async function AdminHomePage() {
+  const monthStart = startOfMonthInBrazil();
+  const now = new Date();
+
   const [
     users,
     activeSubscriptions,
@@ -23,7 +29,8 @@ export default async function AdminHomePage() {
     revenue,
     aiSettings,
     aiCost,
-    cashBalance
+    cashBalance,
+    monthSummary
   ] = await Promise.all([
     prisma.user.count(),
     prisma.userSubscription.count({ where: activeSubscriptionWhere() }),
@@ -37,10 +44,13 @@ export default async function AdminHomePage() {
     getRevenueSummary(),
     prisma.aiProviderSetting.findUnique({ where: { id: "default" } }),
     getAiCostSummary(),
-    getCashBalance()
+    getCashBalance(),
+    getFinancialSummary({ from: monthStart, to: now })
   ]);
 
-  const cards = [
+  const monthLabel = formatMonthKeyBR(monthKeyInBrazil(now));
+
+  const platformStats: [string, number][] = [
     ["Usuários", users],
     ["Assinantes ativos", activeSubscriptions],
     ["Questões", questions],
@@ -53,7 +63,7 @@ export default async function AdminHomePage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <AdminPageHeader
         title="Dashboard"
         description="Visão geral da plataforma."
@@ -64,94 +74,95 @@ export default async function AdminHomePage() {
         }
       />
 
-      {/* Saldo de caixa: número "estilo conta bancária" — tudo que já entrou menos tudo que já
-          efetivamente saiu, acumulado desde sempre. Fica sozinho, em destaque, separado da grade
-          de contadores abaixo porque é o número que resume a saúde financeira num relance. */}
+      {/* Hero: saldo de caixa acumulado — o único número "estilo extrato bancário" da página,
+          por isso fica sozinho, maior que tudo o resto (ver skill de dataviz: hero figure,
+          exatamente 1 por view). Tom vermelho só se o saldo for negativo — cor de estado, não
+          decoração. */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-4xl">{formatMoney(cashBalance.cashBalanceCents)}</CardTitle>
-          <CardDescription>
-            Saldo de caixa
-            <span className="mt-1 block text-xs">
+        <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-start">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] text-[var(--primary-soft-foreground)]">
+            <Wallet className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Saldo de caixa acumulado</p>
+            <p className={`mt-1 text-5xl font-bold ${cashBalance.cashBalanceCents < 0 ? "text-[var(--destructive)]" : ""}`}>
+              {formatMoney(cashBalance.cashBalanceCents)}
+            </p>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
               {formatMoney(cashBalance.revenueCents)} recebido − {formatMoney(cashBalance.paidExpenseCents)} em despesas pagas
               {cashBalance.paidAffiliateWithdrawalCents > 0 && <> − {formatMoney(cashBalance.paidAffiliateWithdrawalCents)} em saques de afiliado</>}
-              , desde sempre.{" "}
-              <Link href="/admin/analytics/caixa" className="underline">
-                Ver Caixa & DRE completo
+              , desde o início.{" "}
+              <Link href="/admin/analytics/caixa" className="font-medium underline underline-offset-2">
+                Ver Caixa & DRE completo →
               </Link>
-            </span>
-          </CardDescription>
-        </CardHeader>
+            </p>
+          </div>
+        </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Receita fora do laço: só ela precisa explicar o que ficou de fora da conta. */}
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatMoney(revenue.realCents)}</CardTitle>
-            <CardDescription>
-              Receita registrada
-              <span className="mt-1 block text-xs">
-                {revenue.excludedCount > 0 ? (
-                  <>
-                    Fora da conta: {formatMoney(revenue.excludedCents)} em {revenue.excludedCount}{" "}
-                    {revenue.excludedCount === 1 ? "transação marcada" : "transações marcadas"} como sem receita.{" "}
-                    <Link href="/admin/pagamentos" className="underline">
-                      Revisar
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    Só pagamentos aprovados em gateway.{" "}
-                    <Link href="/admin/pagamentos" className="underline">
-                      Editar o que conta
-                    </Link>
-                  </>
-                )}
-              </span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        {cards.map(([label, value]) => (
-          <Card key={label}>
+      {/* Financeiro do mês — cada label deixa "do mês" explícito, e o rótulo da seção repete o
+          mês por extenso, pra nunca mais confundir com o saldo acumulado acima ou com o
+          histórico total. */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Financeiro · {monthLabel}</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            icon={TrendingUp}
+            value={formatMoney(monthSummary.revenueCents)}
+            label="Receita do mês"
+            hint="Só pagamentos recebidos neste mês"
+          />
+          <StatTile
+            icon={Receipt}
+            value={formatMoney(monthSummary.totalExpenseCents)}
+            label="Despesas do mês"
+            hint="Lançadas + comissão de afiliados"
+          />
+          <StatTile
+            icon={Scale}
+            tone={monthSummary.netCents >= 0 ? "positive" : "negative"}
+            value={formatMoney(monthSummary.netCents)}
+            label="Resultado do mês"
+            hint={`Margem: ${formatPercent(monthSummary.marginPercent)}`}
+          />
+          <StatTile
+            icon={Landmark}
+            value={formatMoney(revenue.realCents)}
+            label="Receita total (histórico)"
+            hint={
+              revenue.excludedCount > 0
+                ? `${formatMoney(revenue.excludedCents)} fora da conta — Revisar em Pagamentos`
+                : "Soma de todo pagamento aprovado, desde sempre"
+            }
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Plataforma</h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {platformStats.map(([label, value]) => (
+            <StatTile key={label} value={String(value)} label={label} />
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Inteligência artificial</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatTile value={formatUsd(aiCost.monthUsd)} label="Custo de IA (mês)" hint="Cobre só geração de questões" />
+          <StatTile value={formatUsd(aiCost.totalUsd)} label="Custo de IA (total)" hint="Ver tendência em Analytics → Custo de IA" />
+          <Card>
             <CardHeader>
-              <CardTitle>{value}</CardTitle>
-              <CardDescription>{label}</CardDescription>
+              <CardTitle className="text-lg">{aiSettings?.provider ?? "OPENAI"}</CardTitle>
+              <CardDescription>
+                Modelo: {aiSettings?.model ?? process.env.OPENAI_MODEL ?? "gpt-4.1-mini"} / Chave{" "}
+                {aiSettings?.apiKey || process.env.OPENAI_API_KEY ? "configurada" : "não configurada"}
+              </CardDescription>
             </CardHeader>
           </Card>
-        ))}
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatUsd(aiCost.monthUsd)}</CardTitle>
-            <CardDescription>
-              Custo de IA este mês
-              <span className="mt-1 block text-xs">Cobre só geração de questões — chat e material ainda não são medidos.</span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatUsd(aiCost.totalUsd)}</CardTitle>
-            <CardDescription>
-              Custo de IA total
-              <span className="mt-1 block text-xs">
-                <Link href="/admin/analytics/ia" className="underline">
-                  Ver tendência e custo por modelo
-                </Link>
-              </span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>IA ativa: {aiSettings?.provider ?? "OPENAI"}</CardTitle>
-          <CardDescription>
-            Modelo: {aiSettings?.model ?? process.env.OPENAI_MODEL ?? "gpt-4.1-mini"} / Chave{" "}
-            {aiSettings?.apiKey || process.env.OPENAI_API_KEY ? "configurada" : "não configurada"}
-          </CardDescription>
-        </CardHeader>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
@@ -162,4 +173,8 @@ function formatMoney(cents: number) {
 
 function formatUsd(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value * 100) + "%";
 }
