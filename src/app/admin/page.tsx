@@ -4,9 +4,7 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAiCostSummary } from "@/lib/analytics/ai-cost";
-import { getFinancialSummary } from "@/lib/analytics/financials";
 import { activeSubscriptionWhere } from "@/lib/analytics/revenue";
-import { startOfMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getRevenueSummary } from "@/lib/revenue";
 
@@ -23,8 +21,7 @@ export default async function AdminHomePage() {
     transactions,
     revenue,
     aiSettings,
-    aiCost,
-    financialSummary
+    aiCost
   ] = await Promise.all([
     prisma.user.count(),
     prisma.userSubscription.count({ where: activeSubscriptionWhere() }),
@@ -37,8 +34,7 @@ export default async function AdminHomePage() {
     prisma.paymentTransaction.count(),
     getRevenueSummary(),
     prisma.aiProviderSetting.findUnique({ where: { id: "default" } }),
-    getAiCostSummary(),
-    getFinancialSummary({ from: startOfMonthInBrazil(), to: new Date() })
+    getAiCostSummary()
   ]);
 
   const cards = [
@@ -88,40 +84,9 @@ export default async function AdminHomePage() {
                     </Link>
                   </>
                 )}
-              </span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatMoney(financialSummary.revenueCents)}</CardTitle>
-            <CardDescription>
-              Receita do mês
-              <span className="mt-1 block text-xs">Só o mês corrente — o card de Receita registrada acima é o total histórico.</span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatMoney(financialSummary.totalExpenseCents)}</CardTitle>
-            <CardDescription>
-              Despesas do mês
-              <span className="mt-1 block text-xs">
-                <Link href="/admin/despesas" className="underline">
-                  Ver lançamentos
-                </Link>
-              </span>
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{formatMoney(financialSummary.netCents)}</CardTitle>
-            <CardDescription>
-              Resultado líquido do mês
-              <span className="mt-1 block text-xs">
+                {" · "}
                 <Link href="/admin/analytics/caixa" className="underline">
-                  Ver Caixa & DRE completo
+                  Detalhe por mês (Caixa & DRE)
                 </Link>
               </span>
             </CardDescription>
