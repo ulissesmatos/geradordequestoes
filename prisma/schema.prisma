@@ -160,6 +160,9 @@ enum ExpenseCategory {
   TAXAS_GATEWAY
   IMPOSTOS
   JURIDICO_CONTABILIDADE
+  /// Retirada/distribuição de lucro entre sócios — não é custo do negócio (ver
+  /// Expense.countsAsExpense: nasce false pra esta categoria não derrubar o DRE).
+  DISTRIBUICAO_LUCROS
   OUTROS
 }
 
@@ -177,59 +180,59 @@ enum MarketingChannel {
 }
 
 model User {
-  id                String             @id @default(cuid())
-  name              String
-  email             String             @unique
-  passwordHash      String?
-  emailVerified     DateTime?
-  image             String?
-  cpf               String?
-  birthDate         DateTime?
-  phone             String?
-  role              Role               @default(USER)
-  isBlocked         Boolean            @default(false)
-  stripeCustomerId  String?
-  trialGenerationsUsed Int             @default(0)
+  id                   String                   @id @default(cuid())
+  name                 String
+  email                String                   @unique
+  passwordHash         String?
+  emailVerified        DateTime?
+  image                String?
+  cpf                  String?
+  birthDate            DateTime?
+  phone                String?
+  role                 Role                     @default(USER)
+  isBlocked            Boolean                  @default(false)
+  stripeCustomerId     String?
+  trialGenerationsUsed Int                      @default(0)
   // Prova de consentimento: quando o usuário aceitou os Termos e a Política de Privacidade.
   // Nulo em contas criadas antes deste registro existir.
-  termsAcceptedAt   DateTime?
-  preferredStates   String[]           @default([])
+  termsAcceptedAt      DateTime?
+  preferredStates      String[]                 @default([])
   // Revisão espaçada: opt-out do lembrete diário e idempotência do cron de envio.
-  reviewReminderOptOut Boolean         @default(false)
+  reviewReminderOptOut Boolean                  @default(false)
   reviewReminderSentAt DateTime?
   // Constância: meta diária de questões (null = sem meta) e resumo semanal por e-mail.
   dailyQuestionGoal    Int?
-  weeklySummaryOptOut  Boolean         @default(false)
+  weeklySummaryOptOut  Boolean                  @default(false)
   weeklySummarySentAt  DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  createdQuestions  Question[]         @relation("CreatedQuestions")
-  reviewedQuestions Question[]         @relation("ReviewedQuestions")
-  attempts          QuestionAttempt[]
-  favorites         FavoriteQuestion[]
-  aiLogs            AiGenerationLog[]
-  aiUsageEvents     AiUsageEvent[]
-  trialUsageEvents  TrialUsageEvent[]
-  usageLedger       UsageLedger[]
-  questionSets      QuestionSet[]
-  aiChatSessions    AiChatSession[]
-  subscriptions     UserSubscription[]
-  studyMaterials     StudyMaterial[]
-  checkoutSessions   PaymentCheckoutSession[]
-  paymentTransactions PaymentTransaction[]
-  subscriptionEvents SubscriptionEvent[]
-  verificationCodes  EmailVerificationCode[]
-  passwordResetCodes PasswordResetCode[]
-  questionFeedbacks  QuestionFeedback[]
-  mockExamSessions   MockExamSession[]
-  createdMockExams   MockExam[]         @relation("CreatedMockExams")
-  reviewStates       QuestionReviewState[]
-  affiliateProfile   AffiliateProfile?
-  referredBy         AffiliateReferral?
-  chatShares         ChatShare[]
-  questionSetShares  QuestionSetShare[]
-  popupStates        PopupUserState[]
-  loggedExpenses     Expense[]          @relation("ExpenseCreatedBy")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  createdQuestions     Question[]               @relation("CreatedQuestions")
+  reviewedQuestions    Question[]               @relation("ReviewedQuestions")
+  attempts             QuestionAttempt[]
+  favorites            FavoriteQuestion[]
+  aiLogs               AiGenerationLog[]
+  aiUsageEvents        AiUsageEvent[]
+  trialUsageEvents     TrialUsageEvent[]
+  usageLedger          UsageLedger[]
+  questionSets         QuestionSet[]
+  aiChatSessions       AiChatSession[]
+  subscriptions        UserSubscription[]
+  studyMaterials       StudyMaterial[]
+  checkoutSessions     PaymentCheckoutSession[]
+  paymentTransactions  PaymentTransaction[]
+  subscriptionEvents   SubscriptionEvent[]
+  verificationCodes    EmailVerificationCode[]
+  passwordResetCodes   PasswordResetCode[]
+  questionFeedbacks    QuestionFeedback[]
+  mockExamSessions     MockExamSession[]
+  createdMockExams     MockExam[]               @relation("CreatedMockExams")
+  reviewStates         QuestionReviewState[]
+  affiliateProfile     AffiliateProfile?
+  referredBy           AffiliateReferral?
+  chatShares           ChatShare[]
+  questionSetShares    QuestionSetShare[]
+  popupStates          PopupUserState[]
+  loggedExpenses       Expense[]                @relation("ExpenseCreatedBy")
 }
 
 model EmailVerificationCode {
@@ -259,93 +262,93 @@ model PasswordResetCode {
 }
 
 model AiProviderSetting {
-  id                   String                 @id @default("default")
-  provider             AiProvider             @default(OPENAI)
-  apiKey               String?
-  model                String                 @default("gpt-4.1-mini")
-  baseUrl              String?
-  siteUrl              String?
-  appName              String?
-  chatPresetUsageLevel AiChatPresetUsageLevel @default(MEDIO)
-  webSearchEnabled     Boolean                @default(false)
-  webSearchApiKey      String?
-  extractionModel      String?
+  id                       String                 @id @default("default")
+  provider                 AiProvider             @default(OPENAI)
+  apiKey                   String?
+  model                    String                 @default("gpt-4.1-mini")
+  baseUrl                  String?
+  siteUrl                  String?
+  appName                  String?
+  chatPresetUsageLevel     AiChatPresetUsageLevel @default(MEDIO)
+  webSearchEnabled         Boolean                @default(false)
+  webSearchApiKey          String?
+  extractionModel          String?
   /// USD por 1.000.000 de tokens de ENTRADA do modelo `model` ATUAL — não há histórico por
   /// modelo, então trocar `model` sem atualizar este par deixa o custo calculado errado.
   /// Decimal (não Int cents): custo por token é sub-centavo. null = custo não calculado.
-  inputPricePerMillionUsd  Decimal?            @db.Decimal(10, 4)
-  outputPricePerMillionUsd Decimal?            @db.Decimal(10, 4)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  inputPricePerMillionUsd  Decimal?               @db.Decimal(10, 4)
+  outputPricePerMillionUsd Decimal?               @db.Decimal(10, 4)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
 }
 
 model Subject {
-  id           String            @id @default(cuid())
-  name         String
-  slug         String            @unique
-  description  String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  topics       Topic[]
-  questions    Question[]
-  aiLogs       AiGenerationLog[]
-  questionSets QuestionSet[]
+  id             String            @id @default(cuid())
+  name           String
+  slug           String            @unique
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  topics         Topic[]
+  questions      Question[]
+  aiLogs         AiGenerationLog[]
+  questionSets   QuestionSet[]
   studyMaterials StudyMaterial[]
 }
 
 model Topic {
-  id           String            @id @default(cuid())
-  subjectId    String
-  name         String
-  slug         String
-  description  String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  subject      Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  questions    Question[]
-  aiLogs       AiGenerationLog[]
-  questionSets QuestionSet[]
+  id             String            @id @default(cuid())
+  subjectId      String
+  name           String
+  slug           String
+  description    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  subject        Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions      Question[]
+  aiLogs         AiGenerationLog[]
+  questionSets   QuestionSet[]
   studyMaterials StudyMaterial[]
 
   @@unique([subjectId, slug])
 }
 
 model Question {
-  id            String             @id @default(cuid())
-  subjectId     String
-  topicId       String
-  questionSetId String?
-  orderInSet    Int?
-  format        QuestionFormat     @default(CERTO_ERRADO)
-  statement     String
+  id                        String                @id @default(cuid())
+  subjectId                 String
+  topicId                   String
+  questionSetId             String?
+  orderInSet                Int?
+  format                    QuestionFormat        @default(CERTO_ERRADO)
+  statement                 String
   // Texto de apoio compartilhado (situação hipotética, trecho de lei, texto informativo) — usado em
   // blocos no estilo Cebraspe onde várias questões julgam o mesmo texto. Repetido por questão de
   // propósito (cada uma fica autossuficiente, sem depender de outras do mesmo bloco).
-  supportText   String?
-  answer        QuestionAnswer?
-  explanation   String
-  difficulty    Difficulty
-  status        QuestionStatus     @default(PENDING_REVIEW)
-  sourceType    SourceType         @default(MANUAL)
-  aiModel       String?
-  createdById   String?
-  reviewedById  String?
+  supportText               String?
+  answer                    QuestionAnswer?
+  explanation               String
+  difficulty                Difficulty
+  status                    QuestionStatus        @default(PENDING_REVIEW)
+  sourceType                SourceType            @default(MANUAL)
+  aiModel                   String?
+  createdById               String?
+  reviewedById              String?
   // Questão real de referência da qual esta foi gerada como variação próxima (modo "baseado em provas reais").
   sourceReferenceQuestionId String?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  subject       Subject            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  topic         Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  questionSet   QuestionSet?       @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
-  createdBy     User?              @relation("CreatedQuestions", fields: [createdById], references: [id], onDelete: SetNull)
-  reviewedBy    User?              @relation("ReviewedQuestions", fields: [reviewedById], references: [id], onDelete: SetNull)
-  sourceReferenceQuestion ReferenceQuestion? @relation(fields: [sourceReferenceQuestionId], references: [id], onDelete: SetNull)
-  options       QuestionOption[]
-  attempts      QuestionAttempt[]
-  favorites     FavoriteQuestion[]
-  feedbacks     QuestionFeedback[]
-  mockExamAnswers MockExamAnswer[]
-  reviewStates  QuestionReviewState[]
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  subject                   Subject               @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic                     Topic                 @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questionSet               QuestionSet?          @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
+  createdBy                 User?                 @relation("CreatedQuestions", fields: [createdById], references: [id], onDelete: SetNull)
+  reviewedBy                User?                 @relation("ReviewedQuestions", fields: [reviewedById], references: [id], onDelete: SetNull)
+  sourceReferenceQuestion   ReferenceQuestion?    @relation(fields: [sourceReferenceQuestionId], references: [id], onDelete: SetNull)
+  options                   QuestionOption[]
+  attempts                  QuestionAttempt[]
+  favorites                 FavoriteQuestion[]
+  feedbacks                 QuestionFeedback[]
+  mockExamAnswers           MockExamAnswer[]
+  reviewStates              QuestionReviewState[]
 
   @@index([sourceReferenceQuestionId])
   @@index([status, subjectId, topicId])
@@ -399,8 +402,8 @@ model QuestionReviewState {
   dueAt         DateTime
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, questionId])
   @@index([userId, dueAt])
@@ -519,18 +522,15 @@ model TrialUsageEvent {
 
 /**
  * Medidores cobrados. Deliberadamente DOIS, e não um saldo único de "créditos":
- *
  * - Uma moeda única obrigaria pesar chat contra geração ("1 questão = 1, 1 mensagem = 3"),
- *   o que canibaliza — quem conversa muito perde capacidade de gerar — e não vende:
- *   "você usou 143 de 600 créditos" não significa nada para o aluno.
+ * o que canibaliza — quem conversa muito perde capacidade de gerar — e não vende:
+ * "você usou 143 de 600 créditos" não significa nada para o aluno.
  * - Separados, cada um vira um número honesto no card: "N questões/mês" e "M mensagens/dia".
- *
  * O ganho decisivo, porém, é técnico. Com um medidor só, cobrar dentro do funil de geração
  * E no ponto de entrada do chat cobraria duas vezes a mesma mensagem — foi exatamente o bug
  * que existia com AiUsageEvent. Com medidores distintos, a mensagem debita CHAT no entry
  * point e a geração debita QUESTIONS dentro de generateAndSaveQuestionSet, que é o único
  * lugar por onde TODOS os caminhos de geração passam.
- *
  * Material não tem medidor próprio: gerar/aprofundar material é uma ação de IA como uma
  * mensagem, então debita CHAT. O `kind` preserva a distinção para auditoria, sem criar um
  * terceiro número para vender.
@@ -550,7 +550,6 @@ enum UsageKind {
 /**
  * Livro-caixa único de consumo — trial e assinante no mesmo lugar (TrialUsageEvent cobria
  * só o trial; quem pagava não tinha registro nenhum de consumo por ação).
- *
  * Estorno é SOFT (`refundedAt`), não delete: a linha nunca some, então "cobrei e devolvi"
  * continua auditável quando um cliente reclama, e chamar o estorno duas vezes é inofensivo
  * por construção — antes era inofensivo só por acidente.
@@ -560,9 +559,13 @@ model UsageLedger {
   userId         String
   meter          UsageMeter
   kind           UsageKind
-  /** Unidades cobradas. Em QUESTIONS é o número de questões; em CHAT é sempre 1. */
+  /**
+   * Unidades cobradas. Em QUESTIONS é o número de questões; em CHAT é sempre 1.
+   */
   costUnits      Int        @default(1)
-  /** null = consumo do trial. Preenchido permite auditar por ciclo e por plano. */
+  /**
+   * null = consumo do trial. Preenchido permite auditar por ciclo e por plano.
+   */
   subscriptionId String?
   planId         String?
   refundedAt     DateTime?
@@ -602,13 +605,12 @@ model QuestionSet {
 /**
  * Quem enxerga e responde um link de bloco compartilhado. Só quem cria o link como ADMIN pode
  * escolher — dono comum sempre cria como LOGGED_IN (comportamento histórico, inalterado).
- *
- *   EVERYONE   — inclusive anônimo, sem nenhuma restrição (nem cota diária de trial).
- *   LOGGED_IN  — exclui anônimo (só preview da 1ª questão, sem responder); logado (grátis ou
- *                pago) responde tudo. Default histórico e o que todo share de não-admin usa.
- *   PAID_ONLY  — anônimo responde só a 1ª; logado sem assinatura responde as
- *                SHARE_PAID_ONLY_FREE_QUESTIONS primeiras (ver question-limits.ts) e vê o
- *                resto bloqueado com CTA; assinante (ou admin) responde tudo.
+ * EVERYONE   — inclusive anônimo, sem nenhuma restrição (nem cota diária de trial).
+ * LOGGED_IN  — exclui anônimo (só preview da 1ª questão, sem responder); logado (grátis ou
+ * pago) responde tudo. Default histórico e o que todo share de não-admin usa.
+ * PAID_ONLY  — anônimo responde só a 1ª; logado sem assinatura responde as
+ * SHARE_PAID_ONLY_FREE_QUESTIONS primeiras (ver question-limits.ts) e vê o
+ * resto bloqueado com CTA; assinante (ou admin) responde tudo.
  */
 enum QuestionSetShareVisibility {
   EVERYONE
@@ -644,21 +646,21 @@ enum MockExamStatus {
 }
 
 model MockExam {
-  id              String         @id @default(cuid())
+  id              String            @id @default(cuid())
   title           String
   description     String?
-  questionSetId   String         @unique
+  questionSetId   String            @unique
   teamAccountId   String?
   durationMinutes Int
   opensAt         DateTime?
   closesAt        DateTime?
-  status          MockExamStatus @default(DRAFT)
+  status          MockExamStatus    @default(DRAFT)
   createdById     String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  questionSet     QuestionSet    @relation(fields: [questionSetId], references: [id], onDelete: Restrict)
-  teamAccount     TeamAccount?   @relation(fields: [teamAccountId], references: [id], onDelete: SetNull)
-  createdBy       User?          @relation("CreatedMockExams", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  questionSet     QuestionSet       @relation(fields: [questionSetId], references: [id], onDelete: Restrict)
+  teamAccount     TeamAccount?      @relation(fields: [teamAccountId], references: [id], onDelete: SetNull)
+  createdBy       User?             @relation("CreatedMockExams", fields: [createdById], references: [id], onDelete: SetNull)
   sessions        MockExamSession[]
 
   @@index([status])
@@ -700,22 +702,22 @@ model MockExamAnswer {
 }
 
 model AiChatSession {
-  id              String          @id @default(cuid())
-  userId          String
-  title           String
+  id               String          @id @default(cuid())
+  userId           String
+  title            String
   /**
    * Quando a IA nomeou a conversa. Preenchido = não renomear mais: só o PRIMEIRO pedido dá
    * nome à sessão, senão o item pularia de nome na barra lateral a cada mensagem.
    */
   titleGeneratedAt DateTime?
-  summary         String?
-  summarizedCount Int             @default(0)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages        AiChatMessage[]
-  questionSets    QuestionSet[]
-  share           ChatShare?
+  summary          String?
+  summarizedCount  Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages         AiChatMessage[]
+  questionSets     QuestionSet[]
+  share            ChatShare?
 }
 
 model AiChatMessage {
@@ -760,19 +762,19 @@ model AiChatMessageAttachment {
  * públicos do projeto (ver TeamCharge/cobrança).
  */
 model ChatShare {
-  id        String        @id @default(cuid())
-  sessionId String        @unique
-  userId    String
+  id         String        @id @default(cuid())
+  sessionId  String        @unique
+  userId     String
   /**
    * Cutoff do congelamento: só mensagens com createdAt <= este instante aparecem no link.
    * Atualizado sempre que o dono (re)compartilha, inclusive ao reativar um link revogado —
    * então reativar passa a incluir as mensagens novas desde a revogação, de propósito.
    */
   sharedUpTo DateTime
-  createdAt DateTime      @default(now())
-  revokedAt DateTime?
-  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime      @default(now())
+  revokedAt  DateTime?
+  session    AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AdminAuditLog {
@@ -808,78 +810,85 @@ model ClientErrorLog {
 }
 
 model StudyMaterial {
-  id          String              @id @default(cuid())
-  userId      String
-  subjectId   String?
-  topicId     String?
-  title       String
-  prompt      String
-  content     String
-  aiModel     String?
-  status      StudyMaterialStatus @default(READY)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subject     Subject?            @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  topic       Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  messages    AiChatMessage[]
+  id        String              @id @default(cuid())
+  userId    String
+  subjectId String?
+  topicId   String?
+  title     String
+  prompt    String
+  content   String
+  aiModel   String?
+  status    StudyMaterialStatus @default(READY)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   Subject?            @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topic     Topic?              @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  messages  AiChatMessage[]
 }
 
 model SubscriptionPlan {
-  id                  String             @id @default(cuid())
-  name                String
-  slug                String             @unique
-  description         String?
-  marketingSubtitle   String?
-  ctaText             String             @default("Criar conta")
-  displayOrder        Int                @default(0)
-  isHighlighted       Boolean            @default(false)
-  features            String[]           @default([])
-  stripePriceId       String?
-  mercadoPagoReference String?
-  priceCents          Int
+  id                        String                   @id @default(cuid())
+  name                      String
+  slug                      String                   @unique
+  description               String?
+  marketingSubtitle         String?
+  ctaText                   String                   @default("Criar conta")
+  displayOrder              Int                      @default(0)
+  isHighlighted             Boolean                  @default(false)
+  features                  String[]                 @default([])
+  stripePriceId             String?
+  mercadoPagoReference      String?
+  priceCents                Int
   // DEPRECADO: contava CHAMADAS ao provedor, não questões — uma mensagem de chat e um bloco
   // de 15 questões custavam a mesma unidade. Substituído pelas cotas abaixo; mantido por um
   // release para permitir rollback enquanto o modo sombra roda.
-  aiGenerationsPerDay Int
-  /** Cota principal vendida: questões geradas por ciclo. null = ilimitado. */
-  questionsPerMonth   Int?
-  /** Rajada diária: trava anti-abuso e, de quebra, motivo para voltar amanhã. null = sem teto. */
-  questionsPerDay     Int?
-  /** Teto de questões em CADA bloco — o diferencial mais direto entre planos. null = sem teto. */
+  aiGenerationsPerDay       Int
+  /**
+   * Cota principal vendida: questões geradas por ciclo. null = ilimitado.
+   */
+  questionsPerMonth         Int?
+  /**
+   * Rajada diária: trava anti-abuso e, de quebra, motivo para voltar amanhã. null = sem teto.
+   */
+  questionsPerDay           Int?
+  /**
+   * Teto de questões em CADA bloco — o diferencial mais direto entre planos. null = sem teto.
+   */
   maxQuestionsPerGeneration Int?
-  /** Generoso de propósito: conversar é barato perto de gerar questão. null = ilimitado. */
-  chatMessagesPerDay  Int?
+  /**
+   * Generoso de propósito: conversar é barato perto de gerar questão. null = ilimitado.
+   */
+  chatMessagesPerDay        Int?
   // DEPRECADO: migrado para capabilities.materialExpand. Mantido por um release para
   // permitir rollback; parar de ler quando o medidor novo estiver estável.
-  materialExpandEnabled Boolean          @default(false)
+  materialExpandEnabled     Boolean                  @default(false)
   /**
    * Liga/desliga de features por plano. As chaves válidas e seus defaults vivem no
    * registry tipado em src/lib/capabilities.ts, não aqui — feature nova é uma linha lá,
    * sem migration. Chave desconhecida é ignorada na leitura, então remover uma capability
    * do registry não quebra planos com JSON antigo.
-   *
    * Só o liga/desliga mora em JSON; limites numéricos vendidos (cota mensal, teto diário,
    * tamanho de bloco) são colunas de verdade, porque entram em relatório e ordenação.
    */
-  capabilities        Json               @default("{}")
-  isActive            Boolean            @default(true)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  subscriptions       UserSubscription[]
-  checkoutSessions    PaymentCheckoutSession[]
-  paymentTransactions PaymentTransaction[]
-  teamAccounts        TeamAccount[]
+  capabilities              Json                     @default("{}")
+  isActive                  Boolean                  @default(true)
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  subscriptions             UserSubscription[]
+  checkoutSessions          PaymentCheckoutSession[]
+  paymentTransactions       PaymentTransaction[]
+  teamAccounts              TeamAccount[]
 }
 
 model UserSubscription {
-  id        String             @id @default(cuid())
-  userId    String
-  planId    String
-  couponId  String?
-  status    SubscriptionStatus @default(ACTIVE)
-  startsAt  DateTime           @default(now())
-  endsAt    DateTime?
+  id             String                    @id @default(cuid())
+  userId         String
+  planId         String
+  couponId       String?
+  status         SubscriptionStatus        @default(ACTIVE)
+  startsAt       DateTime                  @default(now())
+  endsAt         DateTime?
   reminderSentAt DateTime?
   /**
    * Grandfathering nominal: sobrescreve as cotas do plano para UM cliente. Mesmas chaves de
@@ -893,13 +902,13 @@ model UserSubscription {
    * antes disso ficam null ("não classificado"), sem reconstrução por heurística retroativa.
    * Ver enum SubscriptionCancelReason.
    */
-  cancelReason SubscriptionCancelReason?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan      SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
-  coupon    Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  events    SubscriptionEvent[]
+  cancelReason   SubscriptionCancelReason?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  user           User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan          @relation(fields: [planId], references: [id], onDelete: Restrict)
+  coupon         Coupon?                   @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  events         SubscriptionEvent[]
 }
 
 model Coupon {
@@ -918,61 +927,61 @@ model Coupon {
 }
 
 model PricingContent {
-  id                  String   @id @default("default")
-  headline            String   @default("Planos para estudar com IA todos os dias.")
-  subheadline         String   @default("Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados, revisões e materiais pelo painel.")
-  paywallTitle        String   @default("Assinatura necessária")
-  paywallDescription  String   @default("A geração de questões, estudos, simulados, revisão e materiais por IA ficam disponíveis para usuários com plano ativo.")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default("default")
+  headline           String   @default("Planos para estudar com IA todos os dias.")
+  subheadline        String   @default("Escolha um plano ativo, crie sua conta e libere a geração de questões, simulados, revisões e materiais pelo painel.")
+  paywallTitle       String   @default("Assinatura necessária")
+  paywallDescription String   @default("A geração de questões, estudos, simulados, revisão e materiais por IA ficam disponíveis para usuários com plano ativo.")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model AppSetting {
-  id                String   @id @default("default")
-  appName           String   @default("Gerador de Questões")
-  logoUrl           String   @default("/brand/logo.png")
-  faviconUrl        String   @default("/brand/favicon.png")
-  primaryColor      String   @default("#13666a")
-  accentColor       String   @default("#f6d979")
-  publicUrl         String?
-  adminEmails       String   @default("")
-  institutionalText String   @default("Plataforma AI-first para gerar questões, simulados, revisões e materiais de estudo para concursos públicos.")
-  termsUrl          String?
-  privacyUrl        String?
-  termsContent      String?
-  privacyContent    String?
+  id                             String   @id @default("default")
+  appName                        String   @default("Gerador de Questões")
+  logoUrl                        String   @default("/brand/logo.png")
+  faviconUrl                     String   @default("/brand/favicon.png")
+  primaryColor                   String   @default("#13666a")
+  accentColor                    String   @default("#f6d979")
+  publicUrl                      String?
+  adminEmails                    String   @default("")
+  institutionalText              String   @default("Plataforma AI-first para gerar questões, simulados, revisões e materiais de estudo para concursos públicos.")
+  termsUrl                       String?
+  privacyUrl                     String?
+  termsContent                   String?
+  privacyContent                 String?
   // Identificação legal usada nos Termos e na Política de Privacidade. Campo vazio OMITE a
   // frase/seção correspondente no texto — nunca publicar placeholder entre colchetes.
-  legalEntityName   String?
-  legalEntityCnpj   String?
-  supportEmail      String?
-  dpoName           String?
-  dpoEmail          String?
-  legalVenueCity    String?
-  trialGenerationsLimit Int  @default(10)
+  legalEntityName                String?
+  legalEntityCnpj                String?
+  supportEmail                   String?
+  dpoName                        String?
+  dpoEmail                       String?
+  legalVenueCity                 String?
+  trialGenerationsLimit          Int      @default(10)
   // Banco público de questões: respostas/dia para quem está no trial (sem assinatura).
-  bankDailyAnswersLimitTrial Int @default(10)
+  bankDailyAnswersLimitTrial     Int      @default(10)
   // Teto de questões POR bloco gerado para quem está no trial. A cota mensal acima limita
   // quantas vezes ele gera; este campo limita o tamanho de cada geração — sem ele, o visitante
   // pedia 20 questões e consumia o custo de um assinante em uma única mensagem grátis.
   // 0 = sem teto (o trial gera blocos do mesmo tamanho que um assinante).
-  trialMaxQuestionsPerGeneration Int @default(5)
+  trialMaxQuestionsPerGeneration Int      @default(5)
   // Mesmo formato de SubscriptionPlan.capabilities, aplicado a quem não tem assinatura.
   // É aqui que se decide o que a conta gratuita enxerga do produto.
-  trialCapabilities Json @default("{}")
+  trialCapabilities              Json     @default("{}")
   // Cota de QUESTÕES do trial. Complementa trialGenerationsLimit, que segue medindo as
   // ações de IA (mensagens de chat e materiais) e continua sendo a chave-mestra: em 0, o
   // trial inteiro fica desligado e o app volta a exigir assinatura.
-  trialQuestionsPerMonth Int @default(30)
+  trialQuestionsPerMonth         Int      @default(30)
   /**
    * Modo sombra do medidor novo. Em `false` (padrão), o livro-caixa grava e os painéis
    * mostram, mas quem BLOQUEIA continua sendo o limite antigo — dá para observar o consumo
    * real por semanas antes de arriscar cortar um cliente pagante por um número mal calibrado.
    * Vire para `true` só depois de conferir os números em produção.
    */
-  usageEnforcementEnabled Boolean @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  usageEnforcementEnabled        Boolean  @default(false)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 }
 
 enum MercadoPagoCheckoutMode {
@@ -991,15 +1000,15 @@ enum StripeProrationBehavior {
 }
 
 model PaymentGatewaySetting {
-  id                          String          @id @default("default")
+  id                          String                  @id @default("default")
   stripeSecretKey             String?
   stripeWebhookSecret         String?
-  stripePortalEnabled         Boolean         @default(true)
+  stripePortalEnabled         Boolean                 @default(true)
   /// Modo de cancelamento aplicado tanto ao botão "Cancelar" do admin quanto ao portal
   /// self-service da Stripe (sincronizado via billingPortal.configurations — ver
   /// stripePortalConfigurationId). AT_PERIOD_END = cliente mantém acesso até o fim do
   /// período já pago; IMMEDIATE = corte na hora.
-  stripeCancelMode            StripeCancelMode @default(AT_PERIOD_END)
+  stripeCancelMode            StripeCancelMode        @default(AT_PERIOD_END)
   /// Regra de proração ao trocar de plano pelo portal self-service da Stripe.
   stripeProrationBehavior     StripeProrationBehavior @default(CREATE_PRORATIONS)
   /// Id da billingPortal.configuration criada na Stripe pra refletir stripeCancelMode/
@@ -1011,10 +1020,10 @@ model PaymentGatewaySetting {
   mercadoPagoPublicKey        String?
   mercadoPagoCheckoutMode     MercadoPagoCheckoutMode @default(CHECKOUT_PRO)
   /// Horas de pendência de um Pix antes do cron de lembrete (ver /api/cron/pix-payment-reminders) disparar o e-mail.
-  pixReminderAfterHours       Int             @default(3)
-  testMode                    Boolean         @default(true)
-  createdAt                   DateTime        @default(now())
-  updatedAt                   DateTime        @updatedAt
+  pixReminderAfterHours       Int                     @default(3)
+  testMode                    Boolean                 @default(true)
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
 }
 
 model EmailSetting {
@@ -1065,28 +1074,28 @@ enum PopupAudience {
 /// src/lib/popups.ts::getEligiblePopupForUser — sempre filtra startsAt/endsAt
 /// independente de isActive (isActive é um kill-switch manual à parte da janela agendada).
 model Popup {
-  id           String        @id @default(cuid())
-  title        String
-  kind         PopupKind     @default(ANNOUNCEMENT)
-  eyebrow      String?
+  id               String           @id @default(cuid())
+  title            String
+  kind             PopupKind        @default(ANNOUNCEMENT)
+  eyebrow          String?
   /// Corpo em markdown, renderizado via <MarkdownContent compact />.
-  body         String
-  imageUrl     String?
-  ctaLabel     String?
-  ctaUrl       String?
-  dismissLabel String        @default("Agora não")
-  audience     PopupAudience @default(ALL)
+  body             String
+  imageUrl         String?
+  ctaLabel         String?
+  ctaUrl           String?
+  dismissLabel     String           @default("Agora não")
+  audience         PopupAudience    @default(ALL)
   /// null = mostra só 1 vez pra sempre. 0 = mostra sempre que o app é aberto/recarregado.
   /// N > 0 = só reaparece se `agora - lastShownAt >= N horas`.
   repeatAfterHours Int?
-  isActive     Boolean       @default(true)
-  startsAt     DateTime?
-  endsAt       DateTime?
+  isActive         Boolean          @default(true)
+  startsAt         DateTime?
+  endsAt           DateTime?
   /// Desempate quando mais de um popup está elegível: só o de maior prioridade é exibido.
-  priority     Int              @default(0)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  states       PopupUserState[]
+  priority         Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  states           PopupUserState[]
 
   @@index([isActive, startsAt, endsAt])
 }
@@ -1123,20 +1132,20 @@ enum TeamSeatStatus {
 }
 
 model TeamAccount {
-  id                 String            @id @default(cuid())
-  name               String
-  contactName        String?
-  contactEmail       String?
-  contactPhone       String?
-  cpfCnpj            String?
-  planId             String
-  seats              Int               @default(1)
-  priceCents         Int               @default(0)
-  status             TeamAccountStatus @default(ACTIVE)
+  id                  String            @id @default(cuid())
+  name                String
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  cpfCnpj             String?
+  planId              String
+  seats               Int               @default(1)
+  priceCents          Int               @default(0)
+  status              TeamAccountStatus @default(ACTIVE)
   currentPeriodEndsAt DateTime?
-  notes              String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  notes               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   plan      SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
   members   TeamSeat[]
@@ -1242,29 +1251,29 @@ model ReferenceDocument {
 }
 
 model ReferenceQuestion {
-  id               String            @id @default(cuid())
-  documentId       String
-  subjectId        String?
-  topicId          String?
-  statement        String
+  id                 String            @id @default(cuid())
+  documentId         String
+  subjectId          String?
+  topicId            String?
+  statement          String
   // Texto de apoio compartilhado (texto de leitura, situação hipotética) do qual esta questão
   // depende — separado do statement (que fica só com o comando/julgamento específico do item),
   // pra permitir agrupar no admin as questões que compartilham o mesmo texto ("bloco").
-  supportText      String?
-  answer           QuestionAnswer?
-  answerText       String?
-  explanation      String?
-  trickNote        String?
-  hasImage         Boolean           @default(false)
-  imageDescription String?
-  topicHint        String?
+  supportText        String?
+  answer             QuestionAnswer?
+  answerText         String?
+  explanation        String?
+  trickNote          String?
+  hasImage           Boolean           @default(false)
+  imageDescription   String?
+  topicHint          String?
   // Sugestões da IA pra reorganização futura em categorias reais — não vinculadas a
   // Subject/Topic ainda, só texto livre pra um admin revisar e mapear depois.
-  subjectHint      String?
-  regionHint       String?
-  ordinal          Int
-  createdAt        DateTime          @default(now())
-  document         ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  subjectHint        String?
+  regionHint         String?
+  ordinal            Int
+  createdAt          DateTime          @default(now())
+  document           ReferenceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   generatedQuestions Question[]
 
   @@index([documentId])
@@ -1288,54 +1297,54 @@ model ReferenceChunk {
 }
 
 model PaymentCheckoutSession {
-  id                 String                @id @default(cuid())
-  userId             String
-  planId             String
-  provider           PaymentProvider
-  status             PaymentCheckoutStatus @default(PENDING)
-  externalId         String?
-  checkoutUrl        String?
-  amountCents        Int
-  currency           String                @default("BRL")
-  metadata           Json?
-  expiresAt          DateTime?
-  couponId           String?
+  id             String                @id @default(cuid())
+  userId         String
+  planId         String
+  provider       PaymentProvider
+  status         PaymentCheckoutStatus @default(PENDING)
+  externalId     String?
+  checkoutUrl    String?
+  amountCents    Int
+  currency       String                @default("BRL")
+  metadata       Json?
+  expiresAt      DateTime?
+  couponId       String?
   // Quanto o cupom abateu nesta tentativa específica (o valor do cupom pode mudar depois).
-  discountCents      Int?
+  discountCents  Int?
   /// Marca o envio do lembrete de Pix pendente (ver /api/cron/pix-payment-reminders) — evita reenvio.
-  reminderSentAt     DateTime?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan               SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
-  coupon             Coupon?               @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  transactions       PaymentTransaction[]
+  reminderSentAt DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           SubscriptionPlan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  coupon         Coupon?               @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  transactions   PaymentTransaction[]
 
   @@index([provider, externalId])
 }
 
 model PaymentTransaction {
-  id                String                   @id @default(cuid())
-  userId            String
-  planId            String
-  checkoutSessionId String?
-  provider          PaymentProvider
-  status            PaymentTransactionStatus @default(PENDING)
-  externalId        String?
-  amountCents       Int
-  currency          String                   @default("BRL")
-  paidAt            DateTime?
+  id                  String                   @id @default(cuid())
+  userId              String
+  planId              String
+  checkoutSessionId   String?
+  provider            PaymentProvider
+  status              PaymentTransactionStatus @default(PENDING)
+  externalId          String?
+  amountCents         Int
+  currency            String                   @default("BRL")
+  paidAt              DateTime?
   // Entra ou não no total de "Receita registrada" do painel. Nasce false em transações
   // MANUAL (cortesia, assinatura liberada pelo admin, teste) porque não houve dinheiro
   // entrando; o admin também pode virar a chave à mão em Admin → Pagamentos para tirar do
   // caixa uma cobrança de teste ou estornada fora do gateway.
-  countsAsRevenue   Boolean                  @default(true)
-  rawPayload        Json?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan              SubscriptionPlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
-  checkoutSession   PaymentCheckoutSession?  @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+  countsAsRevenue     Boolean                  @default(true)
+  rawPayload          Json?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                SubscriptionPlan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  checkoutSession     PaymentCheckoutSession?  @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
   affiliateCommission AffiliateCommission?
 
   @@unique([provider, externalId])
@@ -1354,41 +1363,41 @@ enum AffiliateWithdrawalStatus {
 }
 
 model AffiliateProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  code              String   @unique
-  commissionPercent Int      @default(20)
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  referrals   AffiliateReferral[]
-  commissions AffiliateCommission[]
-  withdrawals AffiliateWithdrawal[]
+  id                String                @id @default(cuid())
+  userId            String                @unique
+  code              String                @unique
+  commissionPercent Int                   @default(20)
+  isActive          Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals         AffiliateReferral[]
+  commissions       AffiliateCommission[]
+  withdrawals       AffiliateWithdrawal[]
 }
 
 model AffiliateReferral {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   affiliateId    String
-  referredUserId String   @unique
-  createdAt      DateTime @default(now())
-  affiliate    AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  referredUser User             @relation(fields: [referredUserId], references: [id], onDelete: Cascade)
+  referredUserId String           @unique
+  createdAt      DateTime         @default(now())
+  affiliate      AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  referredUser   User             @relation(fields: [referredUserId], references: [id], onDelete: Cascade)
 
   @@index([affiliateId])
 }
 
 model AffiliateCommission {
-  id                   String   @id @default(cuid())
+  id                   String             @id @default(cuid())
   affiliateId          String
   referredUserId       String
-  paymentTransactionId String   @unique
+  paymentTransactionId String             @unique
   baseAmountCents      Int
   percent              Int
   amountCents          Int
-  createdAt            DateTime @default(now())
-  affiliate          AffiliateProfile   @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
-  paymentTransaction PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  createdAt            DateTime           @default(now())
+  affiliate            AffiliateProfile   @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  paymentTransaction   PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
 
   @@index([affiliateId, createdAt])
 }
@@ -1402,7 +1411,7 @@ model AffiliateWithdrawal {
   note        String?
   createdAt   DateTime                  @default(now())
   processedAt DateTime?
-  affiliate AffiliateProfile @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  affiliate   AffiliateProfile          @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
 
   @@index([affiliateId, createdAt])
   @@index([status])
@@ -1412,16 +1421,16 @@ model AffiliateWithdrawal {
 /// linkadas via campaignId — não existe um campo de "gasto" separado aqui, pra não ter
 /// duas fontes divergentes pro mesmo número.
 model MarketingCampaign {
-  id          String             @id @default(cuid())
+  id          String           @id @default(cuid())
   name        String
   channel     MarketingChannel
   startDate   DateTime
   endDate     DateTime?
   budgetCents Int?
   notes       String?
-  isActive    Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   expenses    Expense[]
 }
 
@@ -1430,24 +1439,28 @@ model MarketingCampaign {
 /// já são rastreados em suas próprias tabelas e entram no DRE automaticamente sem passar
 /// por aqui, pra não duplicar lançamento.
 model Expense {
-  id             String             @id @default(cuid())
-  description    String
-  category       ExpenseCategory
-  amountCents    Int
+  id              String             @id @default(cuid())
+  description     String
+  category        ExpenseCategory
+  amountCents     Int
   /// Mês/data de competência (a que período contábil a despesa pertence) — é o que
   /// alimenta o DRE e os gráficos, não createdAt (quando foi digitada no sistema).
-  competenceDate DateTime
+  competenceDate  DateTime
   /// null = ainda não paga (compromisso futuro/a pagar). Preenchido = saída de caixa real.
-  paidAt         DateTime?
-  isRecurring    Boolean            @default(false)
-  vendor         String?
-  campaignId     String?
-  notes          String?
-  createdById    String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  campaign       MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  createdBy      User?              @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  paidAt          DateTime?
+  /// Espelha PaymentTransaction.countsAsRevenue: false = é caixa real (conta no Saldo de caixa
+  /// se paga) mas NÃO é custo do negócio, então fica fora do DRE (Resultado líquido, margem,
+  /// despesas por categoria). Nasce false em DISTRIBUICAO_LUCROS; editável em qualquer categoria.
+  countsAsExpense Boolean            @default(true)
+  isRecurring     Boolean            @default(false)
+  vendor          String?
+  campaignId      String?
+  notes           String?
+  createdById     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  campaign        MarketingCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  createdBy       User?              @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([category, competenceDate])
   @@index([campaignId])

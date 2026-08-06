@@ -24,7 +24,18 @@ export async function GET(request: Request) {
     orderBy: { competenceDate: "desc" }
   });
 
-  const header = ["descricao", "categoria", "valor_brl", "competencia", "paga_em", "recorrente", "fornecedor", "campanha", "notas"];
+  const header = [
+    "descricao",
+    "categoria",
+    "valor_brl",
+    "competencia",
+    "paga_em",
+    "conta_como_despesa_dre",
+    "recorrente",
+    "fornecedor",
+    "campanha",
+    "notas"
+  ];
   const rows = expenses.map((expense) =>
     [
       csvCell(expense.description),
@@ -32,6 +43,7 @@ export async function GET(request: Request) {
       (expense.amountCents / 100).toFixed(2),
       expense.competenceDate.toISOString().slice(0, 10),
       expense.paidAt?.toISOString().slice(0, 10) ?? "",
+      expense.countsAsExpense ? "sim" : "não",
       expense.isRecurring ? "sim" : "não",
       csvCell(expense.vendor),
       csvCell(expense.campaign?.name),

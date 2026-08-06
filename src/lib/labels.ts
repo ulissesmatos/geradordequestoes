@@ -31,6 +31,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   [ExpenseCategory.TAXAS_GATEWAY]: "Taxas de gateway",
   [ExpenseCategory.IMPOSTOS]: "Impostos",
   [ExpenseCategory.JURIDICO_CONTABILIDADE]: "Jurídico & contabilidade",
+  [ExpenseCategory.DISTRIBUICAO_LUCROS]: "Distribuição de lucros (sócios)",
   [ExpenseCategory.OUTROS]: "Outros"
 };
 

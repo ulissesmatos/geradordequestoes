@@ -66,6 +66,16 @@ export default async function EditExpensePage({ params }: { params: Promise<{ id
             <label className="flex items-center gap-2 text-sm">
               <input name="isRecurring" type="checkbox" defaultChecked={expense.isRecurring} /> Despesa recorrente (fixa mensal)
             </label>
+            <div className="md:col-span-3 space-y-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input name="countsAsExpense" type="checkbox" defaultChecked={expense.countsAsExpense} /> Conta como despesa
+                operacional (entra no Resultado do mês / DRE)
+              </label>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Desmarque para distribuição de lucro entre sócios, retirada de sócio, ou qualquer saída que não seja custo do
+                negócio: continua contando no Saldo de caixa se marcada como paga, mas some do DRE e da margem.
+              </p>
+            </div>
             <Textarea name="notes" defaultValue={expense.notes ?? ""} placeholder="Notas" className="md:col-span-3" />
             <div className="flex items-center gap-3 md:col-span-3">
               <SubmitButton>Salvar alterações</SubmitButton>

@@ -1,4 +1,5 @@
 import { ExpenseCategory, type MarketingChannel } from "@prisma/client";
+import { operationalExpenseWhere } from "@/lib/analytics/expenses";
 import { prisma } from "@/lib/prisma";
 
 export type CampaignSpend = {
@@ -16,7 +17,7 @@ export type CampaignSpend = {
 export async function getCampaignSpendSummary(): Promise<CampaignSpend[]> {
   const campaigns = await prisma.marketingCampaign.findMany({
     orderBy: { startDate: "desc" },
-    include: { expenses: { select: { amountCents: true } } }
+    include: { expenses: { where: operationalExpenseWhere(), select: { amountCents: true } } }
   });
   return campaigns.map((campaign) => ({
     id: campaign.id,
@@ -37,7 +38,7 @@ export async function getCampaignSpendSummary(): Promise<CampaignSpend[]> {
  */
 export async function getMarketingSpendForRange(range: { from: Date; to: Date }): Promise<number> {
   const agg = await prisma.expense.aggregate({
-    where: { category: ExpenseCategory.MARKETING, competenceDate: { gte: range.from, lte: range.to } },
+    where: { ...operationalExpenseWhere(), category: ExpenseCategory.MARKETING, competenceDate: { gte: range.from, lte: range.to } },
     _sum: { amountCents: true }
   });
   return agg._sum.amountCents ?? 0;

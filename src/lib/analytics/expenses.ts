@@ -1,4 +1,4 @@
-import type { ExpenseCategory } from "@prisma/client";
+import type { ExpenseCategory, Prisma } from "@prisma/client";
 import { monthKeyInBrazil, startOfMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
@@ -8,10 +8,20 @@ function monthsAgo(count: number, reference: Date): Date {
   return d;
 }
 
-/** Soma de despesas manuais no período, por `competenceDate` (não por quando foi digitada). */
+/**
+ * Despesa = custo real do negócio (`countsAsExpense`). Espelha approvedRevenueWhere() em
+ * lib/revenue.ts: uma distribuição de lucro entre sócios é caixa real (entra no Saldo de caixa
+ * via getPaidExpenseTotal, que NÃO usa este filtro) mas não é custo — sem o filtro aqui, ela
+ * derrubaria o Resultado líquido do mês como se fosse uma despesa operacional.
+ */
+export function operationalExpenseWhere(): Prisma.ExpenseWhereInput {
+  return { countsAsExpense: true };
+}
+
+/** Soma de despesas operacionais no período, por `competenceDate` (não por quando foi digitada). */
 export async function getExpenseTotal(range?: { from: Date; to: Date }): Promise<number> {
   const agg = await prisma.expense.aggregate({
-    where: range ? { competenceDate: { gte: range.from, lte: range.to } } : {},
+    where: { ...operationalExpenseWhere(), ...(range ? { competenceDate: { gte: range.from, lte: range.to } } : {}) },
     _sum: { amountCents: true }
   });
   return agg._sum.amountCents ?? 0;
@@ -22,7 +32,7 @@ export async function getExpensesByCategory(
 ): Promise<{ category: ExpenseCategory; amountCents: number }[]> {
   const grouped = await prisma.expense.groupBy({
     by: ["category"],
-    where: range ? { competenceDate: { gte: range.from, lte: range.to } } : {},
+    where: { ...operationalExpenseWhere(), ...(range ? { competenceDate: { gte: range.from, lte: range.to } } : {}) },
     _sum: { amountCents: true }
   });
   return grouped
@@ -47,7 +57,7 @@ export async function getExpenseTrend(months = 12): Promise<{ month: string; amo
   const now = new Date();
   const since = startOfMonthInBrazil(monthsAgo(months - 1, now));
   const expenses = await prisma.expense.findMany({
-    where: { competenceDate: { gte: since } },
+    where: { ...operationalExpenseWhere(), competenceDate: { gte: since } },
     select: { competenceDate: true, amountCents: true }
   });
 

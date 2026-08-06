@@ -63,7 +63,7 @@ export default async function AdminExpensesPage({
     <div className="space-y-6">
       <AdminPageHeader
         title="Despesas"
-        description="Livro-caixa de saída: hospedagem, ferramentas, folha, taxas de gateway, impostos e marketing. Custo de IA e comissão de afiliado já são automáticos e não entram aqui."
+        description="Livro-caixa de saída: hospedagem, ferramentas, folha, taxas de gateway, impostos e marketing. Custo de IA e comissão de afiliado já são automáticos e não entram aqui. Distribuição de lucro entre sócios não é despesa operacional — desmarque &quot;conta como despesa&quot; pra ela sair do DRE sem sumir do Saldo de caixa."
         actions={
           <Link
             href={`/admin/despesas/export${campaignId ? `?campaignId=${campaignId}` : ""}`}
@@ -88,7 +88,7 @@ export default async function AdminExpensesPage({
         <Card>
           <CardHeader>
             <CardTitle>{formatMoney(totalAllTime)}</CardTitle>
-            <CardDescription>Total de despesas lançadas (todo o período)</CardDescription>
+            <CardDescription>Total de despesas operacionais (todo o período) — não inclui distribuição de lucro</CardDescription>
           </CardHeader>
         </Card>
         <Card>
@@ -161,6 +161,15 @@ export default async function AdminExpensesPage({
             <label className="flex items-center gap-2 text-sm">
               <input name="isRecurring" type="checkbox" /> Despesa recorrente (fixa mensal)
             </label>
+            <div className="md:col-span-3 space-y-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input name="countsAsExpense" type="checkbox" defaultChecked /> Conta como despesa operacional (entra no Resultado do mês / DRE)
+              </label>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Desmarque para distribuição de lucro entre sócios, retirada de sócio, ou qualquer saída que não seja custo do
+                negócio: continua contando no Saldo de caixa se marcada como paga, mas some do DRE e da margem.
+              </p>
+            </div>
             <Textarea name="notes" placeholder="Notas (opcional)" className="md:col-span-3" />
             <div className="md:col-span-3">
               <SubmitButton>Lançar despesa</SubmitButton>
@@ -195,9 +204,18 @@ export default async function AdminExpensesPage({
             <tbody>
               {expenses.map((expense) => (
                 <tr key={expense.id} className="border-t border-[var(--border)]">
-                  <td className="py-3">{expense.description}</td>
+                  <td className="py-3">
+                    {expense.description}
+                    {!expense.countsAsExpense && (
+                      <span className="ml-2 inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                        Fora do DRE
+                      </span>
+                    )}
+                  </td>
                   <td>{expenseCategoryLabel(expense.category)}</td>
-                  <td className="font-semibold">{formatMoney(expense.amountCents)}</td>
+                  <td className={expense.countsAsExpense ? "font-semibold" : "font-semibold text-[var(--muted-foreground)] line-through"}>
+                    {formatMoney(expense.amountCents)}
+                  </td>
                   <td>{formatDateBR(expense.competenceDate)}</td>
                   <td className="text-[var(--muted-foreground)]">{expense.paidAt ? formatDateBR(expense.paidAt) : "A pagar"}</td>
                   <td className="text-[var(--muted-foreground)]">{expense.campaign?.name ?? "—"}</td>
