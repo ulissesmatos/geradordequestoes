@@ -305,7 +305,7 @@ export function QuestionRunner({
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden" data-testid="question-runner">
       <div className="h-1.5 w-full bg-[var(--muted)]">
         <div
           className="h-full bg-[var(--primary)] transition-all duration-300"

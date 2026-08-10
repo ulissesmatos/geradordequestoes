@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Clock,
   Flame,
+  HelpCircle,
   RotateCcw,
   Sparkles,
   Target,
@@ -74,16 +75,24 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-bold">Olá, {firstName}</h1>
           <p className="text-[var(--muted-foreground)]">{buildGreetingLine(streak, goal, dueReviews.total)}</p>
         </div>
-        <Button asChild>
-          <Link href="/ai">
-            <Sparkles className="h-4 w-4" />
-            Gerar questões
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/tutorial">
+              <HelpCircle className="h-4 w-4" />
+              Tutorial
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/ai">
+              <Sparkles className="h-4 w-4" />
+              Gerar questões
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* ── Hoje: o que fazer agora ── */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3" data-testid="today-cards">
         <TodayGoalCard goal={goal} />
         <StreakCard streak={streak} />
         <DueReviewsCard total={dueReviews.total} topSubject={dueReviews.bySubject[0]?.subjectName} />
@@ -135,7 +144,7 @@ export default async function DashboardPage() {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card data-testid="subject-accuracy-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-[var(--primary)]" />
@@ -151,7 +160,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="worst-topics-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingDown className="h-5 w-5 text-[var(--primary)]" />

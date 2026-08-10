@@ -40,7 +40,8 @@ const navItems: NavItem[] = [
     icon: "ti-folder",
     children: [
       { href: "/biblioteca", label: "Biblioteca", icon: "ti-folder", description: "Blocos gerados e favoritos" },
-      { href: "/materiais", label: "Materiais", icon: "ti-book-2", description: "Materiais de estudo da IA" }
+      { href: "/materiais", label: "Materiais", icon: "ti-book-2", description: "Materiais de estudo da IA" },
+      { href: "/tutorial", label: "Tutorial", icon: "ti-help-circle", description: "Como usar cada parte da plataforma" }
     ]
   }
 ];

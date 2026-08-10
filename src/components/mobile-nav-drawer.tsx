@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   FolderOpen,
+  HelpCircle,
   LayoutDashboard,
   ListChecks,
   MessageSquarePlus,
@@ -39,7 +40,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   { href: "/revisao", label: "Revisão", icon: CalendarClock, secondary: true },
   { href: "/simulados", label: "Simulados", icon: Timer, secondary: true },
   { href: "/biblioteca", label: "Biblioteca", icon: FolderOpen, secondary: true },
-  { href: "/materiais", label: "Materiais", icon: BookOpen, secondary: true }
+  { href: "/materiais", label: "Materiais", icon: BookOpen, secondary: true },
+  { href: "/tutorial", label: "Tutorial", icon: HelpCircle, secondary: true }
 ];
 
 function isRouteActive(pathname: string, href: string): boolean {

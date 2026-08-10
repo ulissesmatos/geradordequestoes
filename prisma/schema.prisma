@@ -1482,3 +1482,46 @@ model SubscriptionEvent {
   user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   subscription   UserSubscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 }
+
+/**
+ * Documentação guiada dentro do app ("aba de Tutorial"), editável pelo admin sem deploy.
+ * `slug` é gerado no servidor a partir do título (nunca digitado pelo admin) e nunca muda numa
+ * edição — trocar o título não pode quebrar a URL pública /tutorial/[slug] nem um link já
+ * compartilhado.
+ */
+model TutorialGuide {
+  id           String         @id @default(cuid())
+  slug         String         @unique
+  title        String
+  description  String
+  icon         String         @default("ti-book-2")
+  ctaLabel     String?
+  ctaUrl       String?
+  displayOrder Int            @default(0)
+  isPublished  Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  steps        TutorialStep[]
+
+  @@index([isPublished, displayOrder])
+}
+
+/**
+ * Passo de um guia. `imageUrl` aponta para um arquivo estático em public/tutorial/** (não
+ * upload via admin) — MarkdownContent não interpreta `![alt](url)`, por isso a imagem é campo
+ * próprio em vez de markdown inline.
+ */
+model TutorialStep {
+  id        String        @id @default(cuid())
+  guideId   String
+  order     Int
+  title     String
+  body      String
+  imageUrl  String?
+  imageAlt  String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  guide     TutorialGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+
+  @@index([guideId, order])
+}

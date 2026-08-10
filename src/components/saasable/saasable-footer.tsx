@@ -26,6 +26,7 @@ export function SaasableFooter({ logoUrl, appName }: { logoUrl: string; appName:
                       <li><Link href="/login" className="text-theme-text-secondary hover:text-primary-500 transition">Entrar</Link></li>
                       <li><Link href="/register" className="text-theme-text-secondary hover:text-primary-500 transition">Criar conta</Link></li>
                       <li><Link href="/pricing" className="text-theme-text-secondary hover:text-primary-500 transition">Planos</Link></li>
+                      <li><Link href="/tutorial" className="text-theme-text-secondary hover:text-primary-500 transition">Tutorial</Link></li>
                     </ul>
                   </div>
                 </div>

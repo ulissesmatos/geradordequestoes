@@ -161,7 +161,7 @@ export default async function LibraryPage({
 
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2" data-testid="question-set-toolbar">
           <Button asChild variant="outline" size="sm">
             <Link href="/biblioteca">Voltar para biblioteca</Link>
           </Button>

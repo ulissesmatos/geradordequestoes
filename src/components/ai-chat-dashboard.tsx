@@ -1268,7 +1268,10 @@ function ResultCard({
 }) {
   if (!questionSetId && !studyMaterialId) return null;
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-l-4 border-[var(--border)] border-l-[#fbe8ba] bg-[var(--surface)] p-3.5 shadow-[var(--shadow-sm)]">
+    <div
+      data-testid="chat-result-card"
+      className="flex flex-col gap-2 rounded-lg border border-l-4 border-[var(--border)] border-l-[#fbe8ba] bg-[var(--surface)] p-3.5 shadow-[var(--shadow-sm)]"
+    >
       {questionSetId && (
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 text-sm font-semibold text-[var(--foreground)]">

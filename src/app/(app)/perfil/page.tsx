@@ -106,7 +106,7 @@ export default async function ProfilePage({
       </Panel>
 
       {/* ── Dados pessoais ── */}
-      <Panel>
+      <Panel id="dados-pessoais">
         <PanelHeader
           icon="ti-id-badge-2"
           title="Dados pessoais"
@@ -147,7 +147,7 @@ export default async function ProfilePage({
       </Panel>
 
       {/* ── Assinatura ── */}
-      <Panel>
+      <Panel id="assinatura">
         <PanelHeader icon="ti-sparkles" title="Assinatura" />
         <div className="space-y-5">
           {isAdmin && !subscription ? (

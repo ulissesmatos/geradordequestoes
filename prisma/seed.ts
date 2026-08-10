@@ -1,5 +1,6 @@
 import { AiProvider, PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
+import { TUTORIAL_GUIDES } from "./tutorial-content";
 
 const prisma = new PrismaClient();
 
@@ -119,6 +120,43 @@ async function main() {
   // Admins não precisam de assinatura: requireActiveSubscription/assertCanGenerateWithAi
   // dão bypass total para Role.ADMIN. Criar uma assinatura "fantasma" aqui só confunde
   // o painel de perfil e os relatórios de pagamento.
+
+  // Guias de tutorial: cria só se não existir (update vazio), igual ao padrão já usado acima
+  // para SubscriptionPlan — nunca sobrescreve edição feita depois pelo admin em /admin/tutorial.
+  // TutorialStep não tem chave natural única; em vez de forçar uma no schema (o que atrapalharia
+  // reordenar dois passos via dois submits separados no admin), resolve por busca manual.
+  for (const guide of TUTORIAL_GUIDES) {
+    const dbGuide = await prisma.tutorialGuide.upsert({
+      where: { slug: guide.slug },
+      update: {},
+      create: {
+        slug: guide.slug,
+        title: guide.title,
+        description: guide.description,
+        icon: guide.icon,
+        ctaLabel: guide.ctaLabel,
+        ctaUrl: guide.ctaUrl,
+        displayOrder: guide.displayOrder
+      }
+    });
+
+    for (const step of guide.steps) {
+      const existing = await prisma.tutorialStep.findFirst({
+        where: { guideId: dbGuide.id, order: step.order }
+      });
+      if (existing) continue;
+      await prisma.tutorialStep.create({
+        data: {
+          guideId: dbGuide.id,
+          order: step.order,
+          title: step.title,
+          body: step.body,
+          imageUrl: step.imageUrl,
+          imageAlt: step.imageAlt
+        }
+      });
+    }
+  }
 
   const questionsWithoutOptions = await prisma.question.findMany({
     where: { options: { none: {} }, format: "CERTO_ERRADO" }

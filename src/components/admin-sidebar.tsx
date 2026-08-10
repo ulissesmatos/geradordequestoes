@@ -13,6 +13,7 @@ import {
   FileQuestion,
   Flag,
   FolderCog,
+  GraduationCap,
   Handshake,
   Inbox,
   ListChecks,
@@ -73,7 +74,8 @@ const groups = [
     links: [
       { href: "/admin/referencias", label: "Materiais de referência", icon: BookOpen },
       { href: "/admin/materiais-ia", label: "Materiais IA", icon: FolderCog },
-      { href: "/admin/materias", label: "Matérias e assuntos", icon: BookOpen }
+      { href: "/admin/materias", label: "Matérias e assuntos", icon: BookOpen },
+      { href: "/admin/tutorial", label: "Tutorial", icon: GraduationCap }
     ]
   },
   {
