@@ -205,6 +205,82 @@ export async function getUsageSummary(user: { id: string; role?: Role }): Promis
   };
 }
 
+/**
+ * Degraus de aviso da cota.
+ *
+ * O único aviso que existia acendia em 80%, e chegava tarde demais: quem pede um bloco de 20
+ * questões salta de 65% para 100% numa ação só, e o aviso aparece junto com o bloqueio — não
+ * antes dele, que é o único momento em que serviria para alguma coisa. Com 50/75/90 o usuário
+ * cruza pelo menos um degrau com margem para decidir se segura o ritmo ou faz upgrade.
+ */
+export const QUOTA_ALERT_STEPS = [50, 75, 90] as const;
+
+export type QuotaAlertStep = (typeof QUOTA_ALERT_STEPS)[number] | 100;
+
+/** Maior degrau já cruzado. null abaixo do primeiro — silêncio é o comportamento certo aí. */
+export function quotaAlertStep(percent: number): QuotaAlertStep | null {
+  if (percent >= 100) return 100;
+  for (let i = QUOTA_ALERT_STEPS.length - 1; i >= 0; i -= 1) {
+    if (percent >= QUOTA_ALERT_STEPS[i]) return QUOTA_ALERT_STEPS[i];
+  }
+  return null;
+}
+
+export type QuotaAlert = {
+  step: QuotaAlertStep;
+  meter: UsageMeter;
+  scope: "day" | "month";
+  percent: number;
+  used: number;
+  limit: number;
+  /** ISO de quando este teto reseta. */
+  resetsAt: string;
+  kind: ResolvedLimits["kind"];
+};
+
+/**
+ * O aviso que o usuário deve ver AGORA, ou null.
+ *
+ * Disputa os quatro tetos (questões mês/dia, chat mês/dia) e devolve o mais apertado. Mostrar
+ * os quatro seria ruído: só um deles vai bloquear a próxima ação, e é sobre esse que a pessoa
+ * precisa decidir.
+ *
+ * Em modo sombra devolve null sempre — avisar sobre uma cota que não bloqueia nada treinaria o
+ * usuário a ignorar o aviso justamente antes de ele passar a valer.
+ */
+export function buildQuotaAlert(summary: UsageSummary): QuotaAlert | null {
+  if (!summary.enforcement || summary.kind === "ADMIN") return null;
+
+  const dayReset = startOfNextDayInBrazil().toISOString();
+  const monthReset = summary.period.end.toISOString();
+
+  const candidates: QuotaAlert[] = [];
+  const consider = (meter: UsageMeter, scope: "day" | "month", used: number, limit: number | null) => {
+    if (limit === null || limit <= 0) return;
+    const percent = Math.min(100, Math.round((used / limit) * 100));
+    const step = quotaAlertStep(percent);
+    if (step === null) return;
+    candidates.push({
+      step,
+      meter,
+      scope,
+      percent,
+      used,
+      limit,
+      resetsAt: scope === "day" ? dayReset : monthReset,
+      kind: summary.kind
+    });
+  };
+
+  consider(UsageMeter.QUESTIONS, "month", summary.questions.usedMonth, summary.questions.limits.perMonth);
+  consider(UsageMeter.QUESTIONS, "day", summary.questions.usedToday, summary.questions.limits.perDay);
+  consider(UsageMeter.CHAT, "month", summary.chat.usedMonth, summary.chat.limits.perMonth);
+  consider(UsageMeter.CHAT, "day", summary.chat.usedToday, summary.chat.limits.perDay);
+
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (b.percent > a.percent ? b : a));
+}
+
 function limitMessage(meter: UsageMeter, scope: "day" | "month", kind: ResolvedLimits["kind"]): string {
   const assine =
     kind === "TRIAL"

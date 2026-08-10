@@ -23,6 +23,8 @@ import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
 import { dayKeyInBrazil } from "@/lib/dates";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
+// `import type` é apagado na compilação — nada de ledger.ts (Prisma, servidor) entra no bundle.
+import type { QuotaAlert } from "@/lib/usage/ledger";
 import { cn } from "@/lib/utils";
 
 type ChatAttachment = {
@@ -144,6 +146,7 @@ export function AiChatDashboard({
   userName,
   currentSessionId,
   usage,
+  quotaAlert = null,
   sessions,
   messages,
   initialPrompt,
@@ -156,6 +159,11 @@ export function AiChatDashboard({
   userName: string;
   currentSessionId: string | null;
   usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean };
+  /**
+   * Aviso do medidor novo. Só vem preenchido com o enforcement LIGADO — em modo sombra o
+   * aviso que vale é o legado (`usage`), porque é o limite legado que ainda bloqueia.
+   */
+  quotaAlert?: QuotaAlert | null;
   sessions: ChatSessionSummary[];
   messages: ChatMessage[];
   initialPrompt?: string;
@@ -675,7 +683,7 @@ export function AiChatDashboard({
         </section>
 
         <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-          <UsageNotice usage={usage} />
+          {quotaAlert ? <QuotaAlertNotice alert={quotaAlert} /> : <UsageNotice usage={usage} />}
 
           <form
             className="mx-auto max-w-3xl"
@@ -1055,6 +1063,96 @@ function usageDismissKey() {
   // Chave por dia de Brasília, mesmo corte do reset da cota — com o dia em UTC o aviso
   // reaparecia às 21h, no meio da noite de estudo, sem a cota ter virado.
   return `ai-usage-notice-dismissed:${dayKeyInBrazil()}`;
+}
+
+/**
+ * Aviso dos degraus de cota (50/75/90/100%) do medidor novo.
+ *
+ * A dispensa é por DEGRAU, não por dia: dispensar o aviso de 50% não pode silenciar o de 75%,
+ * senão o usuário atravessa a cota inteira em silêncio depois de um clique distraído. Cada
+ * degrau novo é um aviso novo, e o de 100% não é dispensável.
+ */
+function quotaAlertDismissKey(step: number) {
+  return `ai-quota-alert-dismissed:${dayKeyInBrazil()}:${step}`;
+}
+
+function QuotaAlertNotice({ alert }: { alert: QuotaAlert }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(sessionStorage.getItem(quotaAlertDismissKey(alert.step)) === "1");
+    } catch {
+      // sessionStorage indisponível (SSR/modo restrito): mantém visível
+    }
+  }, [alert.step]);
+
+  const exhausted = alert.step === 100;
+  if (!exhausted && dismissed) return null;
+
+  const isChat = alert.meter === "CHAT";
+  const unit = isChat ? "mensagens e ações de IA" : "questões";
+  const window = alert.scope === "day" ? "de hoje" : "deste ciclo";
+  const remaining = Math.max(0, alert.limit - alert.used);
+  const resetHours = hoursUntil(alert.resetsAt);
+  const upgradeHref = alert.kind === "TRIAL" ? "/assinatura" : "/pricing";
+  const upgradeLabel = alert.kind === "TRIAL" ? "Assinar agora" : "Fazer upgrade";
+  // Convite para upgrade só nos degraus altos: virar "metade da cota" em pitch de venda faz o
+  // aluno aprender a ignorar o aviso antes de ele passar a importar.
+  const showUpgrade = alert.step >= 90;
+
+  return (
+    <div
+      className={cn(
+        "mx-auto mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-lg border p-3 text-sm",
+        exhausted
+          ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
+          : alert.step >= 75
+            ? "border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[var(--warning-soft)] text-[var(--warning-soft-foreground)]"
+            : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
+      )}
+    >
+      <span>
+        {exhausted ? (
+          <>
+            Sua cota de <strong>{unit}</strong> {window} acabou ({alert.used}/{alert.limit}).
+          </>
+        ) : (
+          <>
+            Você já usou <strong>{alert.percent}%</strong> da sua cota de {unit} {window} ({alert.used}/{alert.limit}) —
+            restam <strong>{remaining}</strong>.
+          </>
+        )}
+        {resetHours !== null && <> Renova em cerca de <strong>{resetHours}h</strong>.</>}
+      </span>
+
+      {showUpgrade ? (
+        <Link
+          href={upgradeHref}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-br from-[var(--primary)] to-[#14a89a] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_6px_16px_-6px_rgba(10,98,104,0.5)] hover:opacity-90"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {upgradeLabel}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          aria-label="Dispensar aviso"
+          className="shrink-0 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100"
+          onClick={() => {
+            setDismissed(true);
+            try {
+              sessionStorage.setItem(quotaAlertDismissKey(alert.step), "1");
+            } catch {
+              // sem persistência, dispensa só nesta renderização
+            }
+          }}
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function UsageNotice({ usage }: { usage: { used: number; limit: number | null; percent: number; resetsAt?: string | null; isTrial?: boolean } }) {

@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getEntitlements } from "@/lib/entitlements";
 import { getAiUsageStatus, getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
+import { buildQuotaAlert, getUsageSummary } from "@/lib/usage/ledger";
 
 export default async function AiChatPage({
   searchParams
@@ -23,7 +24,7 @@ export default async function AiChatPage({
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialSidebarOpen = cookieStore.get("ai-sidebar")?.value !== "0";
-  const [sessions, usage, subjects, entitlements] = await Promise.all([
+  const [sessions, usage, subjects, entitlements, usageSummary] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
@@ -32,8 +33,13 @@ export default async function AiChatPage({
     }),
     getAiUsageStatus(user),
     prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 }),
-    getEntitlements(user)
+    getEntitlements(user),
+    getUsageSummary(user)
   ]);
+
+  // Devolve null em modo sombra (ver buildQuotaAlert), e aí o chat cai no aviso legado — que é
+  // o correto enquanto quem bloqueia ainda é o contador antigo de gerações/dia.
+  const quotaAlert = buildQuotaAlert(usageSummary);
 
   // Entrar em /ai sem sessionId sempre abre um chat novo (estado vazio) — não carrega
   // automaticamente a última conversa. Um chat específico só abre quando o link diz
@@ -74,6 +80,7 @@ export default async function AiChatPage({
         userName={user.name}
         currentSessionId={session?.id ?? null}
         usage={usage}
+        quotaAlert={quotaAlert}
         isAdmin={user.role === "ADMIN"}
         canAttach={entitlements.can("chatAttachments")}
         initialSidebarOpen={initialSidebarOpen}

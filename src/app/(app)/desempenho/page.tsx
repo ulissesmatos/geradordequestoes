@@ -28,7 +28,7 @@ import {
 import { getDueReviewSummary } from "@/lib/review";
 import { getDailyGoalProgress, getStreak } from "@/lib/streaks";
 import { requireActiveSubscription } from "@/lib/subscriptions";
-import { getUsageSummary, type MeterStatus, type UsageSummary } from "@/lib/usage/ledger";
+import { getUsageSummary, quotaAlertStep, type MeterStatus, type UsageSummary } from "@/lib/usage/ledger";
 import { cn } from "@/lib/utils";
 
 /**
@@ -372,11 +372,18 @@ function DueReviewsCard({ total, topSubject }: { total: number; topSubject?: str
 }
 
 /**
- * Cota do plano. É aqui que o convite para upgrade aparece, e só a partir de 80% — antes
- * disso a barra é informação, não venda.
+ * Cota do plano.
  *
- * Em modo sombra o medidor novo ainda não bloqueia nada, então o card não é exibido: mostrar
- * uma cota que não vale seria pior que não mostrar nada.
+ * O aviso acende nos degraus de 50/75/90% (ver QUOTA_ALERT_STEPS) e não mais só em 80%: quem
+ * gera blocos de 20 questões pula de 65% direto para 100% numa ação, e um aviso único no fim
+ * chega junto com o bloqueio, quando já não dá para fazer nada com a informação.
+ *
+ * O convite para upgrade continua saindo só a partir de 90%. Nos degraus de baixo o card
+ * informa; transformar "metade da cota" em pitch de venda é o tipo de coisa que faz o aluno
+ * parar de ler o aviso justamente quando ele passa a importar.
+ *
+ * Em modo sombra o medidor ainda não bloqueia nada, então o card não é exibido: mostrar uma
+ * cota que não vale seria pior que não mostrar nada.
  */
 function QuotaCard({ usage }: { usage: UsageSummary }) {
   if (usage.kind === "ADMIN" || !usage.enforcement) return null;
@@ -384,13 +391,15 @@ function QuotaCard({ usage }: { usage: UsageSummary }) {
   const questions = usage.questions;
   const percent = questions.percent;
   const tone = quotaTone(percent);
-  const showUpgrade = percent >= 80;
+  const step = quotaAlertStep(percent);
+  const showUpgrade = step !== null && step >= 90;
 
   const limitLabel = questions.limits.perMonth ?? questions.limits.perDay;
   if (limitLabel === null) return null;
 
   const isMonthly = questions.limits.perMonth !== null;
   const used = isMonthly ? questions.usedMonth : questions.usedToday;
+  const remaining = Math.max(0, limitLabel - used);
 
   return (
     <Card className={cn(showUpgrade && "border-[var(--warning)]")}>
@@ -422,9 +431,9 @@ function QuotaCard({ usage }: { usage: UsageSummary }) {
         {showUpgrade ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-soft-foreground)]">
             <span>
-              {percent >= 100
+              {step === 100
                 ? "Sua cota acabou."
-                : `Você já usou ${percent}% da cota.`}
+                : `Você já usou ${percent}% da cota — restam ${remaining} questões.`}
             </span>
             <Button asChild size="sm">
               <Link href={usage.kind === "TRIAL" ? "/assinatura" : "/pricing"}>
@@ -433,6 +442,11 @@ function QuotaCard({ usage }: { usage: UsageSummary }) {
               </Link>
             </Button>
           </div>
+        ) : step !== null ? (
+          <p className="rounded-md bg-[var(--surface-subtle)] p-3 text-sm">
+            Você já usou <strong>{percent}%</strong> da cota — restam {remaining} questões, e ela renova em{" "}
+            {formatDate(new Date(usage.period.end))}.
+          </p>
         ) : (
           <p className="text-xs text-[var(--muted-foreground)]">
             Renova em {formatDate(new Date(usage.period.end))}.

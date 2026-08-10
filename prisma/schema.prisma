@@ -718,6 +718,8 @@ model AiChatSession {
   messages         AiChatMessage[]
   questionSets     QuestionSet[]
   share            ChatShare?
+
+  @@index([userId, updatedAt])
 }
 
 model AiChatMessage {
@@ -733,6 +735,8 @@ model AiChatMessage {
   questionSet     QuestionSet?              @relation(fields: [questionSetId], references: [id], onDelete: SetNull)
   studyMaterial   StudyMaterial?            @relation(fields: [studyMaterialId], references: [id], onDelete: SetNull)
   attachments     AiChatMessageAttachment[]
+
+  @@index([sessionId, createdAt])
 }
 
 enum AttachmentKind {

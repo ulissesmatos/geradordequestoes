@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
+import { getUsersUsageTotals } from "@/lib/usage/report";
 
 const PAGE_SIZE = 25;
 
@@ -53,10 +54,17 @@ export default async function UsersPage({
     prisma.user.count({ where })
   ]);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Consumo da página inteira em duas consultas — uma por usuário seriam 25 idas ao banco só
+  // para preencher uma coluna. Vale mesmo com o medidor em modo sombra: as linhas do
+  // livro-caixa são gravadas de qualquer jeito, então o número já é real.
+  const usage = await getUsersUsageTotals(users.map((user) => user.id));
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Usuários" description={`${total} usuários · página ${page} de ${totalPages}`} />
+      <AdminPageHeader
+        title="Usuários"
+        description={`${total} usuários · página ${page} de ${totalPages} · "questões" = geradas no ciclo do mês calendário`}
+      />
 
       <form method="get" className="flex flex-wrap items-center gap-2">
         <Input name="q" defaultValue={query} placeholder="Buscar por nome ou e-mail..." className="max-w-sm" />
@@ -68,6 +76,7 @@ export default async function UsersPage({
           {users.map((user) => {
             // Só sobra assinatura vigente aqui — a badge fala do acesso de hoje, não do histórico.
             const activeSubscription = user.subscriptions[0];
+            const consumo = usage.get(user.id);
             return (
               <Link
                 key={user.id}
@@ -79,6 +88,16 @@ export default async function UsersPage({
                   <p className="truncate text-sm text-[var(--muted-foreground)]">{user.email}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <div className="hidden text-right text-xs leading-tight text-[var(--muted-foreground)] sm:block">
+                    <p className="tabular-nums">
+                      <strong className="text-[var(--foreground)]">{(consumo?.questionsMonth ?? 0).toLocaleString("pt-BR")}</strong>{" "}
+                      questões no mês
+                    </p>
+                    <p className="tabular-nums">
+                      {(consumo?.questionsTotal ?? 0).toLocaleString("pt-BR")} no total ·{" "}
+                      {(consumo?.chatMonth ?? 0).toLocaleString("pt-BR")} ações
+                    </p>
+                  </div>
                   {user.isBlocked && <StatusBadge tone="danger">Bloqueado</StatusBadge>}
                   {user.role === "ADMIN" && <StatusBadge tone="info">Admin</StatusBadge>}
                   {activeSubscription ? (

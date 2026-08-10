@@ -15,6 +15,12 @@ import { CheckoutRow } from "@/components/admin/checkout-row";
 import { DeleteUserButton } from "@/components/admin/delete-user-button";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatusBadge, statusTone } from "@/components/admin/status-badge";
+import {
+  UserChatMessages,
+  UserChatOverviewCards,
+  type AdminChatMessageRow
+} from "@/components/admin/user-chat-history";
+import { UserUsagePanel } from "@/components/admin/user-usage-panel";
 import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,10 +28,12 @@ import { Select } from "@/components/ui/select";
 import { formatDateBR, formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { getAiUsageStatus } from "@/lib/subscriptions";
+import { getUserChatOverview, getUserUsageReport } from "@/lib/usage/report";
 import { formatCpf, formatPhone } from "@/lib/validation/cpf";
 
 const SUBS_PAGE_SIZE = 15;
 const TRANSACTIONS_PAGE_SIZE = 15;
+const CHAT_PAGE_SIZE = 25;
 
 type UserSummary = {
   id: string;
@@ -57,11 +65,15 @@ function formatMoney(cents: number) {
 
 const TABS: AdminTabDef[] = [
   { value: "perfil", label: "Perfil" },
+  { value: "consumo", label: "Consumo" },
+  { value: "chat", label: "Chat" },
   { value: "assinatura", label: "Assinatura" },
   { value: "senha", label: "Senha" },
   { value: "transacoes", label: "Transações" },
   { value: "perigo", label: "Zona de perigo" }
 ];
+
+const TAB_VALUES = new Set(TABS.map((tab) => tab.value));
 
 export default async function UserDetailPage({
   params,
@@ -72,8 +84,7 @@ export default async function UserDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const activeTab =
-    sp.tab === "assinatura" || sp.tab === "senha" || sp.tab === "transacoes" || sp.tab === "perigo" ? sp.tab : "perfil";
+  const activeTab = sp.tab && TAB_VALUES.has(sp.tab) ? sp.tab : "perfil";
   const page = Math.max(1, Number(sp.page ?? 1) || 1);
 
   const user: UserSummary | null = await prisma.user.findUnique({
@@ -128,6 +139,8 @@ export default async function UserDetailPage({
       <AdminTabs tabs={TABS} activeValue={activeTab} basePath={`/admin/usuarios/${id}`} />
 
       {activeTab === "perfil" && <PerfilTab user={user} />}
+      {activeTab === "consumo" && <ConsumoTab user={user} />}
+      {activeTab === "chat" && <ChatTab userId={id} page={page} />}
       {activeTab === "assinatura" && <AssinaturaTab userId={id} page={page} />}
       {activeTab === "senha" && <SenhaTab userId={id} hasPassword={Boolean(user.passwordHash)} />}
       {activeTab === "transacoes" && <TransacoesTab userId={id} page={page} hasCpf={Boolean(user.cpf)} />}
@@ -202,6 +215,64 @@ async function PerfilTab({ user }: { user: UserSummary }) {
           </form>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Consumo medido do usuário. Vale em modo sombra também — é o único jeito de calibrar as cotas
+ * antes de ligá-las, que é exatamente o que o modo sombra existe para permitir.
+ */
+async function ConsumoTab({ user }: { user: UserSummary }) {
+  const report = await getUserUsageReport({ id: user.id, role: user.role });
+  return <UserUsagePanel report={report} />;
+}
+
+async function ChatTab({ userId, page }: { userId: string; page: number }) {
+  const [overview, total, rows] = await Promise.all([
+    getUserChatOverview(userId),
+    prisma.aiChatMessage.count({ where: { session: { userId } } }),
+    prisma.aiChatMessage.findMany({
+      where: { session: { userId } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * CHAT_PAGE_SIZE,
+      take: CHAT_PAGE_SIZE,
+      select: {
+        id: true,
+        role: true,
+        content: true,
+        createdAt: true,
+        sessionId: true,
+        session: { select: { title: true } },
+        questionSet: { select: { id: true, title: true, quantity: true } },
+        studyMaterial: { select: { id: true, title: true } },
+        _count: { select: { attachments: true } }
+      }
+    })
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / CHAT_PAGE_SIZE));
+
+  const messages: AdminChatMessageRow[] = rows.map((row) => ({
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.createdAt,
+    sessionId: row.sessionId,
+    sessionTitle: row.session.title,
+    attachments: row._count.attachments,
+    questionSet: row.questionSet,
+    studyMaterial: row.studyMaterial
+  }));
+
+  return (
+    <div className="space-y-6">
+      <UserChatOverviewCards overview={overview} />
+      <UserChatMessages messages={messages} total={total} page={page} totalPages={totalPages} />
+      <AdminPagination
+        page={page}
+        totalPages={totalPages}
+        buildHref={(p) => `/admin/usuarios/${userId}?tab=chat&page=${p}`}
+      />
     </div>
   );
 }

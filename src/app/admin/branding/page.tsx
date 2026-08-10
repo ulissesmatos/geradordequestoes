@@ -107,7 +107,9 @@ export default async function AdminBrandingPage({ searchParams }: { searchParams
                     <strong>Modo sombra ligado.</strong> O consumo está sendo medido e aparece nos painéis, mas quem
                     bloqueia ainda é o limite antigo (gerações/dia). Deixe assim por algumas semanas, confira o
                     consumo real e ajuste as cotas em Planos &amp; Pricing — as atuais vieram de uma conversão
-                    automática folgada, feita para ninguém perder acesso. Só então ligue as cotas.
+                    automática folgada, feita para ninguém perder acesso. Só então ligue as cotas. O consumo real de
+                    cada pessoa já está em <strong>Usuários → abrir o usuário → aba Consumo</strong>, e o histórico de
+                    chat na aba ao lado.
                   </>
                 )}
               </CardDescription>
