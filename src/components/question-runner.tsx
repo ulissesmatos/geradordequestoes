@@ -46,7 +46,7 @@ type SelectedAnswer = {
 };
 
 export function QuestionRunner({
-  questions,
+  questions: questionsProp,
   mode,
   initialAnswers,
   reviewMode = false,
@@ -72,6 +72,13 @@ export function QuestionRunner({
   lockedFrom?: number;
   lockHref?: string;
 }) {
+  // Congela a lista recebida no primeiro render. Toda Server Action (como responder uma
+  // questão) faz o Next.js revalidar e re-executar o Server Component da rota atual — na
+  // revisão espaçada isso re-busca as questões vencidas, e a que acabou de ser respondida já
+  // sai dessa lista. Sem essa cópia local, a prop `questions` encolhe no meio da sessão e o
+  // `index` (que não muda) passa a apontar para outra questão: a tela troca sozinha, sem o
+  // usuário clicar em nada, e o gabarito/explicação da questão respondida nunca chega a aparecer.
+  const [questions] = useState(questionsProp);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>(initialAnswers ?? {});
   const [nextReviewDates, setNextReviewDates] = useState<Record<string, string>>({});
