@@ -81,6 +81,7 @@ export function QuestionRunner({
   const [answerError, setAnswerError] = useState<{ message: string; limitReached: boolean } | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showSupport, setShowSupport] = useState(true);
+  const [canAdvance, setCanAdvance] = useState(false);
   const current = questions[index];
   const selected = current ? answers[current.id] : undefined;
 
@@ -89,6 +90,16 @@ export function QuestionRunner({
     setElapsedSeconds(0);
     setShowSupport(true);
   }, [current?.id]);
+
+  // Trava "Próxima questão" por um instante após responder — sem isso, um clique/toque em
+  // sequência (o mesmo gesto usado pra marcar a resposta) ativa o avanço antes de a explicação
+  // aparecer na tela, e o usuário nunca chega a ler o comentário da questão.
+  useEffect(() => {
+    if (mode !== "study" || !selected) return;
+    setCanAdvance(false);
+    const timer = window.setTimeout(() => setCanAdvance(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [mode, selected]);
 
   // Congela o cronômetro assim que a questão é respondida.
   useEffect(() => {
@@ -437,7 +448,14 @@ export function QuestionRunner({
               </div>
             )}
             {selected && (
-              <Button onClick={next}>{index + 1 === questions.length ? "Finalizar" : "Próxima questão"}</Button>
+              <div className="flex flex-col items-start gap-1.5">
+                <Button onClick={next} disabled={mode === "study" && !canAdvance}>
+                  {index + 1 === questions.length ? "Finalizar" : "Próxima questão"}
+                </Button>
+                {mode === "study" && !canAdvance && (
+                  <p className="text-xs text-[var(--muted-foreground)]">Leia a explicação antes de continuar…</p>
+                )}
+              </div>
             )}
           </>
         )}
