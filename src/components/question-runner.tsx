@@ -46,7 +46,7 @@ type SelectedAnswer = {
 };
 
 export function QuestionRunner({
-  questions,
+  questions: questionsProp,
   mode,
   initialAnswers,
   reviewMode = false,
@@ -72,6 +72,13 @@ export function QuestionRunner({
   lockedFrom?: number;
   lockHref?: string;
 }) {
+  // Congela a lista recebida no primeiro render. Toda Server Action (como responder uma
+  // questão) faz o Next.js revalidar e re-executar o Server Component da rota atual — na
+  // revisão espaçada isso re-busca as questões vencidas, e a que acabou de ser respondida já
+  // sai dessa lista. Sem essa cópia local, a prop `questions` encolhe no meio da sessão e o
+  // `index` (que não muda) passa a apontar para outra questão: a tela troca sozinha, sem o
+  // usuário clicar em nada, e o gabarito/explicação da questão respondida nunca chega a aparecer.
+  const [questions] = useState(questionsProp);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, SelectedAnswer>>(initialAnswers ?? {});
   const [nextReviewDates, setNextReviewDates] = useState<Record<string, string>>({});
@@ -81,6 +88,7 @@ export function QuestionRunner({
   const [answerError, setAnswerError] = useState<{ message: string; limitReached: boolean } | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showSupport, setShowSupport] = useState(true);
+  const [canAdvance, setCanAdvance] = useState(false);
   const current = questions[index];
   const selected = current ? answers[current.id] : undefined;
 
@@ -89,6 +97,16 @@ export function QuestionRunner({
     setElapsedSeconds(0);
     setShowSupport(true);
   }, [current?.id]);
+
+  // Trava "Próxima questão" por um instante após responder — sem isso, um clique/toque em
+  // sequência (o mesmo gesto usado pra marcar a resposta) ativa o avanço antes de a explicação
+  // aparecer na tela, e o usuário nunca chega a ler o comentário da questão.
+  useEffect(() => {
+    if (mode !== "study" || !selected) return;
+    setCanAdvance(false);
+    const timer = window.setTimeout(() => setCanAdvance(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [mode, selected]);
 
   // Congela o cronômetro assim que a questão é respondida.
   useEffect(() => {
@@ -437,7 +455,14 @@ export function QuestionRunner({
               </div>
             )}
             {selected && (
-              <Button onClick={next}>{index + 1 === questions.length ? "Finalizar" : "Próxima questão"}</Button>
+              <div className="flex flex-col items-start gap-1.5">
+                <Button onClick={next} disabled={mode === "study" && !canAdvance}>
+                  {index + 1 === questions.length ? "Finalizar" : "Próxima questão"}
+                </Button>
+                {mode === "study" && !canAdvance && (
+                  <p className="text-xs text-[var(--muted-foreground)]">Leia a explicação antes de continuar…</p>
+                )}
+              </div>
             )}
           </>
         )}
