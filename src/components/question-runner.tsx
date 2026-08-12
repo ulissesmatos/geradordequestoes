@@ -170,7 +170,7 @@ export function QuestionRunner({
                   )}
                 </div>
               </div>
-              <Button onClick={restart}>
+              <Button type="button" onClick={restart}>
                 <RotateCcw className="h-4 w-4" />
                 Responder novamente
               </Button>
@@ -209,7 +209,7 @@ export function QuestionRunner({
                     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-3">
                       <Lock className="h-4 w-4 shrink-0 text-[var(--primary)]" />
                       <p className="flex-1 text-sm text-[var(--primary-soft-foreground)]">Gabarito e explicação liberados para assinantes.</p>
-                      <Button asChild size="sm">
+                      <Button type="button" asChild size="sm">
                         <Link href={lockHref}>Ver planos →</Link>
                       </Button>
                     </div>
@@ -390,7 +390,7 @@ export function QuestionRunner({
                 <Link href={lockHref}>Ver planos →</Link>
               </Button>
             </div>
-            <Button variant="outline" onClick={next}>
+            <Button type="button" variant="outline" onClick={next}>
               {index + 1 === questions.length ? "Ver resultado" : "Próxima questão"}
             </Button>
           </>
@@ -411,7 +411,7 @@ export function QuestionRunner({
                 </p>
                 <p className="mt-1 text-sm">{answerError.message}</p>
                 {answerError.limitReached && (
-                  <Button asChild size="sm" className="mt-3">
+                  <Button type="button" asChild size="sm" className="mt-3">
                     <Link href="/pricing">Ver planos →</Link>
                   </Button>
                 )}
@@ -420,6 +420,7 @@ export function QuestionRunner({
             <div className="grid gap-3">
               {options.map((option) => (
                 <Button
+                  type="button"
                   key={option.key}
                   disabled={Boolean(selected) || isPending || answerError?.limitReached}
                   size="lg"
@@ -456,7 +457,7 @@ export function QuestionRunner({
             )}
             {selected && (
               <div className="flex flex-col items-start gap-1.5">
-                <Button onClick={next} disabled={mode === "study" && !canAdvance}>
+                <Button type="button" onClick={next} disabled={mode === "study" && !canAdvance}>
                   {index + 1 === questions.length ? "Finalizar" : "Próxima questão"}
                 </Button>
                 {mode === "study" && !canAdvance && (
