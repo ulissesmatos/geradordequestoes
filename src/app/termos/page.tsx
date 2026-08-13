@@ -1,9 +1,18 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LegalPage } from "@/components/legal-page";
 import { getAppSettings } from "@/lib/app-settings";
 import { defaultTermsContent, legalIdentityFrom } from "@/lib/legal-defaults";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: "Termos de Uso",
+    description: "Regras de uso da plataforma: assinatura, cancelamento e responsabilidades.",
+    alternates: { canonical: "/termos" }
+  };
+}
 
 export default async function TermosPage() {
   const settings = await getAppSettings();

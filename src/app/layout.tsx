@@ -5,6 +5,7 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { archivo, figtree } from "@/lib/fonts";
 import { getAppSettings } from "@/lib/app-settings";
+import { getSiteUrl } from "@/lib/seo";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-6JFZ6JWLH2";
@@ -20,12 +21,14 @@ const inter = Inter({
  * generateMetadata, que o Next mescla por cima deste default em vez de substituir.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const appSettings = await getAppSettings();
-  const metadataBase = appSettings.publicUrl ? new URL(appSettings.publicUrl) : undefined;
+  const [appSettings, siteUrl] = await Promise.all([getAppSettings(), getSiteUrl()]);
+  const metadataBase = new URL(siteUrl);
 
   return {
     metadataBase,
-    title: appSettings.appName,
+    // Páginas internas passam só um title curto ("Planos e preços") e o Next monta o
+    // resto — evita repetir "| Gerador de Questões" em todo generateMetadata.
+    title: { default: appSettings.appName, template: `%s | ${appSettings.appName}` },
     description: appSettings.institutionalText,
     icons: {
       icon: appSettings.faviconUrl,
@@ -42,7 +45,8 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title: appSettings.appName,
       description: appSettings.institutionalText
-    }
+    },
+    robots: { index: true, follow: true }
   };
 }
 

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Building2, Mail } from "lucide-react";
 import { auth } from "@/auth";
 import { ContactForm } from "@/components/contact-form";
@@ -9,6 +10,14 @@ import { Reveal } from "@/components/saasable/reveal";
 import { getAppSettings } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: "Contato",
+    description: "Fale com a nossa equipe ou monte um plano sob medida para a sua empresa.",
+    alternates: { canonical: "/contato" }
+  };
+}
 
 export default async function ContatoPage({ searchParams }: { searchParams: Promise<{ empresa?: string }> }) {
   const [appSettings, params, session] = await Promise.all([getAppSettings(), searchParams, auth()]);

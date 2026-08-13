@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { PricingCards } from "@/components/pricing-cards";
 import { SaasableAssets } from "@/components/saasable/saasable-assets";
@@ -10,6 +11,14 @@ import { prisma } from "@/lib/prisma";
 import { getActiveSubscription } from "@/lib/subscriptions";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: "Planos e preços",
+    description: "Compare os planos e escolha o melhor para gerar questões, simulados e revisões com IA no padrão da sua banca.",
+    alternates: { canonical: "/pricing" }
+  };
+}
 
 export default async function PricingPage() {
   const [plans, pricingContent, appSettings, paymentSettings, session] = await Promise.all([

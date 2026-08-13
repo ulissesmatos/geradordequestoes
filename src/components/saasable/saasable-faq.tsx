@@ -7,7 +7,9 @@ import { Reveal } from "@/components/saasable/reveal";
 // AnimatePresence/m aqui dependem do <LazyMotion> que o <Reveal> ao redor já monta —
 // por isso este componente só anima quando renderizado dentro de um Reveal.
 
-const FAQ_ITEMS = [
+// Exportado para o JSON-LD (FAQPage) em app/page.tsx reaproveitar exatamente este texto —
+// Google exige que o structured data espelhe o conteúdo visível, não pode divergir.
+export const FAQ_ITEMS = [
   {
     question: "Posso cancelar quando quiser?",
     answer:
