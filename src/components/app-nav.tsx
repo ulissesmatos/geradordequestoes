@@ -90,7 +90,13 @@ export function AppNav({
 }) {
   return (
     <header className="sticky top-0 z-30 w-full border-b border-[var(--border)] bg-[var(--surface)]/92 shadow-sm backdrop-blur">
-      <AppNavMobile userName={userName} isAdmin={isAdmin} showUpgrade={!hasActiveSubscription} />
+      <AppNavMobile
+        userName={userName}
+        isAdmin={isAdmin}
+        showUpgrade={!hasActiveSubscription}
+        streak={streak}
+        streakActiveToday={streakActiveToday}
+      />
 
       <div className="relative hidden w-full items-center justify-between gap-3 px-4 py-3 md:flex md:px-6">
         <Link className="flex items-center" href="/desempenho">

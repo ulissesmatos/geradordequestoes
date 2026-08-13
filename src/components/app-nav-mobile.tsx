@@ -11,15 +11,35 @@ import { MobileTopBar } from "@/components/mobile-top-bar";
  * Título do mini-header vem da própria rota, reaproveitando os mesmos 7 destinos do drawer, pra
  * não precisar de nenhuma mudança página por página.
  */
-export function AppNavMobile({ userName, isAdmin, showUpgrade }: { userName: string; isAdmin: boolean; showUpgrade: boolean }) {
+export function AppNavMobile({
+  userName,
+  isAdmin,
+  showUpgrade,
+  streak,
+  streakActiveToday = false
+}: {
+  userName: string;
+  isAdmin: boolean;
+  showUpgrade: boolean;
+  streak?: number;
+  streakActiveToday?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const activeDestination = NAV_DESTINATIONS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   const title = activeDestination?.label ?? "Menu";
+  // Botão de novo chat só faz sentido dentro do próprio chat — em outra aba ele só ocupa espaço do streak.
+  const showNewChatButton = pathname === "/ai" || pathname.startsWith("/ai/");
 
   return (
     <>
-      <MobileTopBar title={title} onOpenMenu={() => setOpen(true)} />
+      <MobileTopBar
+        title={title}
+        onOpenMenu={() => setOpen(true)}
+        streak={streak}
+        streakActiveToday={streakActiveToday}
+        showNewChatButton={showNewChatButton}
+      />
       <MobileNavDrawer open={open} onClose={() => setOpen(false)} userName={userName} isAdmin={isAdmin} showUpgrade={showUpgrade} />
     </>
   );

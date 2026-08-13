@@ -154,7 +154,9 @@ export function AiChatDashboard({
   isAdmin = false,
   canAttach = true,
   initialSidebarOpen = true,
-  banner
+  banner,
+  streak,
+  streakActiveToday = false
 }: {
   userName: string;
   currentSessionId: string | null;
@@ -173,6 +175,9 @@ export function AiChatDashboard({
   canAttach?: boolean;
   initialSidebarOpen?: boolean;
   banner?: React.ReactNode;
+  /** Dias seguidos de estudo, mostrado na mini-header mobile (ver MobileTopBar). undefined esconde o badge. */
+  streak?: number;
+  streakActiveToday?: boolean;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState(initialPrompt ?? "");
@@ -609,7 +614,13 @@ export function AiChatDashboard({
         {/* Mini-header mobile compartilhado com o resto do app (ver AppNav) — aqui o título é a
             conversa ativa em vez do nome da página. Compartilhar mora no "..." de cada conversa
             na sidebar — não precisa de uma barra própria aqui. */}
-        <MobileTopBar title={activeSessionTitle} onOpenMenu={() => setMobileMenuOpen(true)} />
+        <MobileTopBar
+          title={activeSessionTitle}
+          onOpenMenu={() => setMobileMenuOpen(true)}
+          streak={streak}
+          streakActiveToday={streakActiveToday}
+          showNewChatButton
+        />
 
         {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
 
