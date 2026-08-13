@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { archivo, figtree } from "@/lib/fonts";
 import { getAppSettings } from "@/lib/app-settings";
 import "./globals.css";
+
+const GA_MEASUREMENT_ID = "G-6JFZ6JWLH2";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -97,6 +100,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <ClientErrorReporter />
         {children}
+        {process.env.NODE_ENV === "production" && <GoogleAnalytics gaId={GA_MEASUREMENT_ID} />}
       </body>
     </html>
   );
