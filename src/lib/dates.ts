@@ -120,6 +120,13 @@ export function dayKeyToInstant(key: string): Date {
   return brazilMidnightToInstant(year, month, day);
 }
 
+const hourFormatter = new Intl.DateTimeFormat("en-US", { timeZone: BRAZIL_TIME_ZONE, hour12: false, hour: "2-digit" });
+
+/** Hora do dia em Brasília, 0-23 — usado pra saudações/UI que variam por horário (ex.: empty state do chat). */
+export function hourInBrazil(reference: Date = new Date()): number {
+  return Number(hourFormatter.format(reference)) % 24;
+}
+
 /** Dia da semana em Brasília: 0 = domingo, 6 = sábado. */
 export function weekdayInBrazil(reference: Date = new Date()): number {
   const [year, month, day] = splitDayKey(dayKeyInBrazil(reference));

@@ -2,7 +2,30 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Bot, Check, FileText, Image as ImageIcon, Link2, Loader2, MessageSquarePlus, MoreHorizontal, Paperclip, PanelLeftClose, PanelLeftOpen, Pencil, Play, Share2, Sparkles, Trash2, X } from "lucide-react";
+import {
+  ArrowUp,
+  Bot,
+  BookOpen,
+  Check,
+  FileText,
+  History,
+  Image as ImageIcon,
+  Link2,
+  ListChecks,
+  Loader2,
+  MessageSquarePlus,
+  MoreHorizontal,
+  Paperclip,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pencil,
+  Play,
+  Share2,
+  Sparkles,
+  Timer,
+  Trash2,
+  X
+} from "lucide-react";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState, useMemo, useTransition } from "react";
 import {
   deleteChatSessionAction,
@@ -21,7 +44,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ShiningText } from "@/components/ui/shining-text";
 import { MessageLoading } from "@/components/ui/message-loading";
-import { dayKeyInBrazil } from "@/lib/dates";
+import { dayKeyInBrazil, hourInBrazil } from "@/lib/dates";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_LIMITS, attachmentKindFromMime, blobProxyUrl, type AttachmentKindValue } from "@/lib/uploads";
 // `import type` é apagado na compilação — nada de ledger.ts (Prisma, servidor) entra no bundle.
 import type { QuotaAlert } from "@/lib/usage/ledger";
@@ -96,6 +119,29 @@ function buildQuickPrompts(subjectNames: string[] | undefined) {
     "Criar revisão dos meus erros recentes",
     `Gerar material de estudo de ${c}`
   ];
+}
+
+// Mesma ordem de buildQuickPrompts (questões / simulado / revisão / material) — índice fixo
+// em vez de guardar o ícone junto do texto, porque o texto muda (matéria sorteada) e a
+// categoria, não.
+const QUICK_PROMPT_ICONS = [ListChecks, Timer, History, BookOpen];
+
+/**
+ * Saudação + sugestão do empty state variam por horário (fuso de Brasília) — pedido
+ * explícito pra deixar a tela inicial do chat menos estática e mais convidativa a
+ * qualquer hora do dia.
+ */
+function greetingForHour(hour: number, name: string): { headline: string; subtext: string } {
+  if (hour >= 5 && hour < 12) {
+    return { headline: `Bom dia, ${name}!`, subtext: "Comece o dia com um bloco de questões antes da correria." };
+  }
+  if (hour >= 12 && hour < 18) {
+    return { headline: `Boa tarde, ${name}!`, subtext: "Aproveite a tarde para avançar na sua sequência de estudos." };
+  }
+  if (hour >= 18 && hour < 24) {
+    return { headline: `Boa noite, ${name}!`, subtext: "Fechando o dia? Um bloco rápido ainda cabe antes de descansar." };
+  }
+  return { headline: `Ainda por aqui, ${name}?`, subtext: "Uma revisão rápida agora ajuda a fixar o conteúdo antes de dormir." };
 }
 
 function buildPlaceholders(subjectNames: string[] | undefined) {
@@ -544,6 +590,127 @@ export function AiChatDashboard({
     />
   );
 
+  const greeting = greetingForHour(hourInBrazil(), firstName(userName));
+
+  const composer = (
+    <>
+      {quotaAlert ? <QuotaAlertNotice alert={quotaAlert} /> : <UsageNotice usage={usage} />}
+
+      <form
+        className="mx-auto max-w-3xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSubmit();
+        }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ATTACHMENT_ACCEPT}
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            if (event.target.files) addFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-lg)]">
+          {(fileAttachments.length > 0 || pastedBlocks.length > 0) && (
+            <div className="flex flex-wrap gap-2 px-3 pt-3">
+              {fileAttachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className={cn(
+                    "animate-fade-in flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+                    attachment.status === "error"
+                      ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
+                      : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
+                  )}
+                >
+                  {attachment.kind === "IMAGE" && attachment.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={attachment.previewUrl} alt={attachment.name} className="h-6 w-6 rounded object-cover" />
+                  ) : attachment.kind === "IMAGE" ? (
+                    <ImageIcon className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                  )}
+                  <span className="max-w-[140px] truncate">{attachment.name}</span>
+                  {attachment.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--muted-foreground)]" />}
+                  {attachment.status === "error" && (
+                    <span className="max-w-[220px] truncate text-[10px]" title={attachment.error}>
+                      {attachment.error}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Remover anexo"
+                    onClick={() => removeAttachment(attachment.id)}
+                    className="rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+              {pastedBlocks.map((block) => (
+                <span
+                  key={block.id}
+                  className="animate-fade-in flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
+                >
+                  <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                  Texto colado · {block.chars.toLocaleString("pt-BR")} caracteres
+                  <button
+                    type="button"
+                    aria-label="Remover texto colado"
+                    onClick={() => setPastedBlocks((blocks) => blocks.filter((item) => item.id !== block.id))}
+                    className="rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={submitFromKeyboard}
+            onPaste={handlePaste}
+            rows={1}
+            placeholder={placeholders[placeholderIndex % placeholders.length]}
+            className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
+          />
+          <div className="flex items-center justify-between px-3 pb-3">
+            {canAttach ? (
+              <button
+                type="button"
+                aria-label="Anexar imagem ou PDF"
+                title="Anexar imagem ou PDF"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                <Paperclip className="h-5 w-5" />
+              </button>
+            ) : (
+              // Vira convite em vez de sumir: a pessoa precisa descobrir que a
+              // funcionalidade existe para querer assinar por ela.
+              <Link
+                href="/assinatura"
+                title="Enviar PDF ou imagem está disponível nos planos pagos"
+                className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+              >
+                <Paperclip className="h-4 w-4" />
+                Anexar arquivo (planos pagos)
+              </Link>
+            )}
+            <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
+          </div>
+        </div>
+      </form>
+    </>
+  );
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] -my-8 flex h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100vh-73px)]">
       <aside
@@ -619,35 +786,44 @@ export function AiChatDashboard({
           onOpenMenu={() => setMobileMenuOpen(true)}
           streak={streak}
           streakActiveToday={streakActiveToday}
-          showNewChatButton
         />
 
         {banner && <div className="shrink-0 px-4 pt-3 md:px-6 [&>*]:mb-0">{banner}</div>}
 
-        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "pb-6 pt-4 md:pt-6" : "grid place-items-center py-8")}>
+        <section className={cn("min-h-0 flex-1 overflow-y-auto px-4", hasConversation ? "pb-6 pt-4 md:pt-6" : "flex items-center justify-center py-8")}>
           {!hasConversation ? (
+            // Estilo Claude web: saudação + composer centralizados na tela (não presos embaixo),
+            // sugestões como chips logo abaixo — em vez do bloco de texto + grid de cards + input
+            // fixo no rodapé que existia antes.
             <div className="w-full max-w-3xl text-center">
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)]">
                 <Bot className="h-6 w-6 text-[var(--primary)]" />
               </div>
-              <h1 className="text-2xl font-light text-[var(--foreground)] sm:text-3xl md:text-4xl">O que vamos gerar hoje, {firstName(userName)}?</h1>
-              <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-                Peça questões, simulados ou revisões. A IA organiza os detalhes automaticamente.
-              </p>
-              <div className="mt-6 grid gap-2 text-left sm:mt-8 sm:grid-cols-2">
-                {quickPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => {
-                      setMessage(prompt);
-                      window.setTimeout(() => textareaRef.current?.focus(), 0);
-                    }}
-                    className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground)] shadow-sm hover:border-[var(--primary)] hover:bg-[var(--primary-soft)] active:bg-[var(--primary-soft)]"
-                  >
-                    {prompt}
-                  </button>
-                ))}
+              <h1 className="text-2xl font-light text-[var(--foreground)] sm:text-3xl md:text-4xl">{greeting.headline}</h1>
+              <p className="mt-3 text-sm text-[var(--muted-foreground)]">{greeting.subtext}</p>
+
+              {/* text-left contra o text-center do wrapper — senão o texto digitado no textarea
+                  (e o resto do composer) herdava o alinhamento centralizado da saudação. */}
+              <div className="mt-6 text-left sm:mt-8">{composer}</div>
+
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {quickPrompts.map((prompt, index) => {
+                  const Icon = QUICK_PROMPT_ICONS[index % QUICK_PROMPT_ICONS.length];
+                  return (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        setMessage(prompt);
+                        window.setTimeout(() => textareaRef.current?.focus(), 0);
+                      }}
+                      className="flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-xs font-medium text-[var(--foreground)] shadow-sm hover:border-[var(--primary)] hover:bg-[var(--primary-soft)] active:bg-[var(--primary-soft)]"
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
+                      {prompt}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -693,122 +869,13 @@ export function AiChatDashboard({
           )}
         </section>
 
-        <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
-          {quotaAlert ? <QuotaAlertNotice alert={quotaAlert} /> : <UsageNotice usage={usage} />}
-
-          <form
-            className="mx-auto max-w-3xl"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleSubmit();
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ATTACHMENT_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                if (event.target.files) addFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-            <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-lg)]">
-              {(fileAttachments.length > 0 || pastedBlocks.length > 0) && (
-                <div className="flex flex-wrap gap-2 px-3 pt-3">
-                  {fileAttachments.map((attachment) => (
-                    <span
-                      key={attachment.id}
-                      className={cn(
-                        "animate-fade-in flex max-w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
-                        attachment.status === "error"
-                          ? "border-[var(--danger-soft-border)] bg-[var(--danger-soft)] text-[var(--danger-soft-foreground)]"
-                          : "border-[var(--border)] bg-[var(--surface-subtle)] text-[var(--foreground)]"
-                      )}
-                    >
-                      {attachment.kind === "IMAGE" && attachment.previewUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={attachment.previewUrl} alt={attachment.name} className="h-6 w-6 rounded object-cover" />
-                      ) : attachment.kind === "IMAGE" ? (
-                        <ImageIcon className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-                      ) : (
-                        <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-                      )}
-                      <span className="max-w-[140px] truncate">{attachment.name}</span>
-                      {attachment.status === "uploading" && <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--muted-foreground)]" />}
-                      {attachment.status === "error" && (
-                        <span className="max-w-[220px] truncate text-[10px]" title={attachment.error}>
-                          {attachment.error}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        aria-label="Remover anexo"
-                        onClick={() => removeAttachment(attachment.id)}
-                        className="rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                  {pastedBlocks.map((block) => (
-                    <span
-                      key={block.id}
-                      className="animate-fade-in flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-subtle)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
-                    >
-                      <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-                      Texto colado · {block.chars.toLocaleString("pt-BR")} caracteres
-                      <button
-                        type="button"
-                        aria-label="Remover texto colado"
-                        onClick={() => setPastedBlocks((blocks) => blocks.filter((item) => item.id !== block.id))}
-                        className="rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <textarea
-                ref={textareaRef}
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={submitFromKeyboard}
-                onPaste={handlePaste}
-                rows={1}
-                placeholder={placeholders[placeholderIndex % placeholders.length]}
-                className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
-              />
-              <div className="flex items-center justify-between px-3 pb-3">
-                {canAttach ? (
-                  <button
-                    type="button"
-                    aria-label="Anexar imagem ou PDF"
-                    title="Anexar imagem ou PDF"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <Paperclip className="h-5 w-5" />
-                  </button>
-                ) : (
-                  // Vira convite em vez de sumir: a pessoa precisa descobrir que a
-                  // funcionalidade existe para querer assinar por ela.
-                  <Link
-                    href="/assinatura"
-                    title="Enviar PDF ou imagem está disponível nos planos pagos"
-                    className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  >
-                    <Paperclip className="h-4 w-4" />
-                    Anexar arquivo (planos pagos)
-                  </Link>
-                )}
-                <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
-              </div>
-            </div>
-          </form>
-        </div>
+        {/* Vazio: o composer já está centralizado dentro do <section> acima, junto da saudação
+            (ver `composer`/greeting). Com conversa: volta a ficar fixo embaixo, como um chat normal. */}
+        {hasConversation && (
+          <div className="sticky bottom-0 z-20 shrink-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+            {composer}
+          </div>
+        )}
       </main>
     </div>
   );
@@ -900,13 +967,14 @@ function SessionRow({
             ariaLabel="Mais opções da conversa"
             open={menuOpen}
             onOpenChange={setMenuOpen}
+            portal
             trigger={<MoreHorizontal className="h-3.5 w-3.5" />}
             triggerClassName={cn(
               "shrink-0 rounded-md p-2 text-[var(--muted-foreground)] transition-opacity hover:bg-[var(--surface)] hover:text-[var(--foreground)]",
               "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
               (isActive || menuOpen) && "md:opacity-100"
             )}
-            panelClassName="absolute right-0 top-9 z-30 w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
+            panelClassName="w-48 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
           >
             <button
               type="button"
