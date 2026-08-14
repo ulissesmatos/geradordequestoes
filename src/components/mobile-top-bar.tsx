@@ -5,24 +5,22 @@ import { Flame, Menu, MessageSquarePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Mini-header mobile compartilhado — mesmo em toda página: hambúrguer à esquerda (abre o
- * MobileNavDrawer), título no centro. À direita, a sequência de dias fica sempre visível (é o
- * gatilho de hábito — escondida numa aba ela não incentiva ninguém a voltar todo dia); o atalho
- * "Novo chat" só aparece dentro do próprio /ai, onde faz sentido. Sempre escondido em md: — quem
- * usa decide o que mostrar ao lado no desktop.
+ * Mini-header mobile compartilhado — mesmo em toda página, inclusive fora do chat: hambúrguer à
+ * esquerda (abre o MobileNavDrawer), título no centro. À direita, sequência de dias + atalho
+ * "Novo chat" ficam sempre visíveis, independente da página (por pedido explícito) — a
+ * sequência como lembrete diário de estudo, o atalho pra começar uma conversa de qualquer lugar
+ * do app. Sempre escondido em md: — quem usa decide o que mostrar ao lado no desktop.
  */
 export function MobileTopBar({
   title,
   onOpenMenu,
   streak,
-  streakActiveToday = false,
-  showNewChatButton = false
+  streakActiveToday = false
 }: {
   title: React.ReactNode;
   onOpenMenu: () => void;
   streak?: number;
   streakActiveToday?: boolean;
-  showNewChatButton?: boolean;
 }) {
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-2 md:hidden">
@@ -50,15 +48,13 @@ export function MobileTopBar({
           {streak}
         </Link>
       )}
-      {showNewChatButton && (
-        <Link
-          href="/ai?new=1"
-          aria-label="Novo chat"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-        >
-          <MessageSquarePlus className="h-5 w-5" />
-        </Link>
-      )}
+      <Link
+        href="/ai?new=1"
+        aria-label="Novo chat"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+      >
+        <MessageSquarePlus className="h-5 w-5" />
+      </Link>
     </div>
   );
 }

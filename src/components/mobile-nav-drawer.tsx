@@ -13,6 +13,7 @@ import {
   ListChecks,
   MessageSquarePlus,
   MoreHorizontal,
+  Rocket,
   Settings,
   Sparkles,
   Timer,
@@ -185,6 +186,14 @@ export function MobileNavDrawer({
             >
               <User className="h-4 w-4" />
               Perfil e assinatura
+            </Link>
+            <Link
+              href="/pricing"
+              onClick={onClose}
+              className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+            >
+              <Rocket className="h-4 w-4" />
+              Fazer upgrade
             </Link>
             {isAdmin && (
               <Link

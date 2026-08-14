@@ -28,18 +28,10 @@ export function AppNavMobile({
   const pathname = usePathname();
   const activeDestination = NAV_DESTINATIONS.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   const title = activeDestination?.label ?? "Menu";
-  // Botão de novo chat só faz sentido dentro do próprio chat — em outra aba ele só ocupa espaço do streak.
-  const showNewChatButton = pathname === "/ai" || pathname.startsWith("/ai/");
 
   return (
     <>
-      <MobileTopBar
-        title={title}
-        onOpenMenu={() => setOpen(true)}
-        streak={streak}
-        streakActiveToday={streakActiveToday}
-        showNewChatButton={showNewChatButton}
-      />
+      <MobileTopBar title={title} onOpenMenu={() => setOpen(true)} streak={streak} streakActiveToday={streakActiveToday} />
       <MobileNavDrawer open={open} onClose={() => setOpen(false)} userName={userName} isAdmin={isAdmin} showUpgrade={showUpgrade} />
     </>
   );

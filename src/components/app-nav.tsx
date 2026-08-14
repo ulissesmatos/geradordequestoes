@@ -169,6 +169,10 @@ export function AppNav({
             <Link href="/perfil" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
               Perfil e assinatura
             </Link>
+            <Link href="/pricing" className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
+              <i className="ti ti-rocket text-base leading-none text-[var(--primary)]" />
+              Fazer upgrade
+            </Link>
             {isAdmin && (
               <Link href="/admin" className="block rounded-md px-3 py-2 text-sm font-semibold hover:bg-[var(--surface-subtle)]">
                 Admin
