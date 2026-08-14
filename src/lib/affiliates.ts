@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
 import { AffiliateWithdrawalStatus, PaymentTransactionStatus } from "@prisma/client";
+import { getAppSettings } from "@/lib/app-settings";
 import { appUrl } from "@/lib/payments";
 import { prisma } from "@/lib/prisma";
 
@@ -59,7 +60,8 @@ export async function claimAffiliateReferralFromCookie(newUserId: string): Promi
 
 /**
  * Gera a comissão de um pagamento aprovado de usuário indicado. Idempotente
- * (única por paymentTransactionId — webhooks repetidos não duplicam).
+ * (única por paymentTransactionId — webhooks repetidos não duplicam) e respeita o teto global
+ * AppSetting.affiliateCommissionCapPayments (quantas cobranças daquele indicado pagam comissão).
  * Best-effort: nunca lança para não afetar o fluxo de pagamento.
  */
 export async function recordAffiliateCommission(transaction: {
@@ -81,18 +83,32 @@ export async function recordAffiliateCommission(transaction: {
     const amount = Math.floor((transaction.amountCents * percent) / 100);
     if (amount <= 0) return;
 
-    await prisma.affiliateCommission.createMany({
-      data: [
-        {
-          affiliateId: referral.affiliateId,
-          referredUserId: transaction.userId,
-          paymentTransactionId: transaction.id,
-          baseAmountCents: transaction.amountCents,
-          percent,
-          amountCents: amount
-        }
-      ],
-      skipDuplicates: true
+    const { affiliateCommissionCapPayments } = await getAppSettings();
+
+    // Transação: contar comissões já pagas para este indicado e decidir se o teto foi atingido
+    // precisa ser atômico com o insert, senão duas cobranças aprovadas quase ao mesmo tempo
+    // (ex.: webhook duplicado do gateway) poderiam passar do teto antes que a primeira grave.
+    await prisma.$transaction(async (tx) => {
+      if (affiliateCommissionCapPayments > 0) {
+        const paidCount = await tx.affiliateCommission.count({
+          where: { affiliateId: referral.affiliateId, referredUserId: transaction.userId }
+        });
+        if (paidCount >= affiliateCommissionCapPayments) return;
+      }
+
+      await tx.affiliateCommission.createMany({
+        data: [
+          {
+            affiliateId: referral.affiliateId,
+            referredUserId: transaction.userId,
+            paymentTransactionId: transaction.id,
+            baseAmountCents: transaction.amountCents,
+            percent,
+            amountCents: amount
+          }
+        ],
+        skipDuplicates: true
+      });
     });
   } catch {
     // comissão é best-effort — o pagamento do aluno nunca pode falhar por causa dela

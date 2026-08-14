@@ -8,8 +8,10 @@ import { SubmitButton } from "@/components/submit-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { affiliateLinkUrl, getAffiliateBalance, getAffiliateReferralDetails } from "@/lib/affiliates";
+import { getAppSettings } from "@/lib/app-settings";
 import { formatDateBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
+import { updateAppSettingsAction } from "@/app/admin/admin-actions";
 import { processWithdrawalAction, updateAffiliateAction } from "@/app/admin/afiliados/actions";
 
 const PROCESSED_PAGE_SIZE = 20;
@@ -43,13 +45,16 @@ export default async function AdminAffiliatesPage({
 }
 
 async function AfiliadosTab() {
-  const profiles = await prisma.affiliateProfile.findMany({
-    include: {
-      user: { select: { name: true, email: true } },
-      _count: { select: { referrals: true } }
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  const [profiles, settings] = await Promise.all([
+    prisma.affiliateProfile.findMany({
+      include: {
+        user: { select: { name: true, email: true } },
+        _count: { select: { referrals: true } }
+      },
+      orderBy: { createdAt: "desc" }
+    }),
+    getAppSettings()
+  ]);
 
   const balances = new Map(await Promise.all(profiles.map(async (profile) => [profile.id, await getAffiliateBalance(profile.id)] as const)));
   const referralDetails = new Map(
@@ -58,6 +63,37 @@ async function AfiliadosTab() {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Configurações de comissão</CardTitle>
+          <CardDescription>
+            Vale para todos os afiliados: controla por quanto tempo o afiliado continua ganhando pelas cobranças de
+            quem ele indicou.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form key={`commission-cap-${settings.updatedAt.getTime()}`} action={updateAppSettingsAction} className="grid max-w-md gap-3">
+            <label className="grid gap-1 text-sm font-semibold">
+              Cobranças que geram comissão, por indicado
+              <Input
+                name="affiliateCommissionCapPayments"
+                type="number"
+                min={0}
+                defaultValue={settings.affiliateCommissionCapPayments}
+                className="w-28"
+              />
+              <span className="text-xs font-normal text-[var(--muted-foreground)]">
+                Conta a 1ª assinatura, cada renovação e cada upgrade como uma cobrança separada. Padrão{" "}
+                <strong>1</strong>: só a primeira cobrança do indicado gera comissão — renovações e upgrades
+                seguintes não pagam de novo. Use <strong>0</strong> para não limitar (comissão em toda cobrança
+                aprovada, para sempre).
+              </span>
+            </label>
+            <SubmitButton className="w-fit">Salvar</SubmitButton>
+          </form>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Novo afiliado</CardTitle>

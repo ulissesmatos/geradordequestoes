@@ -590,6 +590,7 @@ export async function updateAppSettingsAction(formData: FormData) {
     ...count("trialGenerationsLimit", 10),
     ...count("bankDailyAnswersLimitTrial", 10),
     ...count("trialMaxQuestionsPerGeneration", 5),
+    ...count("affiliateCommissionCapPayments", 1),
     // Mesma regra parcial dos demais campos: só grava se o formulário trouxe o fieldset.
     ...(trialCapabilities ? { trialCapabilities } : {}),
     // Checkbox precisa do marcador para "desmarcado" ser distinguível de "não veio no form".
@@ -606,6 +607,7 @@ export async function updateAppSettingsAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/pricing");
   revalidatePath("/admin/branding");
+  revalidatePath("/admin/afiliados");
   revalidatePath("/termos");
   revalidatePath("/privacidade");
 }

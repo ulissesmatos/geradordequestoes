@@ -995,6 +995,13 @@ model AppSetting {
    * Vire para `true` só depois de conferir os números em produção.
    */
   usageEnforcementEnabled        Boolean  @default(false)
+  /**
+   * Teto de comissão de afiliado: quantas cobranças aprovadas de CADA indicado geram comissão
+   * (1ª assinatura, cada renovação e cada upgrade contam uma por vez). Padrão 1 = só a cobrança
+   * inicial gera comissão; renovações e upgrades seguintes não pagam de novo. 0 = sem teto
+   * (todas as cobranças aprovadas geram comissão, para sempre).
+   */
+  affiliateCommissionCapPayments Int      @default(1)
   createdAt                      DateTime @default(now())
   updatedAt                      DateTime @updatedAt
 }
