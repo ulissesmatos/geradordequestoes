@@ -4,7 +4,7 @@ import { MockExamStatus } from "@prisma/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTimeBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
-import { getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
+import { examSubjectLabel, getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 import { cn } from "@/lib/utils";
@@ -84,7 +84,7 @@ export default async function MockExamsPage() {
                 <CardContent className="space-y-1.5 text-sm text-[var(--muted-foreground)]">
                   <p className="flex items-center gap-1.5">
                     <ListChecks className="h-4 w-4" />
-                    {exam.questionSet.quantity} questões · {exam.questionSet.subject.name} / {exam.questionSet.topic.name}
+                    {exam.questionSet.quantity} questões · {examSubjectLabel(exam)}
                   </p>
                   <p className="flex items-center gap-1.5">
                     <CalendarClock className="h-4 w-4" />

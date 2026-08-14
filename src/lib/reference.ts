@@ -267,7 +267,7 @@ export async function searchReferenceQuestions(input: {
   return runQuery(Prisma.sql`websearch_to_tsquery('portuguese', ${orQuery})`);
 }
 
-function shuffle<T>(items: T[]): T[] {
+export function shuffle<T>(items: T[]): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

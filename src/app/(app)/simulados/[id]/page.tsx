@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTimeBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
-import { ensureSessionCurrent, getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
+import { ensureSessionCurrent, examSubjectLabel, getExamWindowState, getStudentTeamAccountId } from "@/lib/mock-exams";
 import { prisma } from "@/lib/prisma";
 import { requireActiveSubscription } from "@/lib/subscriptions";
 
@@ -94,7 +94,7 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
           <div className="grid gap-2 text-sm">
             <p className="flex items-center gap-2">
               <ListChecks className="h-4 w-4 text-[var(--primary)]" />
-              {exam.questionSet.quantity} questões Certo/Errado · {exam.questionSet.subject.name} / {exam.questionSet.topic.name}
+              {exam.questionSet.quantity} questões Certo/Errado · {examSubjectLabel(exam)}
             </p>
             <p className="flex items-center gap-2">
               <CalendarClock className="h-4 w-4 text-[var(--primary)]" />
