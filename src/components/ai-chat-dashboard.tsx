@@ -40,6 +40,7 @@ import { MobileTopBar } from "@/components/mobile-top-bar";
 import { ShareLinkModal } from "@/components/share-link-modal";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ShiningText } from "@/components/ui/shining-text";
@@ -254,6 +255,13 @@ export function AiChatDashboard({
   const [streamSessionId, setStreamSessionId] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(loadingLabels[0]);
   const [optimisticMessage, setOptimisticMessage] = useState<ChatMessage | null>(null);
+  /**
+   * Enter/envio disparado enquanto algum anexo ainda está subindo: em vez de simplesmente
+   * ignorar (canSend fica false), guardamos a intenção e o efeito abaixo dispara o envio de
+   * verdade assim que uploadingCount voltar a 0 — texto e anexo saem juntos numa única
+   * mensagem, sem o usuário precisar apertar Enter de novo.
+   */
+  const [pendingAutoSend, setPendingAutoSend] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -322,8 +330,18 @@ export function AiChatDashboard({
     setStreamError(null);
     setStreamSessionId(null);
     setOptimisticMessage(null);
+    setPendingAutoSend(false);
     setMobileMenuOpen(false);
   }, [currentSessionId, initialPrompt]);
+
+  // Envio adiado: dispara handleSubmit assim que o(s) upload(s) pendente(s) terminarem
+  // (sucesso ou erro). Ver comentário de pendingAutoSend acima.
+  useEffect(() => {
+    if (!pendingAutoSend || uploadingCount > 0) return;
+    setPendingAutoSend(false);
+    if (canSend) void handleSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoSend, uploadingCount, canSend]);
 
   useEffect(() => {
     if (!optimisticMessage) return;
@@ -355,7 +373,12 @@ export function AiChatDashboard({
     const isDesktopKeyboard = window.matchMedia("(pointer: fine)").matches;
     if (!isDesktopKeyboard) return;
     event.preventDefault();
-    if (canSend) void handleSubmit();
+    if (canSend) {
+      void handleSubmit();
+    } else if (uploadingCount > 0 && (composedPrompt.length > 0 || fileAttachments.length > 0)) {
+      // Anexo ainda subindo: fica na fila e sai assim que uploadingCount zerar (ver efeito acima).
+      setPendingAutoSend(true);
+    }
   }
 
   async function uploadOneFile(file: File) {
@@ -470,6 +493,16 @@ export function AiChatDashboard({
           size: attachment.size,
           extractedText: attachment.extractedText
         }));
+    // Mesma lista, no formato que a bolha da mensagem usa pra renderizar — sem isso o anexo só
+    // aparecia depois que router.refresh() (no fim do turno) trouxesse a mensagem real do banco.
+    const optimisticAttachments: ChatAttachment[] = overridePrompt
+      ? []
+      : readyAttachments.map((attachment) => ({
+          id: attachment.id,
+          kind: attachment.kind,
+          url: attachment.url ?? "",
+          name: attachment.name
+        }));
 
     setTypedResponse("");
     setTypedSetId(null);
@@ -479,7 +512,13 @@ export function AiChatDashboard({
     setTypedClarification(null);
     setStreamError(null);
     setProgress({ task: null, steps: [] });
-    setOptimisticMessage({ id: `optimistic-${Date.now()}`, role: "USER", content: promptToSend });
+    setPendingAutoSend(false);
+    setOptimisticMessage({
+      id: `optimistic-${Date.now()}`,
+      role: "USER",
+      content: promptToSend,
+      attachments: optimisticAttachments
+    });
     setTurnStartedAt(Date.now());
     setIsSubmitting(true);
     setMessage("");
@@ -670,6 +709,11 @@ export function AiChatDashboard({
                 </span>
               ))}
             </div>
+          )}
+          {pendingAutoSend && (
+            <p className="animate-fade-in px-3 pt-2 text-xs text-[var(--muted-foreground)]">
+              Aguardando o anexo terminar de subir — sua mensagem será enviada automaticamente em seguida.
+            </p>
           )}
           <textarea
             ref={textareaRef}
@@ -1442,6 +1486,7 @@ function ClarifyCard({
 
 function ChatBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "USER";
+  const [viewingAttachment, setViewingAttachment] = useState<ChatAttachment | null>(null);
 
   const textBubble = (
     <div
@@ -1462,16 +1507,21 @@ function ChatBubble({ message }: { message: ChatMessage }) {
                 <img src={proxied} alt={attachment.name} className="h-28 w-28 rounded-md border border-[var(--border)] object-cover" />
               </a>
             ) : (
-              <a
+              // PDF: não guardamos o binário original, só o texto extraído (ver
+              // src/app/(app)/api/uploads/route.ts) — por isso abre um visualizador aqui em vez
+              // de navegar para o link cru (que só devolveria text/plain sem formatação).
+              <button
                 key={attachment.id}
-                href={proxied}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--primary)]"
+                type="button"
+                onClick={() => setViewingAttachment(attachment)}
+                className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-left text-xs text-[var(--foreground)] hover:border-[var(--primary)]"
               >
-                <FileText className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-                <span className="max-w-[160px] truncate">{attachment.name}</span>
-              </a>
+                <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="max-w-[160px] truncate">{attachment.name}</span>
+                  <span className="text-[10px] text-[var(--muted-foreground)]">Texto extraído · ver</span>
+                </span>
+              </button>
             );
           })}
         </div>
@@ -1481,15 +1531,11 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     </div>
   );
 
-  if (isUser) {
-    return (
-      <div className="flex animate-fade-in justify-end">
-        <div className="max-w-[88%]">{textBubble}</div>
-      </div>
-    );
-  }
-
-  return (
+  const bubble = isUser ? (
+    <div className="flex animate-fade-in justify-end">
+      <div className="max-w-[88%]">{textBubble}</div>
+    </div>
+  ) : (
     <div className="flex animate-fade-in items-start justify-start gap-2.5">
       <BotAvatar />
       <div className="flex min-w-0 max-w-[88%] flex-1 flex-col gap-2">
@@ -1497,6 +1543,72 @@ function ChatBubble({ message }: { message: ChatMessage }) {
         <ResultCard questionSetId={message.questionSetId} studyMaterialId={message.studyMaterialId} />
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {bubble}
+      <ExtractedTextDialog attachment={viewingAttachment} onClose={() => setViewingAttachment(null)} />
+    </>
+  );
+}
+
+/**
+ * PDFs anexados no chat nunca guardam o binário original — só o texto extraído no upload (ver
+ * src/app/(app)/api/uploads/route.ts). Este modal busca esse texto pelo mesmo proxy autenticado
+ * usado para abrir o "link" do anexo e mostra formatado, em vez de deixar o navegador abrir a
+ * URL crua (text/plain sem estilo nenhum).
+ */
+function ExtractedTextDialog({ attachment, onClose }: { attachment: ChatAttachment | null; onClose: () => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!attachment) {
+      setText(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(blobProxyUrl(attachment.url))
+      .then((response) => {
+        if (!response.ok) throw new Error("falha ao buscar o texto extraído");
+        return response.text();
+      })
+      .then((value) => {
+        if (!cancelled) setText(value);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Não foi possível carregar o texto extraído deste anexo.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment]);
+
+  return (
+    <Dialog open={Boolean(attachment)} onClose={onClose} widthClassName="max-w-2xl">
+      <DialogPanel>
+        <DialogHeader
+          title={attachment?.name ?? "Anexo"}
+          description="Texto extraído deste PDF — é o que a IA usa como contexto, não o arquivo original."
+          onClose={onClose}
+        />
+        <div className="max-h-[65vh] overflow-y-auto px-6 py-4">
+          {loading && <p className="text-sm text-[var(--muted-foreground)]">Carregando…</p>}
+          {error && <p className="text-sm text-[var(--danger-soft-foreground)]">{error}</p>}
+          {!loading && !error && text && (
+            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--foreground)]">{text}</p>
+          )}
+        </div>
+      </DialogPanel>
+    </Dialog>
   );
 }
 

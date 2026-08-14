@@ -8,11 +8,14 @@ import { cn } from "@/lib/utils";
 export function Dialog({
   open,
   onClose,
-  children
+  children,
+  widthClassName = "max-w-md"
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  /** Sobrescreve a largura máxima do painel (padrão max-w-md) — ex.: conteúdo de leitura mais largo. */
+  widthClassName?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -46,7 +49,7 @@ export function Dialog({
         aria-hidden="true"
       />
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-md animate-fade-in">
+      <div className={cn("relative z-10 w-full animate-fade-in", widthClassName)}>
         {children}
       </div>
     </div>,
