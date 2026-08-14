@@ -31,13 +31,18 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
     if (teamId !== exam.teamAccountId) return <NotFound />;
   }
 
-  const session = await prisma.mockExamSession.findUnique({
-    where: { mockExamId_userId: { mockExamId: exam.id, userId: user.id } },
-    select: { id: true, finishedAt: true, expiresAt: true, startedAt: true }
+  // Sem unique(mockExamId, userId): pode haver várias sessões (1ª oficial + práticas
+  // seguintes) — ver MockExamSession.isPractice no schema.
+  const sessions = await prisma.mockExamSession.findMany({
+    where: { mockExamId: exam.id, userId: user.id },
+    select: { id: true, finishedAt: true, expiresAt: true, startedAt: true, isPractice: true },
+    orderBy: { startedAt: "asc" }
   });
+  const activeSession = sessions.find((item) => !item.finishedAt);
+  const officialSession = sessions.find((item) => !item.isPractice);
 
-  if (session) {
-    const done = await ensureSessionCurrent(session);
+  if (activeSession) {
+    const done = await ensureSessionCurrent(activeSession);
     if (done) redirect(`/simulados/${exam.id}/resultado`);
 
     // Sessão em andamento: carrega questões SEM gabarito/explicação (anti-trapaça)
@@ -45,28 +50,29 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
     const [questions, answers] = await Promise.all([
       prisma.question.findMany({
         where: { questionSetId: exam.questionSetId },
-        select: { id: true, statement: true, orderInSet: true },
+        select: { id: true, statement: true, orderInSet: true, subject: { select: { name: true } } },
         orderBy: { orderInSet: "asc" }
       }),
       prisma.mockExamAnswer.findMany({
-        where: { sessionId: session.id },
+        where: { sessionId: activeSession.id },
         select: { questionId: true, userAnswer: true }
       })
     ]);
 
     return (
       <MockExamRunner
-        sessionId={session.id}
+        sessionId={activeSession.id}
         title={exam.title}
-        questions={questions.map((q) => ({ id: q.id, statement: q.statement }))}
+        isPractice={activeSession.isPractice}
+        questions={questions.map((q) => ({ id: q.id, statement: q.statement, subjectName: q.subject.name }))}
         initialAnswers={Object.fromEntries(answers.map((a) => [a.questionId, a.userAnswer]))}
-        expiresAtIso={session.expiresAt.toISOString()}
+        expiresAtIso={activeSession.expiresAt.toISOString()}
         serverNowIso={new Date().toISOString()}
       />
     );
   }
 
-  // Capa: ainda não iniciou.
+  // Capa: ainda não iniciou, ou já concluiu a(s) tentativa(s) anterior(es).
   const windowState = getExamWindowState(exam);
   const canStart = exam.status === MockExamStatus.PUBLISHED && windowState === "aberto";
   const clampWarning =
@@ -109,7 +115,15 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
               <li>Cada acerto vale <strong>+1</strong>; cada erro vale <strong>−1</strong>; em branco não pontua.</li>
               <li>Na dúvida, deixar em branco pode ser a melhor estratégia.</li>
               <li>O cronômetro continua correndo mesmo se você fechar a página — não é possível pausar.</li>
-              <li>Você tem apenas <strong>uma tentativa</strong>. O gabarito aparece só ao finalizar.</li>
+              {officialSession ? (
+                <li>
+                  Isso é <strong>modo prática</strong>: não conta para o comparativo com a turma nem muda sua nota oficial.
+                </li>
+              ) : (
+                <li>
+                  Só a <strong>1ª tentativa</strong> conta para o comparativo com a turma. O gabarito aparece só ao finalizar.
+                </li>
+              )}
             </ul>
           </div>
 
@@ -120,16 +134,24 @@ export default async function MockExamPage({ params }: { params: Promise<{ id: s
             </p>
           )}
 
+          {officialSession && (
+            <Button asChild size="lg" variant="outline" className="w-full">
+              <Link href={`/simulados/${exam.id}/resultado`}>Ver resultado oficial</Link>
+            </Button>
+          )}
+
           {canStart ? (
             <form action={startMockExamAction.bind(null, exam.id)}>
               <Button type="submit" size="lg" className="w-full">
                 <Play className="h-5 w-5" />
-                Iniciar simulado
+                {officialSession ? "Praticar novamente" : "Iniciar simulado"}
               </Button>
             </form>
           ) : (
             <p className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3 text-center text-sm text-[var(--muted-foreground)]">
-              {windowState === "futuro" && exam.opensAt
+              {officialSession
+                ? "Praticar novamente não está mais disponível — o simulado encerrou."
+                : windowState === "futuro" && exam.opensAt
                 ? `Abre em ${formatDateTimeBR(exam.opensAt)}.`
                 : "Este simulado não está mais disponível."}
             </p>

@@ -62,7 +62,12 @@ export async function answerQuestionAction(formData: FormData): Promise<AnswerQu
         // Bloco compartilhado por outro usuário via link público (/q/<id>) e ainda ativo.
         // Filtro de relação: se a questão não tem questionSet, ou o set não tem share, ou o
         // share está revogado, a condição não bate — nenhum caso quebra, só não autoriza.
-        { questionSet: { share: { revokedAt: null } } }
+        { questionSet: { share: { revokedAt: null } } },
+        // Questão de simulado (clonada pelo cron ou pelo admin — ver mock-exam-generator.ts):
+        // nasce DRAFT e sem createdById, então cairia fora das duas primeiras condições. Sem
+        // isso, responder de novo pela Biblioteca (fora do fluxo cronometrado de /simulados)
+        // sempre retornava "questão não encontrada".
+        { questionSet: { mockExam: { isNot: null } } }
       ]
     },
     include: {

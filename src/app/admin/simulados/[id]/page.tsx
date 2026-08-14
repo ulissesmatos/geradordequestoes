@@ -34,8 +34,10 @@ export default async function AdminMockExamDetailPage({ params }: { params: Prom
           }
         }
       },
+      // Só a tentativa OFICIAL de cada aluno entra no ranking — sem o filtro, quem repetiu em
+      // modo prática (ver MockExamSession.isPractice) apareceria em mais de uma linha/posição.
       sessions: {
-        where: { finishedAt: { not: null } },
+        where: { finishedAt: { not: null }, isPractice: false },
         include: { user: { select: { name: true, email: true } } },
         orderBy: [{ netScore: "desc" }, { totalSeconds: "asc" }]
       },

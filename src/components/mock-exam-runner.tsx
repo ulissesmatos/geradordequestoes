@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Flag, Loader2, Timer, X } from "lucide-react";
 import { finishMockExamAction, saveMockExamAnswerAction } from "@/app/(app)/simulados/actions";
 import { MathText } from "@/components/math-text";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogPanel } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-type RunnerQuestion = { id: string; statement: string };
+type RunnerQuestion = { id: string; statement: string; subjectName: string };
 type Answer = "CERTO" | "ERRADO" | null;
 
 export function MockExamRunner({
@@ -18,7 +19,8 @@ export function MockExamRunner({
   questions,
   initialAnswers,
   expiresAtIso,
-  serverNowIso
+  serverNowIso,
+  isPractice = false
 }: {
   sessionId: string;
   title: string;
@@ -26,6 +28,8 @@ export function MockExamRunner({
   initialAnswers: Record<string, Answer>;
   expiresAtIso: string;
   serverNowIso: string;
+  /** Tentativa fora da 1ª (oficial) — mesmo layout/cronômetro, mas não conta pro comparativo com a turma. */
+  isPractice?: boolean;
 }) {
   const router = useRouter();
   const [index, setIndex] = useState(0);
@@ -86,7 +90,14 @@ export function MockExamRunner({
       {/* Barra fixa: título + cronômetro + progresso */}
       <div className="sticky top-[61px] z-20 -mx-4 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur md:top-[73px]">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-2.5">
-          <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
+            {isPractice && (
+              <Badge variant="secondary" className="shrink-0">
+                Modo prática
+              </Badge>
+            )}
+          </span>
           <span
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 font-mono text-sm font-bold tabular-nums",
@@ -131,9 +142,12 @@ export function MockExamRunner({
 
       {/* Questão atual */}
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow-sm)] md:p-7">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          Questão {index + 1} de {questions.length}
-        </p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+            Questão {index + 1} de {questions.length}
+          </p>
+          <Badge variant="outline">{current.subjectName}</Badge>
+        </div>
         <p className="whitespace-pre-wrap leading-7"><MathText text={current.statement} /></p>
 
         <div className="mt-6 grid gap-2 sm:grid-cols-2">

@@ -23,7 +23,11 @@ export default async function MockExamsPage() {
     },
     include: {
       questionSet: { select: { quantity: true, subject: { select: { name: true } }, topic: { select: { name: true } } } },
-      sessions: { where: { userId: user.id }, select: { id: true, finishedAt: true, expiresAt: true } }
+      sessions: {
+        where: { userId: user.id },
+        select: { id: true, finishedAt: true, expiresAt: true, isPractice: true },
+        orderBy: { startedAt: "asc" }
+      }
     },
     orderBy: { createdAt: "desc" },
     take: 50
@@ -37,7 +41,9 @@ export default async function MockExamsPage() {
   });
 
   function badgeFor(exam: (typeof exams)[number]): ExamBadge {
-    const session = exam.sessions[0];
+    // O status da listagem segue só a tentativa OFICIAL (1ª) — tentativas de prática seguintes
+    // não mudam o selo "Concluído"/"Em andamento" mostrado aqui.
+    const session = exam.sessions.find((item) => !item.isPractice) ?? exam.sessions[0];
     if (session?.finishedAt) return { label: "Concluído — ver resultado", className: "bg-emerald-100 text-emerald-800" };
     if (session && now <= session.expiresAt) return { label: "Em andamento", className: "bg-amber-100 text-amber-800" };
     if (session) return { label: "Concluído — ver resultado", className: "bg-emerald-100 text-emerald-800" };

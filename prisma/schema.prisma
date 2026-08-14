@@ -690,13 +690,18 @@ model MockExamSession {
   wrongCount   Int?
   blankCount   Int?
   totalSeconds Int?
+  // A 1ª tentativa de cada aluno (isPractice: false) é "a prova real": conta para o
+  // comparativo com a turma (ver getMockExamComparatives). Tentativas seguintes do mesmo
+  // aluno no mesmo simulado nascem isPractice: true — mesmo layout/cronômetro completo, mas
+  // fora do ranking, para não dar pra "farmar" nota repetindo até acertar tudo.
+  isPractice   Boolean           @default(false)
   createdAt    DateTime          @default(now())
   mockExam     MockExam          @relation(fields: [mockExamId], references: [id], onDelete: Cascade)
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   answers      MockExamAnswer[]
   attempts     QuestionAttempt[]
 
-  @@unique([mockExamId, userId])
+  @@index([mockExamId, userId])
   @@index([mockExamId, finishedAt])
 }
 

@@ -167,13 +167,17 @@ export type MockExamComparatives = {
  * Comparativos anônimos do resultado. Retorna null com menos de 5 participantes
  * finalizados. Os dados nominais ficam no banco — migrar para ranking aberto
  * no futuro é só uma nova UI ordenando por (netScore desc, totalSeconds asc).
+ *
+ * Só considera sessões OFICIAIS (isPractice: false) — cada aluno entra no comparativo com,
+ * no máximo, uma nota (a da 1ª tentativa). Sem esse filtro, refazer o simulado em modo
+ * prática pesaria de novo na média/percentil, e o aluno poderia repetir até bater todo mundo.
  */
 export async function getMockExamComparatives(
   mockExamId: string,
   mySession: Pick<MockExamSession, "id" | "netScore" | "totalSeconds">
 ): Promise<MockExamComparatives | null> {
   const finished = await prisma.mockExamSession.findMany({
-    where: { mockExamId, finishedAt: { not: null } },
+    where: { mockExamId, finishedAt: { not: null }, isPractice: false },
     select: { id: true, netScore: true, totalSeconds: true }
   });
   if (finished.length < MIN_PARTICIPANTS_FOR_COMPARATIVES) return null;

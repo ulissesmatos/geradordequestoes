@@ -37,18 +37,30 @@ export async function startMockExamAction(mockExamId: string) {
   if (windowState === "futuro") throw new Error("Este simulado ainda não abriu.");
   if (windowState === "encerrado") throw new Error("Este simulado já encerrou.");
 
-  try {
-    await prisma.mockExamSession.create({
-      data: {
-        mockExamId: exam.id,
-        userId: user.id,
-        expiresAt: computeExpiresAt(exam)
-      }
-    });
-  } catch (error) {
-    // Sessão já existe (duplo clique / segunda aba): segue para ela.
-    const isDuplicate = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-    if (!isDuplicate) throw error;
+  // Sem unique(mockExamId, userId) no schema, dá pra ter mais de uma sessão: a 1ª (oficial)
+  // conta pro comparativo com a turma, as seguintes nascem isPractice — mesmo layout
+  // cronometrado, mas fora do ranking (ver MockExamSession.isPractice no schema).
+  const existing = await prisma.mockExamSession.findMany({
+    where: { mockExamId: exam.id, userId: user.id },
+    select: { id: true, finishedAt: true, isPractice: true }
+  });
+  const active = existing.find((session) => !session.finishedAt);
+  if (!active) {
+    const hasOfficialAttempt = existing.some((session) => !session.isPractice);
+    try {
+      await prisma.mockExamSession.create({
+        data: {
+          mockExamId: exam.id,
+          userId: user.id,
+          expiresAt: computeExpiresAt(exam),
+          isPractice: hasOfficialAttempt
+        }
+      });
+    } catch (error) {
+      // Corrida rara (duplo clique): segue para a sessão que já existir, sem tentar de novo.
+      const isKnownError = error instanceof Prisma.PrismaClientKnownRequestError;
+      if (!isKnownError) throw error;
+    }
   }
 
   redirect(`/simulados/${exam.id}`);
