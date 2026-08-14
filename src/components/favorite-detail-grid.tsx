@@ -78,7 +78,7 @@ export function FavoriteDetailGrid({ favorites }: { favorites: FavoriteItem[] })
                 ) : (
                   <p className="text-sm font-semibold text-emerald-800">Gabarito: {correctText}</p>
                 )}
-                <p className="text-xs text-[var(--muted-foreground)] leading-5"><MathText text={fav.question.explanation} /></p>
+                <p className="whitespace-pre-line text-xs leading-5 text-[var(--muted-foreground)]"><MathText text={fav.question.explanation} /></p>
                 <div className="flex justify-end">
                   <FavoriteButton questionId={fav.question.id} initialFavorited={true} />
                 </div>

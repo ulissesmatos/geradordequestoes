@@ -93,8 +93,10 @@ export type GeneratedQuestion = z.infer<typeof generatedItemSchema> & { supportT
 const MATH_FORMATTING_INSTRUCTION = [
   "Notação matemática: sempre que o enunciado, o texto de apoio, as alternativas ou a justificativa envolverem fórmulas, expressões, equações ou símbolos matemáticos (potências, frações, raízes, integrais, somatórios, matrizes, letras gregas etc.), escreva-os em LaTeX delimitado por \\( ... \\) dentro do texto, ou \\[ ... \\] em bloco.",
   "PROIBIDO deixar comando LaTeX solto fora dos delimitadores. ERRADO: 'vale t^{\\alpha-1} para x>0'. CERTO: 'vale \\(t^{\\alpha-1}\\) para \\(x>0\\)'. Comando cru como \\int, \\frac, \\alpha, \\Gamma ou expoente ^{...} fora de \\( \\) aparece como código na tela do aluno, sem virar fórmula.",
+  "PROIBIDO usar o símbolo Unicode em vez do comando LaTeX, mesmo dentro do texto corrido — ele também precisa virar comando e entrar nos delimitadores. Converta: ∫→\\int, √→\\sqrt{...}, ∑→\\sum, ∏→\\prod, ≤→\\le, ≥→\\ge, ≠→\\neq, ±→\\pm, ∞→\\infty, π→\\pi, α→\\alpha (mesma lógica pra qualquer letra grega). ERRADO: '∫_1^3 (2x) dx'. CERTO: '\\(\\displaystyle\\int_{1}^{3} 2x \\, dx\\)'. Isso vale mesmo sem nenhum \\comando: um '^' ou '_' usado como expoente/índice (ex.: x^2, a_n) TAMBÉM é fórmula e precisa estar dentro de \\( \\) — nunca solto no meio do texto, com chaves ou sem.",
   "Uma mesma frase NÃO pode ter parte delimitada e parte solta — ou tudo que é fórmula está dentro de \\( \\), ou a questão sai quebrada. Na dúvida, delimite.",
-  "Nunca use $ ou $$ como delimitador (confunde com valores em reais, ex. 'R$ 10,00'), e nunca use caracteres matemáticos Unicode como 𝐹 ou 𝑥 — escreva \\(F\\) e \\(x\\). Fora das fórmulas, mantenha texto normal em português."
+  "Nunca use $ ou $$ como delimitador (confunde com valores em reais, ex. 'R$ 10,00'), e nunca use caracteres matemáticos Unicode como 𝐹 ou 𝑥 — escreva \\(F\\) e \\(x\\). Fora das fórmulas, mantenha texto normal em português.",
+  "Organização da justificativa: quando a resolução tiver mais de um passo (isolar variável, substituir, calcular determinante etc.), separe cada passo em uma linha própria, com uma linha em branco entre eles, em vez de emendar tudo num único parágrafo corrido — o texto é exibido preservando essas quebras."
 ].join("\n");
 
 /**
@@ -395,8 +397,16 @@ function enforceQuantity(groups: RawGroup[], expected: number): RawGroup[] {
  */
 const MATH_DELIMITED = /\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
 
-/** Marcas de LaTeX: comando (\int, \frac, \alpha) ou expoente/índice com chaves (^{...}, _{...}). */
-const LATEX_MARKER = /\\[a-zA-Z]{2,}|[\^_]\{/;
+/**
+ * Marcas de LaTeX solto: comando (\int, \frac, \alpha), expoente/índice — com ou sem chaves
+ * (^2, _1, ^{2}, _{1}) — ou símbolo matemático Unicode usado no lugar do comando (∫, √, ∑, ∏,
+ * ≤, ≥, ≠, ±, ∞, ∂ ou letra grega solta, ex. α em vez de \alpha).
+ *
+ * Antes só pegava expoente/índice COM chaves ([\^_]\{), então "∫_1^3 (2x) dx" — símbolo Unicode
+ * mais expoente/índice sem chave — passava batido: nenhum \comando, nenhum ^{ }/_{ } literal.
+ * Foi exatamente esse padrão que chegou ao aluno sem renderizar.
+ */
+const LATEX_MARKER = /\\[a-zA-Z]{2,}|[\^_][0-9A-Za-z{(]|[∫∑∏√≤≥≠±∞∂÷×]|[Α-Ωα-ω]/;
 
 /**
  * Texto com LaTeX FORA de delimitador — o aluno vê "\int_0^\infty" cru na tela em vez da
@@ -438,7 +448,7 @@ function buildMathRepairInstruction(violations: MathViolation[]): string {
     "CORREÇÃO OBRIGATÓRIA — fórmulas fora dos delimitadores.",
     "Nestas questões há LaTeX solto, que aparece como código na tela do aluno em vez de virar fórmula:",
     list,
-    "Gere o lote NOVAMENTE do zero, com a mesma quantidade, formato e dificuldade, garantindo que TODA expressão matemática (em enunciado, texto de apoio, alternativas e justificativa) esteja dentro de \( ... \) ou \[ ... \]. Não deixe nenhum comando LaTeX nem expoente com chaves fora dos delimitadores, e não misture parte delimitada com parte solta na mesma frase."
+    "Gere o lote NOVAMENTE do zero, com a mesma quantidade, formato e dificuldade, garantindo que TODA expressão matemática (em enunciado, texto de apoio, alternativas e justificativa) esteja dentro de \( ... \) ou \[ ... \]. Não deixe nenhum comando LaTeX, símbolo Unicode (∫, √, ∑, ≤, π...) nem expoente/índice — com ou sem chaves — fora dos delimitadores, e não misture parte delimitada com parte solta na mesma frase."
   ].join("\n");
 }
 

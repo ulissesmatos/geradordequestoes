@@ -205,7 +205,7 @@ export function QuestionRunner({
                       <p className="text-sm font-semibold text-[var(--muted-foreground)]">Questão {questionIndex + 1}</p>
                       {showTools && <FavoriteButton questionId={question.id} initialFavorited={question.isFavorited ?? false} />}
                     </div>
-                    <p className="mt-1 opacity-60"><MathText text={question.statement} /></p>
+                    <p className="mt-1 whitespace-pre-line opacity-60"><MathText text={question.statement} /></p>
                     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-3">
                       <Lock className="h-4 w-4 shrink-0 text-[var(--primary)]" />
                       <p className="flex-1 text-sm text-[var(--primary-soft-foreground)]">Gabarito e explicação liberados para assinantes.</p>
@@ -245,7 +245,7 @@ export function QuestionRunner({
                       <p className="whitespace-pre-line text-xs leading-5 text-[var(--foreground)]"><MathText text={question.supportText} /></p>
                     </div>
                   )}
-                  <p className="mt-1"><MathText text={question.statement} /></p>
+                  <p className="mt-1 whitespace-pre-line leading-7"><MathText text={question.statement} /></p>
                   <p
                     className={
                       selected?.isCorrect
@@ -261,7 +261,9 @@ export function QuestionRunner({
                       {formatReviewReturn(nextReviewDates[question.id])}
                     </p>
                   )}
-                  <p className="mt-2 text-sm text-[var(--muted-foreground)]"><MathText text={question.explanation} /></p>
+                  <p className="mt-2 whitespace-pre-line rounded-md bg-[var(--surface)] p-3 text-sm leading-6 text-[var(--muted-foreground)]">
+                    <MathText text={question.explanation} />
+                  </p>
                   {question.sourceBadge && (
                     <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--muted-foreground)]">
                       <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
@@ -377,7 +379,7 @@ export function QuestionRunner({
             )}
           </div>
         )}
-        <p className="text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>
+        <p className="whitespace-pre-line text-base leading-7 md:text-lg md:leading-8"><MathText text={current.statement} /></p>
         {isLocked ? (
           <>
             <div className="flex flex-col items-center gap-3 rounded-md border border-[var(--primary)] bg-[var(--primary-soft)] p-6 text-center">
@@ -446,7 +448,9 @@ export function QuestionRunner({
                 }
               >
                 <p className="font-semibold">{selected.isCorrect ? "Resposta correta" : `Resposta incorreta. Gabarito: ${getCorrectLabel(current)}`}</p>
-                <p className="mt-2 text-sm"><MathText text={current.explanation} /></p>
+                <p className="mt-2 whitespace-pre-line border-t border-current/15 pt-2 text-sm leading-6">
+                  <MathText text={current.explanation} />
+                </p>
                 {current.sourceBadge && (
                   <p className="mt-2 flex items-center gap-1.5 text-xs font-medium opacity-80">
                     <BadgeCheck className="h-3.5 w-3.5 shrink-0" />

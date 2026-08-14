@@ -310,7 +310,7 @@ async function AnonymousSignupPreview({ questionSetId, quantity }: { questionSet
               <MathText text={first.supportText} />
             </p>
           )}
-          <p className="text-base leading-7">
+          <p className="whitespace-pre-line text-base leading-7">
             <MathText text={first.statement} />
           </p>
           <ul className="space-y-2">
