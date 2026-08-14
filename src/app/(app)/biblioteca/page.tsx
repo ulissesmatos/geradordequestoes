@@ -204,7 +204,7 @@ export default async function LibraryPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Biblioteca</h1>
+          <h1 className="text-3xl font-bold">Minhas questões</h1>
           <p className="text-[var(--muted-foreground)]">Tudo que a IA gerou para você: questões, simulados, revisões e favoritos.</p>
         </div>
         <div className="flex flex-wrap gap-2">

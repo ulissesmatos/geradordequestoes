@@ -7,7 +7,6 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronUp,
-  FolderOpen,
   HelpCircle,
   LayoutDashboard,
   ListChecks,
@@ -28,19 +27,22 @@ import { cn } from "@/lib/utils";
 export type NavDestination = { href: string; label: string; icon: typeof Sparkles; secondary?: boolean };
 
 /**
- * Os mesmos 7 destinos que o AppNav já expõe no desktop — reaproveitados aqui pro drawer mobile
+ * Os mesmos destinos que o AppNav já expõe no desktop — reaproveitados aqui pro drawer mobile
  * e por AppNav pra derivar o título do MobileTopBar a partir da rota (ver mobile-top-bar.tsx).
  * `secondary` replica o mesmo corte que o AppNav desktop já fazia com os dropdowns "Estudar"/"Meu
  * conteúdo": Painel e Chat IA são os únicos itens de topo mesmo lá; o resto entra atrás de "Mais"
  * aqui no mobile — menos coisa fixa disputando espaço com o histórico de conversas.
+ *
+ * "Questões" (banco curado pela equipe) saiu do menu — a página continua existindo em /questoes,
+ * só não tem mais entrada de navegação até ser reformulada. "Biblioteca" virou "Minhas questões"
+ * e assumiu o lugar de topo do grupo secundário: é o que as pessoas confundiam com "Questões".
  */
 export const NAV_DESTINATIONS: NavDestination[] = [
   { href: "/desempenho", label: "Painel", icon: LayoutDashboard },
   { href: "/ai", label: "Chat IA", icon: Sparkles },
-  { href: "/questoes", label: "Questões", icon: ListChecks, secondary: true },
+  { href: "/biblioteca", label: "Minhas questões", icon: ListChecks, secondary: true },
   { href: "/revisao", label: "Revisão", icon: CalendarClock, secondary: true },
   { href: "/simulados", label: "Simulados", icon: Timer, secondary: true },
-  { href: "/biblioteca", label: "Biblioteca", icon: FolderOpen, secondary: true },
   { href: "/materiais", label: "Materiais", icon: BookOpen, secondary: true },
   { href: "/tutorial", label: "Tutorial", icon: HelpCircle, secondary: true }
 ];
