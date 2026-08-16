@@ -1067,6 +1067,7 @@ function SessionRow({
         open={shareOpen}
         onOpenChange={setShareOpen}
         title="Compartilhar conversa"
+        shareTitle={session.title}
         description="Cópia somente-leitura, congelada agora. Quem tiver o link não vê mensagens trocadas depois."
         revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
         initialShareUrl={session.shareUrl}

@@ -182,6 +182,7 @@ export default async function LibraryPage({
           {isOwner && (
             <ShareLinkModal
               title="Compartilhar bloco de questões"
+              shareTitle={selectedSet.title}
               description={
                 user.role === Role.ADMIN
                   ? "Escolha abaixo quem pode ver e responder este link."
