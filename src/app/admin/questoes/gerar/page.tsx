@@ -1,13 +1,8 @@
-import { GenerateForm } from "@/components/generate-form";
-import { AdminPageHeader } from "@/components/admin/page-header";
-import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
-export default async function GenerateQuestionsPage() {
-  const subjects = await prisma.subject.findMany({ include: { topics: true }, orderBy: { name: "asc" } });
-  return (
-    <div className="space-y-6">
-      <AdminPageHeader title="Geração por IA" description="Gere questões em lote com IA para revisão." />
-      <GenerateForm subjects={subjects} />
-    </div>
-  );
+// Página unificada em /admin/questoes (aba "Gerar com IA") — mantém a URL antiga funcionando.
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const params = new URLSearchParams(Object.entries(await searchParams).filter(([, v]) => v != null) as [string, string][]);
+  params.set("tab", "gerar");
+  redirect(`/admin/questoes?${params.toString()}`);
 }

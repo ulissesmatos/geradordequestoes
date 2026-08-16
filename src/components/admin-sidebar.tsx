@@ -7,28 +7,21 @@ import {
   BarChart3,
   Bot,
   BookOpen,
-  Bug,
   Building2,
   CreditCard,
   FileQuestion,
-  Flag,
-  FolderCog,
   GraduationCap,
   Handshake,
   Inbox,
-  ListChecks,
-  Mail,
   Megaphone,
   Menu,
   Receipt,
   ScrollText,
   Settings,
-  Share2,
   Target,
   Timer,
   TrendingUp,
   Users,
-  Wallet,
   X
 } from "lucide-react";
 import { logoutAction } from "@/app/actions";
@@ -49,7 +42,6 @@ const groups = [
   {
     label: "Financeiro",
     links: [
-      { href: "/admin/analytics/caixa", label: "Caixa & DRE", icon: Wallet },
       { href: "/admin/planos", label: "Planos & Pricing", icon: CreditCard },
       { href: "/admin/pagamentos", label: "Pagamentos", icon: CreditCard },
       { href: "/admin/despesas", label: "Despesas", icon: Receipt },
@@ -62,37 +54,27 @@ const groups = [
     label: "Questões & Simulados",
     links: [
       { href: "/admin/questoes", label: "Questões", icon: FileQuestion },
-      { href: "/admin/questoes/gerar", label: "Gerar questões", icon: Bot },
-      { href: "/admin/questoes/revisar", label: "Revisar questões", icon: ListChecks },
-      { href: "/admin/feedbacks", label: "Feedback de questões", icon: Flag },
-      { href: "/admin/simulados", label: "Simulados", icon: Timer },
-      { href: "/admin/compartilhamentos", label: "Compartilhamentos", icon: Share2 }
+      { href: "/admin/simulados", label: "Simulados", icon: Timer }
     ]
   },
   {
     label: "Conteúdo & Matérias",
     links: [
-      { href: "/admin/referencias", label: "Materiais de referência", icon: BookOpen },
-      { href: "/admin/materiais-ia", label: "Materiais IA", icon: FolderCog },
+      { href: "/admin/referencias", label: "Materiais", icon: BookOpen },
       { href: "/admin/materias", label: "Matérias e assuntos", icon: BookOpen },
       { href: "/admin/tutorial", label: "Tutorial", icon: GraduationCap }
     ]
   },
   {
     label: "IA",
-    links: [
-      { href: "/admin/ia", label: "Provedores e limites", icon: Settings },
-      { href: "/admin/logs-ia", label: "Logs IA", icon: Bot }
-    ]
+    links: [{ href: "/admin/ia", label: "IA", icon: Bot }]
   },
   {
     label: "Plataforma",
     links: [
-      { href: "/admin/email", label: "E-mail", icon: Mail },
+      { href: "/admin/branding", label: "Configurações", icon: Settings },
       { href: "/admin/popups", label: "Popups", icon: Megaphone },
-      { href: "/admin/auditoria", label: "Auditoria", icon: ScrollText },
-      { href: "/admin/erros-cliente", label: "Erros do navegador", icon: Bug },
-      { href: "/admin/branding", label: "Branding", icon: Settings }
+      { href: "/admin/auditoria", label: "Auditoria", icon: ScrollText }
     ]
   }
 ];

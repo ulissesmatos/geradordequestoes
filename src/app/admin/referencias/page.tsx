@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { BookOpen, Eye } from "lucide-react";
-import { ReferenceExtractionStatus, ReferenceKind } from "@prisma/client";
+import { ReferenceExtractionStatus, ReferenceKind, StudyMaterialStatus } from "@prisma/client";
 import { createReferenceAction, deleteReferenceAction } from "@/app/admin/referencias/actions";
+import { AdminTabs, type AdminTabDef } from "@/components/admin/admin-tabs";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { ConfirmDeleteButton } from "@/components/admin/confirm-delete-button";
 import { ExtractionModelPicker } from "@/components/admin/extraction-model-picker";
@@ -15,12 +16,17 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getModelOptionsForProvider } from "@/lib/ai/model-catalog";
 import { getAiSettings, providerLabel } from "@/lib/ai/settings";
-import { formatDateBR } from "@/lib/dates";
+import { formatDateBR, formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 
 function formatDate(date: Date) {
   return formatDateBR(date);
 }
+
+const TABS: AdminTabDef[] = [
+  { value: "referencia", label: "Materiais de referência" },
+  { value: "alunos", label: "Materiais dos alunos" }
+];
 
 const extractionMeta: Record<ReferenceExtractionStatus, { label: string; tone: "neutral" | "success" | "warning" | "danger" }> = {
   [ReferenceExtractionStatus.PENDING]: { label: "Não processado", tone: "neutral" },
@@ -33,7 +39,25 @@ const extractionMeta: Record<ReferenceExtractionStatus, { label: string; tone: "
  * pesquisável pelo chat assim que é indexado, então a extração vira uma ação secundária/opcional. */
 const questionSourceKinds: ReferenceKind[] = [ReferenceKind.PROVA, ReferenceKind.GABARITO];
 
-export default async function AdminReferenciasPage() {
+export default async function AdminMateriaisHubPage({
+  searchParams
+}: {
+  searchParams: Promise<{ tab?: string; status?: string }>;
+}) {
+  const params = await searchParams;
+  const activeTab = params.tab === "alunos" ? "alunos" : "referencia";
+
+  return (
+    <div className="space-y-6">
+      <AdminPageHeader title="Materiais" description="Materiais de referência cadastrados pela equipe e materiais de estudo gerados pelos alunos via chat." />
+      <AdminTabs tabs={TABS} activeValue={activeTab} basePath="/admin/referencias" />
+      {activeTab === "referencia" && <ReferenciaTab />}
+      {activeTab === "alunos" && <AlunosTab status={params.status} />}
+    </div>
+  );
+}
+
+async function ReferenciaTab() {
   const [subjects, documents, aiSettings, questionsBySubject] = await Promise.all([
     prisma.subject.findMany({ include: { topics: { orderBy: { name: "asc" } } }, orderBy: { name: "asc" } }),
     prisma.referenceDocument.findMany({
@@ -65,10 +89,10 @@ export default async function AdminReferenciasPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader
-        title="Materiais de referência"
-        description="Provas reais, gabaritos, editais, leis e resumos/apostilas. Todo material vira trechos pesquisáveis pelo chat assim que é salvo — 'Processar com IA' é um passo à parte, só para extrair questões estruturadas (enunciado, gabarito, pegadinha) de provas."
-      />
+      <p className="text-sm text-[var(--muted-foreground)]">
+        Provas reais, gabaritos, editais, leis e resumos/apostilas. Todo material vira trechos pesquisáveis pelo chat assim que é
+        salvo — &quot;Processar com IA&quot; é um passo à parte, só para extrair questões estruturadas (enunciado, gabarito, pegadinha) de provas.
+      </p>
 
       {totalUnclassified > 0 && <ReclassifyAllButton pending={totalUnclassified} />}
 
@@ -264,5 +288,114 @@ function SubjectBreakdown({
       {rest > 0 && <span className="text-xs text-[var(--muted-foreground)]">+{rest}</span>}
       {entry.unclassified > 0 && <StatusBadge tone="warning">{entry.unclassified} sem matéria</StatusBadge>}
     </div>
+  );
+}
+
+async function AlunosTab({ status: statusRaw }: { status?: string }) {
+  const status = Object.values(StudyMaterialStatus).includes(statusRaw as StudyMaterialStatus)
+    ? (statusRaw as StudyMaterialStatus)
+    : undefined;
+
+  const [materials, total, ready, archived] = await Promise.all([
+    prisma.studyMaterial.findMany({
+      where: status ? { status } : undefined,
+      include: { user: true, subject: true, topic: true },
+      orderBy: { createdAt: "desc" },
+      take: 80
+    }),
+    prisma.studyMaterial.count(),
+    prisma.studyMaterial.count({ where: { status: StudyMaterialStatus.READY } }),
+    prisma.studyMaterial.count({ where: { status: StudyMaterialStatus.ARCHIVED } })
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-[var(--muted-foreground)]">Materiais de estudo privados gerados pelos alunos via chat.</p>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Metric title="Total" value={total} />
+        <Metric title="Prontos" value={ready} />
+        <Metric title="Arquivados" value={archived} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Filtros</CardTitle>
+          <CardDescription>Controle rápido por status.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <FilterLink href="/admin/referencias?tab=alunos" active={!status}>Todos</FilterLink>
+          {Object.values(StudyMaterialStatus).map((item) => (
+            <FilterLink key={item} href={`/admin/referencias?tab=alunos&status=${item}`} active={status === item}>
+              {item}
+            </FilterLink>
+          ))}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4">
+        {materials.map((material) => (
+          <Card key={material.id}>
+            <CardContent className="space-y-3 pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">{material.title}</h2>
+                  <p className="text-sm text-[var(--muted-foreground)]">
+                    {material.user.email} / {material.subject?.name ?? "Sem matéria"} / {material.topic?.name ?? "Sem assunto"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-[var(--surface-subtle)] px-3 py-1 text-xs font-semibold text-[var(--muted-foreground)]">
+                  {material.status}
+                </span>
+              </div>
+              <p className="line-clamp-2 text-sm text-[var(--muted-foreground)]">{material.prompt}</p>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Link className="font-semibold text-[var(--primary)] hover:underline" href={`/materiais/${material.id}`}>
+                  Abrir como aluno
+                </Link>
+                <Link className="font-semibold text-[var(--primary)] hover:underline" href={`/materiais/${material.id}/pdf`}>
+                  Baixar PDF
+                </Link>
+                <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(material.createdAt)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {materials.length === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Nenhum material encontrado</CardTitle>
+              <CardDescription>Quando alunos gerarem materiais no chat, eles aparecerão aqui.</CardDescription>
+            </CardHeader>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Metric({ title, value }: { title: string; value: number }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{value}</CardTitle>
+        <CardDescription>{title}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function FilterLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+        active
+          ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]"
+          : "border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
+      }`}
+      href={href}
+    >
+      {children}
+    </Link>
   );
 }
