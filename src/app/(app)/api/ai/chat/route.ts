@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
+import { getAiSettings } from "@/lib/ai/settings";
 import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
@@ -42,18 +43,26 @@ export async function POST(request: Request) {
   const prompt = String(body?.prompt ?? "").trim();
   const sessionId = String(body?.sessionId ?? "");
   const attachments = await resolveAttachments(body?.attachments);
+  const wantsAdvancedModel = body?.useAdvancedModel === true;
   if (!prompt && attachments.length === 0) {
     return Response.json({ error: "Digite uma mensagem." }, { status: 400 });
   }
 
+  const entitlements = await getEntitlements(user);
+
   // Segundo gate, além do de /api/uploads: um anexo pode chegar aqui de uma requisição
   // forjada ou de um plano que mudou no meio da sessão. Barra antes de abrir o stream.
-  if (attachments.length > 0 && !(await getEntitlements(user)).can("chatAttachments")) {
+  if (attachments.length > 0 && !entitlements.can("chatAttachments")) {
     return upgradeRequiredResponse(
       "chatAttachments",
       "Enviar arquivos no chat está disponível nos planos pagos. Assine para gerar questões a partir do seu próprio material."
     );
   }
+
+  // Nunca confia no boolean vindo do cliente: só resolve modelOverride se a capability estiver
+  // ligada de verdade E o admin tiver configurado um modelo avançado (vazio = feature inerte).
+  const modelOverride =
+    wantsAdvancedModel && entitlements.can("premiumModel") ? (await getAiSettings()).premiumModel || undefined : undefined;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -103,6 +112,7 @@ export async function POST(request: Request) {
           user,
           sessionId: session.id,
           prompt: prompt || "Analise o anexo enviado.",
+          modelOverride,
           onEvent: (event) => {
             if (event.type === "delta") send("delta", { text: event.text });
             else if (event.type === "draft_discarded") send("discard", {});

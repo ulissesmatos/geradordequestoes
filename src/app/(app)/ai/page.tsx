@@ -3,6 +3,7 @@ import { AiChatDashboard } from "@/components/ai-chat-dashboard";
 import { Paywall } from "@/components/paywall";
 import { ProfileCompletionPrompt } from "@/components/profile-completion-prompt";
 import { StudyStatesPrompt } from "@/components/study-states-prompt";
+import { getAiSettings } from "@/lib/ai/settings";
 import { chatShareUrl } from "@/lib/chat-share";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
@@ -25,7 +26,7 @@ export default async function AiChatPage({
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialSidebarOpen = cookieStore.get("ai-sidebar")?.value !== "0";
-  const [sessions, usage, subjects, entitlements, usageSummary, streak] = await Promise.all([
+  const [sessions, usage, subjects, entitlements, usageSummary, streak, aiSettings] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
@@ -36,7 +37,8 @@ export default async function AiChatPage({
     prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 }),
     getEntitlements(user),
     getUsageSummary(user),
-    getStreak(user.id)
+    getStreak(user.id),
+    getAiSettings()
   ]);
 
   // Devolve null em modo sombra (ver buildQuotaAlert), e aí o chat cai no aviso legado — que é
@@ -85,6 +87,7 @@ export default async function AiChatPage({
         quotaAlert={quotaAlert}
         isAdmin={user.role === "ADMIN"}
         canAttach={entitlements.can("chatAttachments")}
+        canUseAdvancedModel={entitlements.can("premiumModel") && Boolean(aiSettings.premiumModel)}
         initialSidebarOpen={initialSidebarOpen}
         streak={streak.current}
         streakActiveToday={streak.activeToday}

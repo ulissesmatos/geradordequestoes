@@ -22,7 +22,13 @@ export async function getAiSettings() {
      * não configurado (quem calcula custo deve mostrar "—", nunca inventar número).
      */
     inputPricePerMillionUsd: stored?.inputPricePerMillionUsd != null ? stored.inputPricePerMillionUsd.toNumber() : null,
-    outputPricePerMillionUsd: stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toNumber() : null
+    outputPricePerMillionUsd: stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toNumber() : null,
+    /** Modelo usado quando a capability `premiumModel` está ligada (vazio = feature inerte). */
+    premiumModel: stored?.premiumModel || "",
+    premiumInputPricePerMillionUsd:
+      stored?.premiumInputPricePerMillionUsd != null ? stored.premiumInputPricePerMillionUsd.toNumber() : null,
+    premiumOutputPricePerMillionUsd:
+      stored?.premiumOutputPricePerMillionUsd != null ? stored.premiumOutputPricePerMillionUsd.toNumber() : null
   };
 }
 

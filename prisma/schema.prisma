@@ -278,6 +278,11 @@ model AiProviderSetting {
   /// Decimal (não Int cents): custo por token é sub-centavo. null = custo não calculado.
   inputPricePerMillionUsd  Decimal?               @db.Decimal(10, 4)
   outputPricePerMillionUsd Decimal?               @db.Decimal(10, 4)
+  /// Modelo usado quando a capability `premiumModel` (Admin → Planos) está ligada e o aluno
+  /// opta por ele no chat. null = feature inerte (capability liga, mas nada muda).
+  premiumModel                     String?
+  premiumInputPricePerMillionUsd   Decimal?       @db.Decimal(10, 4)
+  premiumOutputPricePerMillionUsd  Decimal?       @db.Decimal(10, 4)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 }

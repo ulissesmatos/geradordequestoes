@@ -932,6 +932,9 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   const chatPresetUsageLevel = (formData.get("chatPresetUsageLevel") as AiChatPresetUsageLevel) || AiChatPresetUsageLevel.MEDIO;
   const inputPricePerMillionUsd = parseOptionalPrice(formData, "inputPricePerMillionUsd");
   const outputPricePerMillionUsd = parseOptionalPrice(formData, "outputPricePerMillionUsd");
+  const premiumModel = String(formData.get("premiumModel") ?? "").trim();
+  const premiumInputPricePerMillionUsd = parseOptionalPrice(formData, "premiumInputPricePerMillionUsd");
+  const premiumOutputPricePerMillionUsd = parseOptionalPrice(formData, "premiumOutputPricePerMillionUsd");
 
   // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
   const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
@@ -950,7 +953,10 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       appName: appName || null,
       chatPresetUsageLevel,
       inputPricePerMillionUsd,
-      outputPricePerMillionUsd
+      outputPricePerMillionUsd,
+      premiumModel: premiumModel || null,
+      premiumInputPricePerMillionUsd,
+      premiumOutputPricePerMillionUsd
     },
     create: {
       id: "default",
@@ -964,7 +970,10 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       appName: appName || null,
       chatPresetUsageLevel,
       inputPricePerMillionUsd,
-      outputPricePerMillionUsd
+      outputPricePerMillionUsd,
+      premiumModel: premiumModel || null,
+      premiumInputPricePerMillionUsd,
+      premiumOutputPricePerMillionUsd
     }
   });
 

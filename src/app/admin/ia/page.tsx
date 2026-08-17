@@ -91,6 +91,11 @@ async function ConfigTab() {
   };
   const inputPriceValue = stored?.inputPricePerMillionUsd != null ? stored.inputPricePerMillionUsd.toString() : "";
   const outputPriceValue = stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toString() : "";
+  const premiumModelValue = stored?.premiumModel ?? "";
+  const premiumInputPriceValue =
+    stored?.premiumInputPricePerMillionUsd != null ? stored.premiumInputPricePerMillionUsd.toString() : "";
+  const premiumOutputPriceValue =
+    stored?.premiumOutputPricePerMillionUsd != null ? stored.premiumOutputPricePerMillionUsd.toString() : "";
 
   return (
     <Card>
@@ -187,6 +192,54 @@ async function ConfigTab() {
                 />
               </label>
             </div>
+          </div>
+
+          {/* ── Modelo avançado (capability "premiumModel") ── */}
+          <div className="space-y-3 rounded-md border border-[var(--border)] p-4">
+            <div>
+              <p className="text-sm font-semibold">Modelo avançado (opcional)</p>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Usado quando um plano tem a capability &quot;Modelo de IA avançado&quot; ligada (Admin → Planos) e o aluno
+                escolhe usá-lo no chat, em vez do modelo padrão acima. Vazio = a capability fica sem efeito.
+              </p>
+            </div>
+            <label className="space-y-1 text-sm font-medium">
+              Modelo
+              <Input
+                name="premiumModel"
+                defaultValue={premiumModelValue}
+                list="ai-model-presets"
+                placeholder="Ex.: claude-opus-4-8 (deixe em branco para desativar)"
+              />
+            </label>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1 text-sm font-medium">
+                Entrada (US$/1M tokens)
+                <Input
+                  name="premiumInputPricePerMillionUsd"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  defaultValue={premiumInputPriceValue}
+                  placeholder="Ex.: 15.00"
+                />
+              </label>
+              <label className="space-y-1 text-sm font-medium">
+                Saída (US$/1M tokens)
+                <Input
+                  name="premiumOutputPricePerMillionUsd"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  defaultValue={premiumOutputPriceValue}
+                  placeholder="Ex.: 75.00"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Preço à parte do modelo padrão acima — sem ele, gerações com o modelo avançado aparecem com custo não
+              medido nos logs.
+            </p>
           </div>
 
           <datalist id="ai-model-presets">

@@ -647,6 +647,11 @@ export async function generateQuestions(input: {
   const settings = input.modelOverride?.trim()
     ? { ...baseSettings, model: input.modelOverride.trim() }
     : baseSettings;
+  // modelOverride pode ser o modelo avançado configurado (cobrado com o preço dedicado a ele)
+  // ou um override avulso qualquer (ex.: simulado do admin, sem preço conhecido → custo null).
+  const usedPremiumModel = Boolean(
+    input.modelOverride?.trim() && baseSettings.premiumModel && input.modelOverride.trim() === baseSettings.premiumModel
+  );
 
   const format = input.format ?? "CERTO_ERRADO";
   const alternativesCount = clampAlternatives(input.alternativesCount ?? 4);
@@ -733,9 +738,10 @@ export async function generateQuestions(input: {
    */
   if (batchSizes.length === 1) {
     const groups = await runBatch(prompt, totalWanted);
-    // modelOverride usa um modelo diferente do configurado em /admin/ia — o preço lá é só do
-    // modelo default, então calcular custo com ele seria mostrar um número errado.
-    const costUsd = input.modelOverride?.trim() ? null : await computeCostUsd(cumulativeUsage);
+    // modelOverride usa um modelo diferente do configurado em /admin/ia — só sabemos o preço
+    // dele quando é exatamente o modelo avançado (preço dedicado); qualquer outro override
+    // (ex.: simulado avulso do admin) fica sem custo calculado, pra não mostrar número errado.
+    const costUsd = input.modelOverride?.trim() && !usedPremiumModel ? null : await computeCostUsd(cumulativeUsage, usedPremiumModel ? "premium" : "default");
     return normalizeGenerated({
       provider: settings.provider,
       model: settings.model,
@@ -791,7 +797,7 @@ export async function generateQuestions(input: {
     }
   }
 
-  const costUsd = input.modelOverride?.trim() ? null : await computeCostUsd(cumulativeUsage);
+  const costUsd = input.modelOverride?.trim() && !usedPremiumModel ? null : await computeCostUsd(cumulativeUsage, usedPremiumModel ? "premium" : "default");
   return normalizeGenerated({
     provider: settings.provider,
     model: settings.model,

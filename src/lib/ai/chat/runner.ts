@@ -85,6 +85,11 @@ export async function runChatTurn(input: {
   prompt: string;
   /** Reservado para streaming futuro via route handler; ignorado por enquanto. */
   onEvent?: (event: ChatTurnEvent) => void;
+  /**
+   * Modelo avançado já resolvido e autorizado pelo chamador (capability `premiumModel`
+   * conferida no route handler) — repassado só às ferramentas que geram questão de verdade.
+   */
+  modelOverride?: string;
 }): Promise<ChatTurnResult> {
   const settings = await getAiSettings();
   if (!settings.apiKey) {
@@ -166,7 +171,8 @@ export async function runChatTurn(input: {
           name: call.name,
           argumentsJson: call.argumentsJson,
           // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
-          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" })
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" }),
+          modelOverride: input.modelOverride
         });
         toolTrace.push({
           name: call.name,
@@ -216,6 +222,8 @@ export async function streamChatTurn(input: {
   sessionId: string;
   prompt: string;
   onEvent: (event: ChatTurnEvent) => void;
+  /** Ver `runChatTurn`. */
+  modelOverride?: string;
 }): Promise<ChatTurnResult> {
   const settings = await getAiSettings();
   if (!settings.apiKey) {
@@ -308,7 +316,8 @@ export async function streamChatTurn(input: {
           name: call.name,
           argumentsJson: call.argumentsJson,
           // Reaproveita o canal de tool_started: a tela só troca a frase exibida.
-          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" })
+          onProgress: (label) => input.onEvent?.({ type: "tool_started", name: call.name, label, phase: "step" }),
+          modelOverride: input.modelOverride
         });
         toolTrace.push({
           name: call.name,

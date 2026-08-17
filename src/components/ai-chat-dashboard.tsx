@@ -200,6 +200,7 @@ export function AiChatDashboard({
   subjectNames,
   isAdmin = false,
   canAttach = true,
+  canUseAdvancedModel = false,
   initialSidebarOpen = true,
   banner,
   streak,
@@ -220,6 +221,8 @@ export function AiChatDashboard({
   isAdmin?: boolean;
   /** Capability `chatAttachments`. Cosmético — quem barra de verdade é o servidor. */
   canAttach?: boolean;
+  /** Capability `premiumModel` E admin já configurou um modelo avançado. Cosmético — o servidor reconfere os dois. */
+  canUseAdvancedModel?: boolean;
   initialSidebarOpen?: boolean;
   banner?: React.ReactNode;
   /** Dias seguidos de estudo, mostrado na mini-header mobile (ver MobileTopBar). undefined esconde o badge. */
@@ -230,6 +233,8 @@ export function AiChatDashboard({
   const [message, setMessage] = useState(initialPrompt ?? "");
   const [pastedBlocks, setPastedBlocks] = useState<{ id: string; chars: number; text: string }[]>([]);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
+  // Preferência da conversa, não da mensagem: fica ligado entre envios até o usuário desligar.
+  const [useAdvancedModel, setUseAdvancedModel] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(initialSidebarOpen);
@@ -529,7 +534,12 @@ export function AiChatDashboard({
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionToSend ?? undefined, prompt: promptToSend, attachments: attachmentsToSend })
+        body: JSON.stringify({
+          sessionId: sessionToSend ?? undefined,
+          prompt: promptToSend,
+          attachments: attachmentsToSend,
+          useAdvancedModel
+        })
       });
       if (!response.ok || !response.body) {
         const data = await response.json().catch(() => ({}));
@@ -726,28 +736,56 @@ export function AiChatDashboard({
             className="min-h-[68px] w-full resize-none border-0 bg-transparent p-4 text-base text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] md:min-h-[74px]"
           />
           <div className="flex items-center justify-between px-3 pb-3">
-            {canAttach ? (
-              <button
-                type="button"
-                aria-label="Anexar imagem ou PDF"
-                title="Anexar imagem ou PDF"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <Paperclip className="h-5 w-5" />
-              </button>
-            ) : (
-              // Vira convite em vez de sumir: a pessoa precisa descobrir que a
-              // funcionalidade existe para querer assinar por ela.
-              <Link
-                href="/assinatura"
-                title="Enviar PDF ou imagem está disponível nos planos pagos"
-                className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-              >
-                <Paperclip className="h-4 w-4" />
-                Anexar arquivo (planos pagos)
-              </Link>
-            )}
+            <div className="flex items-center gap-1">
+              {canAttach ? (
+                <button
+                  type="button"
+                  aria-label="Anexar imagem ou PDF"
+                  title="Anexar imagem ou PDF"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </button>
+              ) : (
+                // Vira convite em vez de sumir: a pessoa precisa descobrir que a
+                // funcionalidade existe para querer assinar por ela.
+                <Link
+                  href="/assinatura"
+                  title="Enviar PDF ou imagem está disponível nos planos pagos"
+                  className="flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                >
+                  <Paperclip className="h-4 w-4" />
+                  Anexar arquivo (planos pagos)
+                </Link>
+              )}
+              {canUseAdvancedModel ? (
+                <button
+                  type="button"
+                  aria-pressed={useAdvancedModel}
+                  title={useAdvancedModel ? "Modelo avançado ativado para esta conversa" : "Gerar questões com o modelo de IA mais avançado"}
+                  onClick={() => setUseAdvancedModel((value) => !value)}
+                  className={cn(
+                    "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition",
+                    useAdvancedModel
+                      ? "bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-white"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                  )}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Modelo avançado
+                </button>
+              ) : (
+                <Link
+                  href="/assinatura"
+                  title="Gerar questões com o modelo de IA mais avançado está disponível em planos superiores"
+                  className="hidden h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] sm:flex"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Modelo avançado (planos superiores)
+                </Link>
+              )}
+            </div>
             <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
           </div>
         </div>
