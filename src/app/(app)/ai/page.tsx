@@ -45,6 +45,9 @@ export default async function AiChatPage({
   // o correto enquanto quem bloqueia ainda é o contador antigo de gerações/dia.
   const quotaAlert = buildQuotaAlert(usageSummary);
 
+  // Switch-mestra (Admin → IA) + modelo configurado — sem os dois, a feature nem existe agora.
+  const advancedModelReady = aiSettings.premiumModelEnabled && Boolean(aiSettings.premiumModel);
+
   // Entrar em /ai sem sessionId sempre abre um chat novo (estado vazio) — não carrega
   // automaticamente a última conversa. Um chat específico só abre quando o link diz
   // qual (clique na sidebar, retomar um card salvo, etc.).
@@ -87,13 +90,12 @@ export default async function AiChatPage({
         quotaAlert={quotaAlert}
         isAdmin={user.role === "ADMIN"}
         canAttach={entitlements.can("chatAttachments")}
-        // Switch-mestra (Admin → IA) independente de plano; admin usa assim que ela estiver
-        // ligada, sem depender da capability de plano nenhuma (que nem existe pra conta admin).
-        canUseAdvancedModel={
-          aiSettings.premiumModelEnabled &&
-          Boolean(aiSettings.premiumModel) &&
-          (entitlements.kind === "ADMIN" || entitlements.can("premiumModel"))
-        }
+        // Switch-mestra (Admin → IA) desligada = feature nem existe agora: esconde o botão
+        // inteiro, em vez de convidar pra um upgrade que não muda nada. Ligada, aí sim separa
+        // quem pode usar (admin sempre; aluno só com a capability `premiumModel` no plano) de
+        // quem só vê o convite pra assinar.
+        advancedModelAvailable={advancedModelReady}
+        canUseAdvancedModel={advancedModelReady && (entitlements.kind === "ADMIN" || entitlements.can("premiumModel"))}
         initialSidebarOpen={initialSidebarOpen}
         streak={streak.current}
         streakActiveToday={streak.activeToday}

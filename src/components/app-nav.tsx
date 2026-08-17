@@ -28,12 +28,10 @@ const navItems: NavItem[] = [
   { label: "Chat IA", icon: "ti-sparkles", href: "/ai" },
   {
     // "Questões" (banco curado pela equipe) saiu daqui — a página segue existindo em /questoes,
-    // só sem entrada de navegação até ser reformulada. "Minhas questões" (ex-Biblioteca) assume
-    // o topo do grupo: era o que as pessoas confundiam com "Questões".
+    // só sem entrada de navegação até ser reformulada.
     label: "Estudar",
     icon: "ti-school",
     children: [
-      { href: "/biblioteca", label: "Minhas questões", icon: "ti-list-check", description: "Questões e blocos que você já gerou" },
       { href: "/revisao", label: "Revisão", icon: "ti-calendar-time", description: "Sua agenda de revisão espaçada" },
       { href: "/simulados", label: "Simulados", icon: "ti-clock-play", description: "Provas cronometradas estilo Cebraspe" }
     ]
@@ -42,6 +40,7 @@ const navItems: NavItem[] = [
     label: "Meu conteúdo",
     icon: "ti-folder",
     children: [
+      { href: "/biblioteca", label: "Minhas questões", icon: "ti-list-check", description: "Questões e blocos que você já gerou" },
       { href: "/materiais", label: "Materiais", icon: "ti-book-2", description: "Materiais de estudo da IA" },
       { href: "/tutorial", label: "Tutorial", icon: "ti-help-circle", description: "Como usar cada parte da plataforma" }
     ]

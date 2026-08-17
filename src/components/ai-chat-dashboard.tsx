@@ -200,6 +200,7 @@ export function AiChatDashboard({
   subjectNames,
   isAdmin = false,
   canAttach = true,
+  advancedModelAvailable = false,
   canUseAdvancedModel = false,
   initialSidebarOpen = true,
   banner,
@@ -221,7 +222,9 @@ export function AiChatDashboard({
   isAdmin?: boolean;
   /** Capability `chatAttachments`. Cosmético — quem barra de verdade é o servidor. */
   canAttach?: boolean;
-  /** Capability `premiumModel` E admin já configurou um modelo avançado. Cosmético — o servidor reconfere os dois. */
+  /** Switch-mestra (Admin → IA) ligada + modelo configurado. false = esconde o botão inteiro. */
+  advancedModelAvailable?: boolean;
+  /** `advancedModelAvailable` E o usuário está autorizado (admin, ou capability `premiumModel` no plano). Cosmético — o servidor reconfere. */
   canUseAdvancedModel?: boolean;
   initialSidebarOpen?: boolean;
   banner?: React.ReactNode;
@@ -759,32 +762,35 @@ export function AiChatDashboard({
                   Anexar arquivo (planos pagos)
                 </Link>
               )}
-              {canUseAdvancedModel ? (
-                <button
-                  type="button"
-                  aria-pressed={useAdvancedModel}
-                  title={useAdvancedModel ? "Modelo avançado ativado para esta conversa" : "Gerar questões com o modelo de IA mais avançado"}
-                  onClick={() => setUseAdvancedModel((value) => !value)}
-                  className={cn(
-                    "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition",
-                    useAdvancedModel
-                      ? "bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-white"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
-                  )}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Modelo avançado
-                </button>
-              ) : (
-                <Link
-                  href="/assinatura"
-                  title="Gerar questões com o modelo de IA mais avançado está disponível em planos superiores"
-                  className="hidden h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] sm:flex"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Modelo avançado (planos superiores)
-                </Link>
-              )}
+              {/* Switch-mestra desligada (Admin → IA) = feature nem existe agora: some por
+                  completo, em vez de convidar pra um upgrade que não muda nada. */}
+              {advancedModelAvailable &&
+                (canUseAdvancedModel ? (
+                  <button
+                    type="button"
+                    aria-pressed={useAdvancedModel}
+                    title={useAdvancedModel ? "Modelo avançado ativado para esta conversa" : "Gerar questões com o modelo de IA mais avançado"}
+                    onClick={() => setUseAdvancedModel((value) => !value)}
+                    className={cn(
+                      "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition",
+                      useAdvancedModel
+                        ? "bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-white"
+                        : "text-[var(--muted-foreground)] hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)]"
+                    )}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Modelo avançado
+                  </button>
+                ) : (
+                  <Link
+                    href="/assinatura"
+                    title="Gerar questões com o modelo de IA mais avançado está disponível em planos superiores"
+                    className="hidden h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--surface-subtle)] hover:text-[var(--foreground)] sm:flex"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Modelo avançado (planos superiores)
+                  </Link>
+                ))}
             </div>
             <ChatSubmitButton canSend={canSend} pending={isSubmitting || uploadingCount > 0} />
           </div>
@@ -830,6 +836,23 @@ export function AiChatDashboard({
         </div>
 
         {sidebarOpen ? sessionList : <div className="flex-1" />}
+
+        {/* Mesmo gatilho do drawer mobile (usage.isTrial) — some sozinho pra quem já assina. */}
+        {Boolean(usage.isTrial) && (
+          <div className="border-t border-[var(--border)] p-2">
+            <Link
+              href="/pricing"
+              title="Fazer upgrade"
+              className={cn(
+                "flex h-9 items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-[var(--primary)] to-[#14a89a] text-sm font-semibold text-white shadow-[0_6px_16px_-6px_rgba(10,98,104,0.5)] transition hover:opacity-90",
+                sidebarOpen ? "w-full" : "w-full px-0"
+              )}
+            >
+              <Sparkles className="h-4 w-4 shrink-0" />
+              {sidebarOpen && "Fazer upgrade"}
+            </Link>
+          </div>
+        )}
       </aside>
 
       {/* Drawer mobile único, compartilhado com o resto do app (ver AppNav) — mesmo padrão em
