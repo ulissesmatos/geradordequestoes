@@ -283,6 +283,9 @@ model AiProviderSetting {
   premiumModel                     String?
   premiumInputPricePerMillionUsd   Decimal?       @db.Decimal(10, 4)
   premiumOutputPricePerMillionUsd  Decimal?       @db.Decimal(10, 4)
+  /// Chave-mestra: liga/desliga o modelo avançado pra TODO MUNDO, admin incluído, sem depender
+  /// de capability de plano nenhuma. false = ninguém usa, nem quem tem a capability no plano.
+  premiumModelEnabled               Boolean       @default(false)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
 }

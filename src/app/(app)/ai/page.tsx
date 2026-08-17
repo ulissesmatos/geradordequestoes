@@ -87,7 +87,13 @@ export default async function AiChatPage({
         quotaAlert={quotaAlert}
         isAdmin={user.role === "ADMIN"}
         canAttach={entitlements.can("chatAttachments")}
-        canUseAdvancedModel={entitlements.can("premiumModel") && Boolean(aiSettings.premiumModel)}
+        // Switch-mestra (Admin → IA) independente de plano; admin usa assim que ela estiver
+        // ligada, sem depender da capability de plano nenhuma (que nem existe pra conta admin).
+        canUseAdvancedModel={
+          aiSettings.premiumModelEnabled &&
+          Boolean(aiSettings.premiumModel) &&
+          (entitlements.kind === "ADMIN" || entitlements.can("premiumModel"))
+        }
         initialSidebarOpen={initialSidebarOpen}
         streak={streak.current}
         streakActiveToday={streak.activeToday}

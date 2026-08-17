@@ -92,6 +92,7 @@ async function ConfigTab() {
   const inputPriceValue = stored?.inputPricePerMillionUsd != null ? stored.inputPricePerMillionUsd.toString() : "";
   const outputPriceValue = stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toString() : "";
   const premiumModelValue = stored?.premiumModel ?? "";
+  const premiumModelEnabledValue = stored?.premiumModelEnabled ?? false;
   const premiumInputPriceValue =
     stored?.premiumInputPricePerMillionUsd != null ? stored.premiumInputPricePerMillionUsd.toString() : "";
   const premiumOutputPriceValue =
@@ -199,10 +200,17 @@ async function ConfigTab() {
             <div>
               <p className="text-sm font-semibold">Modelo avançado (opcional)</p>
               <p className="text-xs text-[var(--muted-foreground)]">
-                Usado quando um plano tem a capability &quot;Modelo de IA avançado&quot; ligada (Admin → Planos) e o aluno
-                escolhe usá-lo no chat, em vez do modelo padrão acima. Vazio = a capability fica sem efeito.
+                Usado no chat em vez do modelo padrão acima. Admins usam assim que o switch abaixo estiver ligado; alunos
+                dependem também de um plano com a capability &quot;Modelo de IA avançado&quot; ligada (Admin → Planos).
               </p>
             </div>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" name="premiumModelEnabled" defaultChecked={premiumModelEnabledValue} className="h-4 w-4" />
+              Ativar modelo avançado
+              <span className="font-normal text-[var(--muted-foreground)]">
+                — chave-mestra: desligado aqui, ninguém usa, nem admin nem quem tem a capability no plano.
+              </span>
+            </label>
             <label className="space-y-1 text-sm font-medium">
               Modelo
               <Input

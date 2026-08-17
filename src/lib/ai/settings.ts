@@ -25,6 +25,8 @@ export async function getAiSettings() {
     outputPricePerMillionUsd: stored?.outputPricePerMillionUsd != null ? stored.outputPricePerMillionUsd.toNumber() : null,
     /** Modelo usado quando a capability `premiumModel` está ligada (vazio = feature inerte). */
     premiumModel: stored?.premiumModel || "",
+    /** Chave-mestra: false = ninguém usa o modelo avançado, nem admin, nem quem tem a capability. */
+    premiumModelEnabled: stored?.premiumModelEnabled ?? false,
     premiumInputPricePerMillionUsd:
       stored?.premiumInputPricePerMillionUsd != null ? stored.premiumInputPricePerMillionUsd.toNumber() : null,
     premiumOutputPricePerMillionUsd:

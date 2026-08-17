@@ -59,10 +59,17 @@ export async function POST(request: Request) {
     );
   }
 
-  // Nunca confia no boolean vindo do cliente: só resolve modelOverride se a capability estiver
-  // ligada de verdade E o admin tiver configurado um modelo avançado (vazio = feature inerte).
-  const modelOverride =
-    wantsAdvancedModel && entitlements.can("premiumModel") ? (await getAiSettings()).premiumModel || undefined : undefined;
+  // Nunca confia no boolean vindo do cliente: só resolve modelOverride se a switch-mestra
+  // (Admin → IA) estiver ligada, houver um modelo configurado, E o usuário estiver autorizado —
+  // admin sempre que a switch estiver ligada (independente de plano, que nem existe pra ele),
+  // aluno só com a capability `premiumModel` ligada no plano dele.
+  let modelOverride: string | undefined;
+  if (wantsAdvancedModel) {
+    const aiSettings = await getAiSettings();
+    const advancedModelReady = aiSettings.premiumModelEnabled && Boolean(aiSettings.premiumModel);
+    const authorized = entitlements.kind === "ADMIN" || entitlements.can("premiumModel");
+    if (advancedModelReady && authorized) modelOverride = aiSettings.premiumModel;
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

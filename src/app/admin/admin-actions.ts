@@ -935,6 +935,7 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
   const premiumModel = String(formData.get("premiumModel") ?? "").trim();
   const premiumInputPricePerMillionUsd = parseOptionalPrice(formData, "premiumInputPricePerMillionUsd");
   const premiumOutputPricePerMillionUsd = parseOptionalPrice(formData, "premiumOutputPricePerMillionUsd");
+  const premiumModelEnabled = formData.get("premiumModelEnabled") === "on";
 
   // apiKey é segredo: vazio = manter; __CLEAR__ = remover; texto = cifrar.
   const secretUpdate = resolveSecretUpdate("apiKey", apiKey);
@@ -956,7 +957,8 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       outputPricePerMillionUsd,
       premiumModel: premiumModel || null,
       premiumInputPricePerMillionUsd,
-      premiumOutputPricePerMillionUsd
+      premiumOutputPricePerMillionUsd,
+      premiumModelEnabled
     },
     create: {
       id: "default",
@@ -973,7 +975,8 @@ export async function updateAiProviderSettingsAction(formData: FormData) {
       outputPricePerMillionUsd,
       premiumModel: premiumModel || null,
       premiumInputPricePerMillionUsd,
-      premiumOutputPricePerMillionUsd
+      premiumOutputPricePerMillionUsd,
+      premiumModelEnabled
     }
   });
 
