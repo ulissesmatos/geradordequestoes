@@ -1,4 +1,4 @@
-import { AiChatRole, AiUsageEventStatus, Role, UsageKind, UsageMeter } from "@prisma/client";
+import { AiChatRole, Role, UsageKind, UsageMeter } from "@prisma/client";
 import { dayKeyInBrazil, dayKeyToInstant, shiftDayKey, startOfDayInBrazil, startOfMonthInBrazil } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
 import { resolveLimits, type MeterLimits, type ResolvedLimits } from "@/lib/usage/ledger";
@@ -62,10 +62,6 @@ export type UserUsageReport = {
   chat: MeterReport;
   daily: DailyUsagePoint[];
   ai: AiCostReport;
-  /** Contador legado (AiUsageEvent/dia), que é quem ainda bloqueia em modo sombra. */
-  legacyGenerationsToday: number;
-  /** Livro-caixa legado do trial, no mês calendário. */
-  legacyTrialMonth: number;
 };
 
 const EMPTY_SUMS: Record<UsageMeter, number> = { [UsageMeter.QUESTIONS]: 0, [UsageMeter.CHAT]: 0 };
@@ -147,27 +143,25 @@ export async function getUserUsageReport(user: { id: string; role?: Role }): Pro
   const monthStart = startOfMonthInBrazil();
   const last30Start = dayKeyToInstant(shiftDayKey(dayKeyInBrazil(), -(DAILY_WINDOW_DAYS - 1)));
 
-  const [today, cycle, month, last30, total, refunded, byKind, daily, aiAgg, aiToday, aiErrors, trialMonth] =
-    await Promise.all([
-      sumsByMeter(user.id, dayStart),
-      sumsByMeter(user.id, limits.period.start),
-      sumsByMeter(user.id, monthStart),
-      sumsByMeter(user.id, last30Start),
-      sumsByMeter(user.id),
-      refundedByMeter(user.id),
-      breakdownByKind(user.id),
-      dailySeries(user.id),
-      prisma.aiUsageEvent.aggregate({
-        where: { userId: user.id },
-        _count: { _all: true },
-        _sum: { inputTokens: true, outputTokens: true, costUsd: true }
-      }),
-      prisma.aiUsageEvent.count({
-        where: { userId: user.id, status: AiUsageEventStatus.SUCCESS, createdAt: { gte: dayStart } }
-      }),
-      prisma.aiUsageEvent.count({ where: { userId: user.id, status: { not: AiUsageEventStatus.SUCCESS } } }),
-      prisma.trialUsageEvent.count({ where: { userId: user.id, createdAt: { gte: monthStart } } })
-    ]);
+  const [today, cycle, month, last30, total, refunded, byKind, daily, aiAgg, aiToday, aiErrors] = await Promise.all([
+    sumsByMeter(user.id, dayStart),
+    sumsByMeter(user.id, limits.period.start),
+    sumsByMeter(user.id, monthStart),
+    sumsByMeter(user.id, last30Start),
+    sumsByMeter(user.id),
+    refundedByMeter(user.id),
+    breakdownByKind(user.id),
+    dailySeries(user.id),
+    prisma.aiGenerationLog.aggregate({
+      where: { userId: user.id },
+      _count: { _all: true },
+      _sum: { inputTokens: true, outputTokens: true, costUsd: true }
+    }),
+    prisma.aiGenerationLog.count({
+      where: { userId: user.id, status: { in: ["SUCCESS", "USER_SUCCESS"] }, createdAt: { gte: dayStart } }
+    }),
+    prisma.aiGenerationLog.count({ where: { userId: user.id, status: { in: ["ERROR", "USER_ERROR"] } } })
+  ]);
 
   const buildMeter = (meter: UsageMeter, meterLimits: MeterLimits): MeterReport => {
     const buckets: UsageBuckets = {
@@ -200,9 +194,7 @@ export async function getUserUsageReport(user: { id: string; role?: Role }): Pro
       inputTokens: aiAgg._sum.inputTokens ?? 0,
       outputTokens: aiAgg._sum.outputTokens ?? 0,
       costUsd: Number(aiAgg._sum.costUsd ?? 0)
-    },
-    legacyGenerationsToday: aiToday,
-    legacyTrialMonth: trialMonth
+    }
   };
 }
 

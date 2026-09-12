@@ -68,7 +68,10 @@ async function PlanosTab() {
       <Card>
         <CardHeader>
           <CardTitle>Novo plano</CardTitle>
-          <CardDescription>Use {"{limit}"} nas features para inserir automaticamente o limite diário.</CardDescription>
+          <CardDescription>
+            Use {"{questoesMes}"}, {"{questoesDia}"}, {"{questoesBloco}"} ou {"{mensagensDia}"} nas features para
+            inserir automaticamente a cota correspondente.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form action={createPlanAction} className="grid gap-3">
@@ -78,7 +81,6 @@ async function PlanosTab() {
               <Input name="displayOrder" type="number" defaultValue={plans.length + 1} placeholder="Ordem" />
             </div>
             <PlanQuotaFields />
-            <input type="hidden" name="aiGenerationsPerDay" value={20} />
             <div className="grid gap-3 md:grid-cols-2">
               <Input name="marketingSubtitle" placeholder="Subtítulo comercial" />
               <Input name="ctaText" defaultValue="Assinar com cartão" placeholder="Texto do botão principal" />
@@ -118,9 +120,6 @@ async function PlanosTab() {
                 </div>
                 <Input name="price" type="number" step="0.01" min="0" defaultValue={(plan.priceCents / 100).toFixed(2)} required />
                 <PlanQuotaFields values={plan} />
-                {/* Limite antigo (contava chamadas): não é mais editável, mas segue gravado
-                    para permitir rollback enquanto o modo sombra roda. */}
-                <input type="hidden" name="aiGenerationsPerDay" value={plan.aiGenerationsPerDay} />
                 <Input name="marketingSubtitle" defaultValue={plan.marketingSubtitle ?? ""} placeholder="Subtítulo comercial" />
                 <Input name="ctaText" defaultValue={plan.ctaText} placeholder="Texto do botão principal" />
                 <Textarea name="description" defaultValue={plan.description ?? ""} placeholder="Descrição" />

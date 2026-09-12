@@ -19,7 +19,8 @@ import {
   Role,
   SourceType,
   SubscriptionCancelReason,
-  SubscriptionStatus
+  SubscriptionStatus,
+  UsageKind
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -427,7 +428,6 @@ export async function deleteUserAction(formData: FormData) {
   // mas fazemos aqui explicitamente antes para garantir a ordem.
   await prisma.aiChatSession.deleteMany({ where: { userId } });
   await prisma.aiGenerationLog.deleteMany({ where: { userId } });
-  await prisma.aiUsageEvent.deleteMany({ where: { userId } });
 
   // Exclui o usuário — o restante (tentativas, favoritos, materiais, pagamentos, etc.) é removido via cascata.
   await prisma.user.delete({ where: { id: userId } });
@@ -473,7 +473,6 @@ export async function createPlanAction(formData: FormData) {
       stripePriceId: String(formData.get("stripePriceId") || "") || null,
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
-      aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
       questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
       questionsPerDay: optionalQuota(formData, "questionsPerDay"),
       maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
@@ -513,7 +512,6 @@ export async function updatePlanAction(formData: FormData) {
       stripePriceId: String(formData.get("stripePriceId") || "") || null,
       mercadoPagoReference: String(formData.get("mercadoPagoReference") || "") || null,
       priceCents: Math.round(Number(formData.get("price") ?? 0) * 100),
-      aiGenerationsPerDay: Number(formData.get("aiGenerationsPerDay") ?? 20),
       questionsPerMonth: optionalQuota(formData, "questionsPerMonth"),
       questionsPerDay: optionalQuota(formData, "questionsPerDay"),
       maxQuestionsPerGeneration: optionalQuota(formData, "maxQuestionsPerGeneration"),
@@ -1035,6 +1033,7 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
     const log = await prisma.aiGenerationLog.create({
       data: {
         userId: admin.id,
+        kind: UsageKind.QUESTION_GENERATION,
         subjectId,
         topicId,
         difficulty,
@@ -1085,6 +1084,7 @@ export async function generateQuestionsAction(_: { ok?: boolean; logId?: string;
     await prisma.aiGenerationLog.create({
       data: {
         userId: admin.id,
+        kind: UsageKind.QUESTION_GENERATION,
         subjectId,
         topicId,
         difficulty,

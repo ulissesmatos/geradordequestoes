@@ -61,9 +61,9 @@ export function UserUsagePanel({ report }: { report: UserUsageReport }) {
               </>
             ) : (
               <>
-                <strong>Modo sombra.</strong> O consumo é real e está sendo registrado, mas nenhuma cota bloqueia — quem
-                barra ainda é o limite antigo de gerações/dia. As barras de cota abaixo mostram o que{" "}
-                <em>aconteceria</em> se você ligasse o medidor em Branding → Consumo.
+                <strong>Modo sombra.</strong> O consumo é real e está sendo registrado, mas nenhuma cota bloqueia
+                ninguém ainda. As barras de cota abaixo mostram o que <em>aconteceria</em> se você ligasse o medidor
+                em Branding → Consumo.
               </>
             )}{" "}
             Conta: <strong>{PLAN_KIND_LABEL[limits.kind]}</strong>. Ciclo atual de{" "}
@@ -137,24 +137,6 @@ export function UserUsagePanel({ report }: { report: UserUsageReport }) {
         </CardContent>
       </Card>
 
-      {!enforcement && !isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Limite que está valendo hoje</CardTitle>
-            <CardDescription>
-              Enquanto o medidor novo está em modo sombra, quem bloqueia é o contador legado. Deixado à vista aqui para
-              você não confundir um bloqueio real com uma barra de cota que ainda não vale.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <StatTile
-              value={num(report.legacyGenerationsToday)}
-              label="Chamadas de IA hoje (limite legado do plano)"
-            />
-            <StatTile value={num(report.legacyTrialMonth)} label="Ações no mês (livro-caixa do trial)" />
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

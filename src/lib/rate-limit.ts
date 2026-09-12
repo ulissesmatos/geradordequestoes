@@ -2,7 +2,7 @@
  * Rate limiting em memória por janela fixa (fixed window).
  * Sem dependências externas; em ambiente serverless o limite é por instância,
  * o que ainda mitiga rajadas e loops de retry — os limites de custo reais
- * continuam sendo aplicados por assinatura (assertCanGenerateWithAi).
+ * continuam sendo aplicados por assinatura (ver src/lib/usage/ledger.ts).
  */
 
 type Bucket = { count: number; resetAt: number };

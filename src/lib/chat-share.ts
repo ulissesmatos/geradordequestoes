@@ -58,8 +58,8 @@ type ClonedQuestionSetOutcome =
  * geração (mesmo `resolveGenerationAllowance`, mesmo `reason` no resultado) — reaproveita a
  * lógica em vez de inventar uma regra de corte paralela.
  *
- * NÃO grava em `AiGenerationLog` nem chama `recordAiUsageEvent`: nenhuma chamada ao provedor
- * de IA acontece aqui, só uma cópia de linhas já existentes. Grava apenas no `UsageLedger`, que
+ * NÃO grava em `AiGenerationLog`: nenhuma chamada ao provedor de IA acontece aqui, só uma
+ * cópia de linhas já existentes. Grava apenas no `UsageLedger`, que
  * é o mecanismo que controla quanto o usuário ACUMULA — os logs de "Uso de IA" do admin ficam
  * fiéis a chamadas reais.
  */

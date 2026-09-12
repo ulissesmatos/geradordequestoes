@@ -86,22 +86,19 @@ async function main() {
       name: "Essencial",
       slug: "essencial",
       description: "Geração de questões para rotina individual de estudos.",
-      priceCents: 1990,
-      aiGenerationsPerDay: 20
+      priceCents: 1990
     },
     {
       name: "Pro",
       slug: "pro",
       description: "Mais gerações diárias para simulados e revisões intensivas.",
-      priceCents: 4990,
-      aiGenerationsPerDay: 60
+      priceCents: 4990
     },
     {
       name: "Premium",
       slug: "premium",
       description: "Uso avançado para preparação constante.",
-      priceCents: 14990,
-      aiGenerationsPerDay: 150
+      priceCents: 14990
     }
   ];
 
@@ -117,9 +114,9 @@ async function main() {
     });
   }
 
-  // Admins não precisam de assinatura: requireActiveSubscription/assertCanGenerateWithAi
-  // dão bypass total para Role.ADMIN. Criar uma assinatura "fantasma" aqui só confunde
-  // o painel de perfil e os relatórios de pagamento.
+  // Admins não precisam de assinatura: requireActiveSubscription/resolveLimits dão bypass
+  // total para Role.ADMIN. Criar uma assinatura "fantasma" aqui só confunde o painel de
+  // perfil e os relatórios de pagamento.
 
   // Guias de tutorial: cria só se não existir (update vazio), igual ao padrão já usado acima
   // para SubscriptionPlan — nunca sobrescreve edição feita depois pelo admin em /admin/tutorial.

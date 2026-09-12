@@ -295,7 +295,7 @@ export type ExtractionResult = { questions: ExtractedQuestion[]; model: string; 
  * Retorna também `model`/`provider` efetivamente usados (não só as questões) para
  * que o chamador possa registrar em auditoria qual modelo rodou de fato — a única
  * forma confiável de confirmar o que foi usado, já que a extração não passa pelo
- * log de uso de IA (AiUsageEvent) que alimenta /admin/logs-ia.
+ * log de uso de IA (AiGenerationLog) que alimenta /admin/ia.
  */
 export async function extractReferenceQuestions(text: string, subjectNames: string[] = []): Promise<ExtractionResult> {
   const baseSettings = await getAiSettings();
