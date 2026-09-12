@@ -205,6 +205,42 @@ export async function getUsageSummary(user: { id: string; role?: Role }): Promis
   };
 }
 
+export type HeadlineUsage = {
+  used: number;
+  limit: number | null;
+  percent: number;
+  resetsAt: string | null;
+  isTrial: boolean;
+};
+
+/**
+ * Achata os dois medidores (questões, chat) num único número para telas que só têm espaço
+ * para uma barra — perfil, cabeçalho do chat, ficha do usuário no admin. Escolhe o medidor
+ * mais apertado (maior percent) entre os que têm algum teto configurado; sem nenhum teto,
+ * devolve `limit: null` (mesmo contrato que ADMIN, que nunca tem teto).
+ *
+ * Dentro do medidor escolhido, prefere o teto diário quando existe (é o que o card sempre
+ * mostrou para assinante) e cai para o mensal quando só ele está configurado (caso do trial).
+ */
+export function deriveHeadlineUsage(summary: UsageSummary): HeadlineUsage {
+  const isTrial = summary.kind === "TRIAL";
+  if (summary.kind === "ADMIN") {
+    return { used: 0, limit: null, percent: 0, resetsAt: null, isTrial: false };
+  }
+
+  const candidates = [summary.questions, summary.chat].filter(
+    (meter) => meter.limits.perMonth !== null || meter.limits.perDay !== null
+  );
+  if (candidates.length === 0) {
+    return { used: 0, limit: null, percent: 0, resetsAt: null, isTrial };
+  }
+
+  const tightest = candidates.reduce((a, b) => (b.percent > a.percent ? b : a));
+  const limit = tightest.limits.perDay ?? tightest.limits.perMonth;
+  const used = tightest.limits.perDay !== null ? tightest.usedToday : tightest.usedMonth;
+  return { used, limit, percent: tightest.percent, resetsAt: tightest.resetsAt, isTrial };
+}
+
 /**
  * Degraus de aviso da cota.
  *

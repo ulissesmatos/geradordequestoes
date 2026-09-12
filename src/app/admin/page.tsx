@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AiUsageEventStatus, QuestionStatus } from "@prisma/client";
+import { QuestionStatus } from "@prisma/client";
 import { Landmark, Receipt, Scale, TrendingUp, Wallet } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { StatTile } from "@/components/performance-charts";
@@ -38,7 +38,7 @@ export default async function AdminHomePage() {
     prisma.question.count({ where: { status: QuestionStatus.PENDING_REVIEW } }),
     prisma.question.count({ where: { status: QuestionStatus.APPROVED } }),
     prisma.question.count({ where: { status: QuestionStatus.REJECTED } }),
-    prisma.aiUsageEvent.count({ where: { status: AiUsageEventStatus.SUCCESS } }),
+    prisma.aiGenerationLog.count({ where: { status: { in: ["SUCCESS", "USER_SUCCESS"] } } }),
     prisma.studyMaterial.count(),
     prisma.paymentTransaction.count(),
     getRevenueSummary(),

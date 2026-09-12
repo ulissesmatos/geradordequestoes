@@ -12,7 +12,8 @@ import { formatDateBR } from "@/lib/dates";
 import { requireUser } from "@/lib/guards";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 import { prisma } from "@/lib/prisma";
-import { getActiveSubscription, getAiUsageStatus } from "@/lib/subscriptions";
+import { getActiveSubscription } from "@/lib/subscriptions";
+import { deriveHeadlineUsage, getUsageSummary } from "@/lib/usage/ledger";
 import { cn } from "@/lib/utils";
 
 const statusMeta: Record<string, { label: string; className: string }> = {
@@ -33,9 +34,9 @@ export default async function ProfilePage({
   const cookieStore = await cookies();
   const initialTheme = parseThemePreference(cookieStore.get(THEME_COOKIE)?.value);
 
-  const [subscription, usage, transactions, affiliateProfile] = await Promise.all([
+  const [subscription, usageSummary, transactions, affiliateProfile] = await Promise.all([
     getActiveSubscription(user.id),
-    getAiUsageStatus(user),
+    getUsageSummary(user),
     prisma.paymentTransaction.findMany({
       where: { userId: user.id },
       include: { plan: { select: { name: true } } },
@@ -47,6 +48,8 @@ export default async function ProfilePage({
       select: { isActive: true, commissionPercent: true }
     })
   ]);
+
+  const usage = deriveHeadlineUsage(usageSummary);
 
   const initials = (user.name ?? user.email ?? "?")
     .split(" ")

@@ -1,5 +1,4 @@
 import {
-  AiUsageEventType,
   type Difficulty,
   type QuestionAnswer,
   type QuestionFormat,
@@ -13,7 +12,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { generateQuestions, type ReferenceVariantSource } from "@/lib/ai/generateQuestions";
 import type { TokenUsage } from "@/lib/ai/pricing";
-import { recordAiUsageEvent } from "@/lib/ai/usage";
 import {
   formatReviewedExamplesContext,
   getReviewedExampleQuestions,
@@ -80,11 +78,9 @@ export async function generateAndSaveQuestionSet(input: {
    * então nenhum caminho novo escapa do limite por esquecimento — a mesma razão pela qual o
    * teto de tamanho de bloco também mora aqui.
    *
-   * NÃO mova a cobrança para os pontos de entrada e NÃO cobre também lá. Foi exatamente esse
-   * o bug com AiUsageEvent: o chat contava uma unidade pela resposta e a geração contava
-   * outra, então "gere 15 questões" consumia DUAS das 20 do plano Essencial. Só é seguro
-   * medir nos dois lugares porque são medidores diferentes: a mensagem debita CHAT no entry
-   * point, o bloco debita QUESTIONS aqui.
+   * NÃO mova a cobrança para os pontos de entrada e NÃO cobre também lá. Só é seguro medir
+   * nos dois lugares porque são medidores diferentes: a mensagem debita CHAT no entry point,
+   * o bloco debita QUESTIONS aqui.
    */
   if (allowance.exhausted) {
     throw new Error(
@@ -207,6 +203,7 @@ export async function generateAndSaveQuestionSet(input: {
   await prisma.aiGenerationLog.create({
     data: {
       userId: input.user.id,
+      kind: UsageKind.QUESTION_GENERATION,
       subjectId: input.subjectId,
       topicId: input.topicId,
       difficulty: input.difficulty,
@@ -220,15 +217,6 @@ export async function generateAndSaveQuestionSet(input: {
       costUsd: generated.costUsd ?? undefined,
       status: input.user.role === "ADMIN" ? "SUCCESS" : "USER_SUCCESS"
     }
-  });
-  await recordAiUsageEvent({
-    user: input.user,
-    type: AiUsageEventType.QUESTION_GENERATION,
-    model: generated.model,
-    prompt: stripNullBytes(generated.prompt),
-    inputTokens: generated.usage.inputTokens,
-    outputTokens: generated.usage.outputTokens,
-    costUsd: generated.costUsd
   });
 
   return Object.assign(questionSet, {

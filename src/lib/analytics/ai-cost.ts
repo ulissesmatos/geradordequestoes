@@ -10,10 +10,8 @@ function monthsAgo(count: number, reference: Date): Date {
 export type TokenTotals = { inputTokens: number; outputTokens: number };
 
 /**
- * Soma a partir de AiUsageEvent (não AiGenerationLog) de propósito — é a tabela mais
- * abrangente (cobre chat+material+questões). Hoje só geração de questões grava
- * tokens/custo; quando chat/material também gravarem (Fase 2), este resumo passa a incluir
- * tudo sem precisar trocar de fonte. Até lá, o número cobre só geração de questões.
+ * Soma a partir de AiGenerationLog — cobre chat, material e geração de questões, então o
+ * número já é o custo real de IA, não só de uma parte dele.
  */
 export async function getAiCostSummary(): Promise<{
   monthUsd: number;
@@ -23,11 +21,11 @@ export async function getAiCostSummary(): Promise<{
 }> {
   const monthStart = startOfMonthInBrazil();
   const [monthAgg, totalAgg] = await Promise.all([
-    prisma.aiUsageEvent.aggregate({
+    prisma.aiGenerationLog.aggregate({
       where: { createdAt: { gte: monthStart } },
       _sum: { costUsd: true, inputTokens: true, outputTokens: true }
     }),
-    prisma.aiUsageEvent.aggregate({
+    prisma.aiGenerationLog.aggregate({
       _sum: { costUsd: true, inputTokens: true, outputTokens: true }
     })
   ]);
@@ -41,7 +39,7 @@ export async function getAiCostSummary(): Promise<{
 
 /** Custo de IA (USD) num período arbitrário — usado pelo DRE, que soma por mês/intervalo livre. */
 export async function getAiCostForRange(range: { from: Date; to: Date }): Promise<number> {
-  const agg = await prisma.aiUsageEvent.aggregate({
+  const agg = await prisma.aiGenerationLog.aggregate({
     where: { createdAt: { gte: range.from, lte: range.to } },
     _sum: { costUsd: true }
   });
@@ -53,18 +51,18 @@ export async function getAiCostTrend(
 ): Promise<{ month: string; costUsd: number; inputTokens: number; outputTokens: number }[]> {
   const now = new Date();
   const since = startOfMonthInBrazil(monthsAgo(months - 1, now));
-  const events = await prisma.aiUsageEvent.findMany({
+  const logs = await prisma.aiGenerationLog.findMany({
     where: { createdAt: { gte: since }, costUsd: { not: null } },
     select: { createdAt: true, costUsd: true, inputTokens: true, outputTokens: true }
   });
 
   const buckets = new Map<string, { costUsd: number; inputTokens: number; outputTokens: number }>();
-  for (const event of events) {
-    const key = monthKeyInBrazil(event.createdAt);
+  for (const log of logs) {
+    const key = monthKeyInBrazil(log.createdAt);
     const bucket = buckets.get(key) ?? { costUsd: 0, inputTokens: 0, outputTokens: 0 };
-    bucket.costUsd += event.costUsd?.toNumber() ?? 0;
-    bucket.inputTokens += event.inputTokens ?? 0;
-    bucket.outputTokens += event.outputTokens ?? 0;
+    bucket.costUsd += log.costUsd?.toNumber() ?? 0;
+    bucket.inputTokens += log.inputTokens ?? 0;
+    bucket.outputTokens += log.outputTokens ?? 0;
     buckets.set(key, bucket);
   }
 
@@ -77,7 +75,7 @@ export async function getAiCostTrend(
 
 /** Custo por modelo — a pergunta que motivou esta feature inteira (ex.: Terra vs Luna, com dado real). */
 export async function getAiCostByModel(range?: { from: Date; to: Date }): Promise<{ model: string; costUsd: number; count: number }[]> {
-  const grouped = await prisma.aiUsageEvent.groupBy({
+  const grouped = await prisma.aiGenerationLog.groupBy({
     by: ["model"],
     where: {
       costUsd: { not: null },

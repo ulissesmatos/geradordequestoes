@@ -53,16 +53,6 @@ enum AiChatPresetUsageLevel {
   ALTO
 }
 
-enum AiUsageEventType {
-  CHAT_RESPONSE
-  QUESTION_GENERATION
-}
-
-enum AiUsageEventStatus {
-  SUCCESS
-  ERROR
-}
-
 enum QuestionFormat {
   CERTO_ERRADO
   MULTIPLA_ESCOLHA
@@ -211,7 +201,6 @@ model User {
   attempts             QuestionAttempt[]
   favorites            FavoriteQuestion[]
   aiLogs               AiGenerationLog[]
-  aiUsageEvents        AiUsageEvent[]
   trialUsageEvents     TrialUsageEvent[]
   usageLedger          UsageLedger[]
   questionSets         QuestionSet[]
@@ -428,16 +417,24 @@ model FavoriteQuestion {
   @@unique([userId, questionId])
 }
 
+/**
+ * Log de UMA ação de IA: geração de questões, resposta de chat, material novo ou aprofundado.
+ * Fonte única de custo/tokens agregados (dashboard admin, DRE) e de diagnóstico de erro
+ * (/admin/ia). `kind` distingue o tipo de ação; `subjectId`/`topicId`/`difficulty`/`quantity`
+ * só se aplicam a QUESTION_GENERATION — nulos nos demais.
+ */
 model AiGenerationLog {
   id           String     @id @default(cuid())
   /// Renomeado de adminId: recebe o id de QUALQUER usuário que gerou (aluno ou admin), não só admin.
   userId       String
-  subjectId    String
-  topicId      String
-  difficulty   Difficulty
-  quantity     Int
+  kind         UsageKind
+  subjectId    String?
+  topicId      String?
+  difficulty   Difficulty?
+  quantity     Int?
   model        String
-  /// Mega-prompt inteiro enviado à IA (instruções + contexto), mantido como estava.
+  /// Mega-prompt inteiro enviado à IA (instruções + contexto) na geração de questões; nos
+  /// demais tipos, o texto descritivo da ação (mensagem do usuário, "material-expand: …").
   prompt       String
   /// O que o usuário efetivamente digitou/pediu — mensagem de chat ou campo do formulário —
   /// separado do mega-prompt acima, pra ficar legível em /admin/logs-ia.
@@ -456,8 +453,8 @@ model AiGenerationLog {
   errorMessage String?
   createdAt    DateTime   @default(now())
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subject      Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  topic        Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  subject      Subject?   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic        Topic?     @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
 
 /**
@@ -480,31 +477,6 @@ model AiWebSearchCache {
   @@index([createdAt])
 }
 
-/**
- * Log BRUTO de chamadas de IA: uma linha por chamada ao provedor. Alimenta /admin/logs-ia e o
- * limite DIÁRIO dos planos pagos. Não serve para medir a cota do trial — uma única mensagem do
- * usuário pode gerar várias linhas aqui (resposta do chat + geração de questões, por exemplo).
- * A cota do trial é contada em TrialUsageEvent.
- */
-model AiUsageEvent {
-  id           String             @id @default(cuid())
-  userId       String
-  type         AiUsageEventType
-  status       AiUsageEventStatus @default(SUCCESS)
-  model        String?
-  prompt       String?
-  errorMessage String?
-  /// Mesma semântica de AiGenerationLog.inputTokens/outputTokens/costUsd — esta tabela é a
-  /// fonte de custo AGREGADO pro Dashboard/Analytics por cobrir chat+material+questões (hoje só
-  /// questões grava valor; quando chat/material também gravarem, os agregados passam a incluir
-  /// tudo sem precisar trocar de tabela).
-  inputTokens  Int?
-  outputTokens Int?
-  costUsd      Decimal?           @db.Decimal(10, 6)
-  createdAt    DateTime           @default(now())
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 enum TrialUsageKind {
   CHAT_MESSAGE
   QUESTION_GENERATION
@@ -514,9 +486,8 @@ enum TrialUsageKind {
 /**
  * Livro-caixa da cota do TRIAL: uma linha por AÇÃO do usuário, não por chamada de IA. Uma
  * mensagem no chat que dispara tool de geração + várias iterações de tool consome 1 linha aqui.
- * Vive separado de AiUsageEvent de propósito: o limite diário dos planos pagos continua lendo
- * AiUsageEvent sem nenhuma alteração, e código compartilhado (generateAndSaveQuestionSet, que
- * roda em 4 contextos diferentes) não precisa saber se aquela chamada "conta" ou não.
+ * Vive separado do UsageLedger de propósito: `getTrialStatus`/`requireActiveSubscription` só
+ * precisam saber se o trial está habilitado, sem entrar na conta de medidor/cota do assinante.
  */
 model TrialUsageEvent {
   id        String         @id @default(cuid())
@@ -535,10 +506,9 @@ model TrialUsageEvent {
  * "você usou 143 de 600 créditos" não significa nada para o aluno.
  * - Separados, cada um vira um número honesto no card: "N questões/mês" e "M mensagens/dia".
  * O ganho decisivo, porém, é técnico. Com um medidor só, cobrar dentro do funil de geração
- * E no ponto de entrada do chat cobraria duas vezes a mesma mensagem — foi exatamente o bug
- * que existia com AiUsageEvent. Com medidores distintos, a mensagem debita CHAT no entry
- * point e a geração debita QUESTIONS dentro de generateAndSaveQuestionSet, que é o único
- * lugar por onde TODOS os caminhos de geração passam.
+ * E no ponto de entrada do chat cobraria duas vezes a mesma mensagem. Com medidores distintos,
+ * a mensagem debita CHAT no entry point e a geração debita QUESTIONS dentro de
+ * generateAndSaveQuestionSet, que é o único lugar por onde TODOS os caminhos de geração passam.
  * Material não tem medidor próprio: gerar/aprofundar material é uma ação de IA como uma
  * mensagem, então debita CHAT. O `kind` preserva a distinção para auditoria, sem criar um
  * terceiro número para vender.
@@ -868,10 +838,6 @@ model SubscriptionPlan {
   stripePriceId             String?
   mercadoPagoReference      String?
   priceCents                Int
-  // DEPRECADO: contava CHAMADAS ao provedor, não questões — uma mensagem de chat e um bloco
-  // de 15 questões custavam a mesma unidade. Substituído pelas cotas abaixo; mantido por um
-  // release para permitir rollback enquanto o modo sombra roda.
-  aiGenerationsPerDay       Int
   /**
    * Cota principal vendida: questões geradas por ciclo. null = ilimitado.
    */
@@ -1470,7 +1436,7 @@ model MarketingCampaign {
 }
 
 /// Livro-caixa de SAÍDA (despesas manuais) — contraparte de PaymentTransaction, que só
-/// cobre entrada. Custo de IA (AiUsageEvent) e comissão de afiliado (AffiliateCommission)
+/// cobre entrada. Custo de IA (AiGenerationLog) e comissão de afiliado (AffiliateCommission)
 /// já são rastreados em suas próprias tabelas e entram no DRE automaticamente sem passar
 /// por aqui, pra não duplicar lançamento.
 model Expense {

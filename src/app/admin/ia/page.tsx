@@ -1,4 +1,4 @@
-import { AiChatRole, AiProvider, AiUsageEventStatus } from "@prisma/client";
+import { AiChatRole, AiProvider, UsageKind } from "@prisma/client";
 import { Bot, CheckCircle2, User, Wrench, XCircle } from "lucide-react";
 import { updateAiProviderSettingsAction } from "@/app/admin/admin-actions";
 import { AdminPagination } from "@/components/admin/admin-pagination";
@@ -27,6 +27,12 @@ const ERRORS_PAGE_SIZE = 20;
 const TOOLS_WINDOW = 300;
 const TOOLS_PAGE_SIZE = 10;
 const GENERATION_STATUSES = ["SUCCESS", "USER_SUCCESS", "ERROR", "USER_ERROR"];
+const KIND_LABEL: Record<UsageKind, string> = {
+  [UsageKind.QUESTION_GENERATION]: "Geração de questões",
+  [UsageKind.CHAT_MESSAGE]: "Mensagem de chat",
+  [UsageKind.MATERIAL_GENERATION]: "Material de estudo",
+  [UsageKind.MATERIAL_EXPAND]: "Aprofundar material"
+};
 
 type ToolTraceEntry = { name: string; arguments: string; result: string; durationMs: number };
 
@@ -442,16 +448,18 @@ async function ToolCallsTab({ page }: { page: number }) {
   );
 }
 
+const ERROR_STATUSES = ["ERROR", "USER_ERROR"];
+
 async function UsageErrorsTab({ page }: { page: number }) {
   const [usageErrors, total] = await Promise.all([
-    prisma.aiUsageEvent.findMany({
-      where: { status: AiUsageEventStatus.ERROR },
+    prisma.aiGenerationLog.findMany({
+      where: { status: { in: ERROR_STATUSES } },
       include: { user: { select: { email: true } } },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * ERRORS_PAGE_SIZE,
       take: ERRORS_PAGE_SIZE
     }),
-    prisma.aiUsageEvent.count({ where: { status: AiUsageEventStatus.ERROR } })
+    prisma.aiGenerationLog.count({ where: { status: { in: ERROR_STATUSES } } })
   ]);
   const totalPages = Math.max(1, Math.ceil(total / ERRORS_PAGE_SIZE));
 
@@ -461,27 +469,27 @@ async function UsageErrorsTab({ page }: { page: number }) {
         {total} {total === 1 ? "erro registrado" : "erros registrados"} · página {page} de {totalPages}
       </p>
       {usageErrors.length === 0 && <p className="text-sm text-[var(--muted-foreground)]">Nenhum erro de uso registrado.</p>}
-      {usageErrors.map((ev) => (
-        <Card key={ev.id}>
+      {usageErrors.map((log) => (
+        <Card key={log.id}>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center justify-between text-sm font-medium">
-              <span>{ev.user.email}</span>
-              <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(ev.createdAt)}</span>
+              <span>{log.user.email}</span>
+              <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(log.createdAt)}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
             <p>
-              Tipo: <code>{ev.type}</code>
+              Tipo: <code>{log.kind}</code>
             </p>
-            {ev.model && (
+            {log.model && (
               <p>
-                Modelo: <code>{ev.model}</code>
+                Modelo: <code>{log.model}</code>
               </p>
             )}
-            {ev.prompt && <p className="text-[var(--muted-foreground)] line-clamp-2 text-xs">Prompt: {ev.prompt}</p>}
-            {ev.errorMessage && (
+            {log.prompt && <p className="text-[var(--muted-foreground)] line-clamp-2 text-xs">Prompt: {log.prompt}</p>}
+            {log.errorMessage && (
               <pre className="mt-2 rounded bg-[var(--danger-soft)] p-2 text-[10px] text-[var(--danger-soft-foreground)] whitespace-pre-wrap break-all">
-                {ev.errorMessage}
+                {log.errorMessage}
               </pre>
             )}
           </CardContent>
@@ -578,7 +586,9 @@ async function GenerationLogsTab({
                 <span className="text-[var(--muted-foreground)]">{formatDateTimeBR(log.createdAt)}</span>
               </CardTitle>
               <CardDescription>
-                {log.subject.name} / {log.topic.name} / {log.difficulty} / {log.quantity} questões
+                {log.subject && log.topic
+                  ? `${log.subject.name} / ${log.topic.name}${log.difficulty ? ` / ${log.difficulty}` : ""}${log.quantity != null ? ` / ${log.quantity} questões` : ""}`
+                  : KIND_LABEL[log.kind] ?? log.kind}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">

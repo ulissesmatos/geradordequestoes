@@ -1,12 +1,12 @@
 "use server";
 
-import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma, TrialUsageKind, UsageKind } from "@prisma/client";
+import { AiChatRole, type Prisma, TrialUsageKind, UsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { runChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
-import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
+import { chargeAiAction, recordAiGenerationLog, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import {
   cloneSharedChatSession,
@@ -20,7 +20,6 @@ import { resolveAttachments } from "@/lib/chat-attachments";
 import { getEntitlements } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
-import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export type ChatActionState = {
   ok?: boolean;
@@ -76,7 +75,6 @@ export async function sendChatMessageAction(
       });
     }
 
-    await assertCanGenerateWithAi(user);
     // 1 mensagem = 1 unidade do medidor CHAT, independente das chamadas de LLM internas do
     // turno. As questões que este turno eventualmente gerar são cobradas à parte, no medidor
     // QUESTIONS, dentro de generateAndSaveQuestionSet — medidores diferentes, sem dupla
@@ -101,9 +99,9 @@ export async function sendChatMessageAction(
       }
     });
 
-    await recordAiUsageEvent({
+    await recordAiGenerationLog({
       user,
-      type: AiUsageEventType.CHAT_RESPONSE,
+      kind: UsageKind.CHAT_MESSAGE,
       model: turn.model,
       prompt
     });
@@ -125,10 +123,10 @@ export async function sendChatMessageAction(
   } catch (error) {
     // Turno não entregou resultado: devolve a unidade cobrada na entrada.
     await refundAiAction(charge);
-    await recordAiUsageEvent({
+    await recordAiGenerationLog({
       user,
-      type: AiUsageEventType.CHAT_RESPONSE,
-      status: AiUsageEventStatus.ERROR,
+      kind: UsageKind.CHAT_MESSAGE,
+      status: "ERROR",
       prompt,
       errorMessage: error instanceof Error ? error.message : "Erro desconhecido"
     }).catch(() => undefined);

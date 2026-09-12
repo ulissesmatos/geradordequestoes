@@ -13,7 +13,6 @@ type PricingPlan = {
   isHighlighted?: boolean;
   features: string[];
   priceCents: number;
-  aiGenerationsPerDay: number;
   stripePriceId?: string | null;
 };
 

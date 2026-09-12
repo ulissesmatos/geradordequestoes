@@ -27,14 +27,14 @@ type PlanQuotas = {
  * mês": um plano sem teto não deve anunciar um número, e frase quebrada no card de preço
  * custa mais confiança do que o bullet ganharia.
  */
-function applyQuotaPlaceholders(feature: string, plan: PlanQuotas & { aiGenerationsPerDay: number }): string | null {
+function applyQuotaPlaceholders(feature: string, plan: PlanQuotas): string | null {
   const values: Record<string, number | null | undefined> = {
     "{questoesMes}": plan.questionsPerMonth,
     "{questoesDia}": plan.questionsPerDay,
     "{questoesBloco}": plan.maxQuestionsPerGeneration,
     "{mensagensDia}": plan.chatMessagesPerDay,
-    // Compatibilidade com bullets antigos gravados no banco.
-    "{limit}": plan.questionsPerMonth ?? plan.aiGenerationsPerDay
+    // Compatibilidade com bullets antigos gravados no banco, de antes da cota mensal existir.
+    "{limit}": plan.questionsPerMonth
   };
 
   let result = feature;
@@ -103,9 +103,7 @@ function derivedCapabilityBullets(rawCapabilities: unknown): string[] {
  * para "Simulados cronometrados" escrito à mão suprimir "Simulados cronometrados com nota
  * líquida" — senão o card repetiria a mesma promessa em duas linhas.
  */
-export function planFeatures(
-  plan: PlanQuotas & { features: string[]; aiGenerationsPerDay: number; capabilities?: unknown }
-) {
+export function planFeatures(plan: PlanQuotas & { features: string[]; capabilities?: unknown }) {
   const manual = (plan.features.length ? plan.features : defaultPlanFeatures)
     .map((feature) => applyQuotaPlaceholders(feature, plan)?.trim())
     .filter((feature): feature is string => Boolean(feature));

@@ -1,17 +1,16 @@
-import { AiChatRole, AiUsageEventStatus, AiUsageEventType, type Prisma, TrialUsageKind, UsageKind } from "@prisma/client";
+import { AiChatRole, type Prisma, TrialUsageKind, UsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
 import { streamChatTurn, summarizeSessionIfNeeded } from "@/lib/ai/chat/runner";
 import { generateSessionTitle, getOrCreateChatSession } from "@/lib/ai/chat/sessions";
 import { getAiSettings } from "@/lib/ai/settings";
-import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
+import { chargeAiAction, recordAiGenerationLog, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import { stripNullBytes, stripNullBytesNullable } from "@/lib/sanitize";
 import { resolveAttachments } from "@/lib/chat-attachments";
 import { getEntitlements, upgradeRequiredResponse } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
 
@@ -104,7 +103,6 @@ export async function POST(request: Request) {
           });
         }
 
-        await assertCanGenerateWithAi(user);
         // 1 mensagem = 1 unidade do medidor CHAT, independente de quantas chamadas de LLM o
         // turno fizer (loop de tools, material, sumarização). Questões geradas neste turno
         // vão para o medidor QUESTIONS lá no funil de geração — nunca aqui.
@@ -160,7 +158,7 @@ export async function POST(request: Request) {
           clarification: turn.clarification ?? null
         });
 
-        await recordAiUsageEvent({ user, type: AiUsageEventType.CHAT_RESPONSE, model: turn.model, prompt });
+        await recordAiGenerationLog({ user, kind: UsageKind.CHAT_MESSAGE, model: turn.model, prompt });
 
         revalidatePath("/ai");
         if (turn.questionSetId) revalidatePath("/biblioteca");
@@ -174,10 +172,10 @@ export async function POST(request: Request) {
       } catch (error) {
         // Turno não entregou resultado: devolve a unidade cobrada na entrada.
         await refundAiAction(charge);
-        await recordAiUsageEvent({
+        await recordAiGenerationLog({
           user,
-          type: AiUsageEventType.CHAT_RESPONSE,
-          status: AiUsageEventStatus.ERROR,
+          kind: UsageKind.CHAT_MESSAGE,
+          status: "ERROR",
           prompt,
           errorMessage: error instanceof Error ? error.message : "Erro desconhecido"
         }).catch(() => undefined);

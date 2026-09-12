@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { formatDateBR, formatDateTimeBR } from "@/lib/dates";
 import { prisma } from "@/lib/prisma";
-import { getAiUsageStatus } from "@/lib/subscriptions";
+import { deriveHeadlineUsage, getUsageSummary } from "@/lib/usage/ledger";
 import { getUserChatOverview, getUserUsageReport } from "@/lib/usage/report";
 import { formatCpf, formatPhone } from "@/lib/validation/cpf";
 
@@ -154,7 +154,7 @@ async function PerfilTab({ user }: { user: UserSummary }) {
     where: { userId: user.id, status: "CLAIMED" },
     include: { teamAccount: { select: { id: true, name: true } } }
   });
-  const usage = await getAiUsageStatus({ id: user.id, role: user.role });
+  const usage = deriveHeadlineUsage(await getUsageSummary({ id: user.id, role: user.role }));
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">

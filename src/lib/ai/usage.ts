@@ -1,39 +1,45 @@
-import { AiUsageEventStatus, AiUsageEventType, Role, TrialUsageKind, UsageKind, UsageMeter } from "@prisma/client";
+import { Role, TrialUsageKind, UsageKind, UsageMeter } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { stripNullBytesNullable } from "@/lib/sanitize";
 import { getActiveSubscription } from "@/lib/subscriptions";
 import { refundUsage, reserveUsage } from "@/lib/usage/ledger";
 
 /**
- * Registra UMA chamada de IA no log bruto (AiUsageEvent). Continua alimentando /admin/logs-ia e
- * o limite diário dos planos pagos. Não mexe na cota do trial — para isso existe
- * chargeTrialUsage, que conta AÇÕES do usuário em vez de chamadas ao provedor.
+ * Registra UMA ação de IA que não é geração de questões (chat, material novo, aprofundar
+ * seção) em AiGenerationLog — mesma tabela que a geração de questões grava direto em
+ * question-sets.ts, e mesma fonte que alimenta /admin/ia (logs, erros) e o dashboard de
+ * custo. Não mexe na cota — para isso existe chargeAiAction/reserveUsage.
  */
-export async function recordAiUsageEvent(input: {
+export async function recordAiGenerationLog(input: {
   user: { id: string; role?: Role };
-  type: AiUsageEventType;
-  status?: AiUsageEventStatus;
+  kind: UsageKind;
+  status?: "SUCCESS" | "USER_SUCCESS" | "ERROR" | "USER_ERROR";
   model?: string;
+  subjectId?: string;
+  topicId?: string;
   prompt?: string;
+  userPrompt?: string;
   errorMessage?: string;
-  /** Só geração de questões preenche isso por enquanto — ver src/lib/ai/pricing.ts. */
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number | null;
 }) {
-  await prisma.aiUsageEvent.create({
+  await prisma.aiGenerationLog.create({
     data: {
       userId: input.user.id,
-      type: input.type,
-      status: input.status ?? AiUsageEventStatus.SUCCESS,
-      model: input.model,
+      kind: input.kind,
+      subjectId: input.subjectId,
+      topicId: input.topicId,
+      model: input.model || "desconhecido",
       // O prompt carrega o material de referência (vindo de PDF) e a resposta do modelo,
       // então é rota comum de byte NUL, que o Postgres rejeita em coluna text.
-      prompt: stripNullBytesNullable(input.prompt)?.slice(0, 5000),
+      prompt: stripNullBytesNullable(input.prompt)?.slice(0, 5000) || "(sem prompt)",
+      userPrompt: stripNullBytesNullable(input.userPrompt)?.slice(0, 5000),
       errorMessage: stripNullBytesNullable(input.errorMessage)?.slice(0, 2000),
       inputTokens: input.inputTokens,
       outputTokens: input.outputTokens,
-      costUsd: input.costUsd ?? undefined
+      costUsd: input.costUsd ?? undefined,
+      status: input.status ?? (input.user.role === Role.ADMIN ? "SUCCESS" : "USER_SUCCESS")
     }
   });
 }
@@ -77,9 +83,9 @@ export async function refundTrialUsage(eventId: string | null) {
 }
 
 export type AiActionCharge = {
-  /** Livro-caixa legado do trial — some quando o medidor novo assumir. */
+  /** Livro-caixa do TRIAL (TrialUsageEvent) — decide se o trial ainda está habilitado. */
   trialEventId: string | null;
-  /** Livro-caixa novo, medidor CHAT. */
+  /** Livro-caixa de consumo (UsageLedger), medidor CHAT. */
   ledgerId: string | null;
 };
 
@@ -87,13 +93,11 @@ export type AiActionCharge = {
  * Cobra UMA ação de IA que não é geração de questões: mensagem de chat, material novo,
  * aprofundar seção.
  *
- * Escreve nos DOIS livros-caixa de propósito durante a transição: o antigo continua sendo
- * quem bloqueia enquanto `usageEnforcementEnabled` estiver desligado, e o novo já mede para
- * dar base de calibragem. Quando o enforcement virar, o antigo vira só histórico.
+ * Escreve nos DOIS livros-caixa: TrialUsageEvent (só conta pra quem está no trial, controla
+ * `getTrialStatus`) e UsageLedger (mede e, com `usageEnforcementEnabled` ligado, bloqueia).
  *
  * O medidor usado é CHAT, nunca QUESTIONS. É isso que permite ao funil de geração cobrar
- * separadamente sem cobrar a mesma mensagem duas vezes — o bug que existe hoje com
- * AiUsageEvent (ver assertCanGenerateWithAi).
+ * separadamente sem cobrar a mesma mensagem duas vezes.
  */
 export async function chargeAiAction(input: {
   user: { id: string; role?: Role };

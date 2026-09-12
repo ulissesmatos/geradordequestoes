@@ -9,8 +9,8 @@ import { requireUser } from "@/lib/guards";
 import { prisma } from "@/lib/prisma";
 import { getEntitlements } from "@/lib/entitlements";
 import { getStreak } from "@/lib/streaks";
-import { getAiUsageStatus, getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
-import { buildQuotaAlert, getUsageSummary } from "@/lib/usage/ledger";
+import { getTrialStatus, hasActiveSubscription } from "@/lib/subscriptions";
+import { buildQuotaAlert, deriveHeadlineUsage, getUsageSummary } from "@/lib/usage/ledger";
 
 export default async function AiChatPage({
   searchParams
@@ -26,14 +26,13 @@ export default async function AiChatPage({
   const params = await searchParams;
   const cookieStore = await cookies();
   const initialSidebarOpen = cookieStore.get("ai-sidebar")?.value !== "0";
-  const [sessions, usage, subjects, entitlements, usageSummary, streak, aiSettings] = await Promise.all([
+  const [sessions, subjects, entitlements, usageSummary, streak, aiSettings] = await Promise.all([
     prisma.aiChatSession.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: "desc" },
       take: 30,
       include: { share: { select: { id: true, revokedAt: true } } }
     }),
-    getAiUsageStatus(user),
     prisma.subject.findMany({ select: { name: true }, orderBy: { name: "asc" }, take: 40 }),
     getEntitlements(user),
     getUsageSummary(user),
@@ -41,9 +40,10 @@ export default async function AiChatPage({
     getAiSettings()
   ]);
 
-  // Devolve null em modo sombra (ver buildQuotaAlert), e aí o chat cai no aviso legado — que é
-  // o correto enquanto quem bloqueia ainda é o contador antigo de gerações/dia.
+  // Devolve null em modo sombra (ver buildQuotaAlert) — nesse caso o chat cai no aviso
+  // informativo (usage), que mostra o consumo sem bloquear ninguém.
   const quotaAlert = buildQuotaAlert(usageSummary);
+  const usage = deriveHeadlineUsage(usageSummary);
 
   // Switch-mestra (Admin → IA) + modelo configurado — sem os dois, a feature nem existe agora.
   const advancedModelReady = aiSettings.premiumModelEnabled && Boolean(aiSettings.premiumModel);

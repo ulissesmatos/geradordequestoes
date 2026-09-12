@@ -1,17 +1,16 @@
 "use server";
 
-import { AiUsageEventStatus, AiUsageEventType, TrialUsageKind, UsageKind } from "@prisma/client";
+import { TrialUsageKind, UsageKind } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { expandStudyMaterialSection } from "@/lib/ai/generateStudyMaterial";
 import { toFriendlyAiError } from "@/lib/ai/chat/errors";
-import { chargeAiAction, recordAiUsageEvent, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
+import { chargeAiAction, recordAiGenerationLog, refundAiAction, type AiActionCharge } from "@/lib/ai/usage";
 import type { CapabilityKey } from "@/lib/capabilities";
 import { getEntitlements, upgradeRequired } from "@/lib/entitlements";
 import { requireUser } from "@/lib/guards";
 import { findSection, insertIntoSection, type SectionRef } from "@/lib/markdown-sections";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
-import { assertCanGenerateWithAi } from "@/lib/subscriptions";
 
 export async function updateStudyMaterialAction(id: string, content: string) {
   const user = await requireUser();
@@ -87,7 +86,6 @@ export async function expandMaterialSectionAction(input: {
   // Cobrado na entrada e estornado nos caminhos que não entregam conteúdo.
   let charge: AiActionCharge | null = null;
   try {
-    await assertCanGenerateWithAi(user);
     // Vai para o medidor CHAT: aprofundar é uma ação de IA como uma mensagem, não geração
     // de questões. O `kind` preserva a distinção para auditoria.
     charge = await chargeAiAction({ user, kind: TrialUsageKind.MATERIAL_EXPAND, ledgerKind: UsageKind.MATERIAL_EXPAND });
@@ -123,21 +121,25 @@ export async function expandMaterialSectionAction(input: {
 
     if (newContent === null) {
       await refundAiAction(charge);
-      await recordAiUsageEvent({
+      await recordAiGenerationLog({
         user,
-        type: AiUsageEventType.CHAT_RESPONSE,
-        status: AiUsageEventStatus.ERROR,
+        kind: UsageKind.MATERIAL_EXPAND,
+        status: "ERROR",
         model: generated.model,
+        subjectId: material.subjectId ?? undefined,
+        topicId: material.topicId ?? undefined,
         prompt: `material-expand: ${material.title} § ${text.trim()}`,
         errorMessage: "Conteúdo alterado durante a geração."
       }).catch(() => undefined);
       return { ok: false, error: "O material foi alterado enquanto a IA gerava. Recarregue a página e tente novamente." };
     }
 
-    await recordAiUsageEvent({
+    await recordAiGenerationLog({
       user,
-      type: AiUsageEventType.CHAT_RESPONSE,
+      kind: UsageKind.MATERIAL_EXPAND,
       model: generated.model,
+      subjectId: material.subjectId ?? undefined,
+      topicId: material.topicId ?? undefined,
       prompt: `material-expand: ${material.title} § ${text.trim()}`
     });
 
@@ -145,10 +147,12 @@ export async function expandMaterialSectionAction(input: {
     return { ok: true, content: newContent };
   } catch (error) {
     await refundAiAction(charge);
-    await recordAiUsageEvent({
+    await recordAiGenerationLog({
       user,
-      type: AiUsageEventType.CHAT_RESPONSE,
-      status: AiUsageEventStatus.ERROR,
+      kind: UsageKind.MATERIAL_EXPAND,
+      status: "ERROR",
+      subjectId: material.subjectId ?? undefined,
+      topicId: material.topicId ?? undefined,
       prompt: `material-expand: ${material.title} § ${text.trim()}`,
       errorMessage: error instanceof Error ? error.message : "Erro desconhecido"
     }).catch(() => undefined);

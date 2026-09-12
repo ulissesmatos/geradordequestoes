@@ -1,15 +1,15 @@
 import {
-  AiUsageEventType,
   Difficulty,
   QuestionFormat,
   QuestionSetMode,
-  type Role
+  type Role,
+  UsageKind
 } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateStudyMaterial } from "@/lib/ai/generateStudyMaterial";
 import { reviewDefaults, runStudyTool } from "@/lib/ai/study-tools";
-import { recordAiUsageEvent } from "@/lib/ai/usage";
+import { recordAiGenerationLog } from "@/lib/ai/usage";
 import { stripNullBytes } from "@/lib/sanitize";
 import { difficultyLabel, questionFormatLabel, questionSetModeLabel } from "@/lib/labels";
 import { inferMaterialTaxonomy, materialTitleFromPrompt } from "@/lib/materials";
@@ -357,18 +357,19 @@ async function runGenerateStudyMaterial(user: ToolUser, sessionId: string, rawAr
     .slice(0, 5200);
 
   // NÃO cobra o medidor CHAT aqui: esta ferramenta só roda dentro de um turno de chat, que
-  // já debitou 1 unidade no ponto de entrada. Cobrar de novo seria exatamente a dupla
-  // cobrança que o medidor novo veio corrigir. O AiUsageEvent abaixo é log bruto por chamada
-  // ao provedor, não livro-caixa.
+  // já debitou 1 unidade no ponto de entrada. Cobrar de novo seria dobrar a cobrança da mesma
+  // mensagem. O log abaixo é registro por chamada ao provedor, não livro-caixa.
   const generated = await generateStudyMaterial({ prompt: materialPrompt, context });
-  await recordAiUsageEvent({
+  const taxonomy = await inferMaterialTaxonomy(materialPrompt);
+  await recordAiGenerationLog({
     user,
-    type: AiUsageEventType.CHAT_RESPONSE,
+    kind: UsageKind.MATERIAL_GENERATION,
     model: generated.model,
+    subjectId: taxonomy.subject?.id,
+    topicId: taxonomy.topic?.id,
     prompt: `study-material: ${materialPrompt}`
   });
 
-  const taxonomy = await inferMaterialTaxonomy(materialPrompt);
   const material = await prisma.studyMaterial.create({
     data: {
       userId: user.id,

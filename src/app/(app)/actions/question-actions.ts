@@ -9,7 +9,8 @@ import {
   QuestionSetShareVisibility,
   QuestionStatus,
   Role,
-  TrialUsageKind
+  TrialUsageKind,
+  UsageKind
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -29,7 +30,7 @@ import {
 import { QUESTION_LIMITS, SHARE_PAID_ONLY_FREE_QUESTIONS } from "@/lib/question-limits";
 import type { QuantityCapReason } from "@/lib/usage/ledger";
 import { applyAttemptToReviewState } from "@/lib/review";
-import { assertCanGenerateWithAi, hasActiveSubscription } from "@/lib/subscriptions";
+import { hasActiveSubscription } from "@/lib/subscriptions";
 
 const attemptSchema = z.object({
   questionId: z.string(),
@@ -164,16 +165,14 @@ export async function generateUserQuestionsAction(
   const context = String(formData.get("context") || "");
   const closeVariant = formData.get("closeVariant") === "on";
 
-  // Só o livro-caixa LEGADO é cobrado aqui — ele é quem ainda bloqueia enquanto o
-  // enforcement novo estiver desligado. As questões em si são medidas dentro de
+  // Só o livro-caixa do TRIAL é cobrado aqui. As questões em si são medidas dentro de
   // generateAndSaveQuestionSet (medidor QUESTIONS); cobrar as duas coisas aqui repetiria a
-  // dupla cobrança que estamos corrigindo.
+  // mesma geração duas vezes.
   let trialChargeId: string | null = null;
   // Usage parcial: se a geração falhar depois de 1+ lotes bem-sucedidos num pedido grande,
   // esse custo real não pode ficar sem registro em nenhuma tabela — ver catch abaixo.
   let usageSoFar: TokenUsage = ZERO_USAGE;
   try {
-    await assertCanGenerateWithAi(user);
     trialChargeId = await chargeTrialUsage({ user, kind: TrialUsageKind.QUESTION_GENERATION });
     const questionSet = await generateAndSaveQuestionSet({
       user,
@@ -209,6 +208,7 @@ export async function generateUserQuestionsAction(
       .create({
         data: {
           userId: user.id,
+          kind: UsageKind.QUESTION_GENERATION,
           subjectId,
           topicId,
           difficulty,
