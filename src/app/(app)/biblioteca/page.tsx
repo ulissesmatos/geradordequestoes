@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Clock, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, Clock, Download, Heart, Layers3, Play, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import { QuestionSetMode, QuestionSetShareVisibility, QuestionSetStatus, Role } from "@prisma/client";
 import { FavoriteDetailGrid } from "@/components/favorite-detail-grid";
 import { QuestionRunner } from "@/components/question-runner";
@@ -179,32 +179,40 @@ export default async function LibraryPage({
           <Button asChild variant="outline" size="sm">
             <Link href="/biblioteca">Voltar para biblioteca</Link>
           </Button>
-          {isOwner && (
-            <ShareLinkModal
-              title="Compartilhar bloco de questões"
-              shareTitle={selectedSet.title}
-              description={
-                user.role === Role.ADMIN
-                  ? "Escolha abaixo quem pode ver e responder este link."
-                  : "Qualquer pessoa com o link vê a primeira questão. Quem criar conta consegue responder o bloco inteiro."
-              }
-              revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
-              initialShareUrl={
-                selectedSet.share && !selectedSet.share.revokedAt
-                  ? questionSetShareUrl(selectedSet.share.id)
-                  : null
-              }
-              createAction={shareQuestionSetAction.bind(null, selectedSet.id)}
-              revokeAction={revokeQuestionSetShareAction.bind(null, selectedSet.id)}
-            >
-              {user.role === Role.ADMIN && (
-                <QuestionSetShareVisibilityControl
-                  questionSetId={selectedSet.id}
-                  initialVisibility={selectedSet.share?.visibility ?? QuestionSetShareVisibility.EVERYONE}
-                />
-              )}
-            </ShareLinkModal>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/biblioteca/${selectedSet.id}/pdf`}>
+                <Download className="h-4 w-4" />
+                Baixar PDF
+              </Link>
+            </Button>
+            {isOwner && (
+              <ShareLinkModal
+                title="Compartilhar bloco de questões"
+                shareTitle={selectedSet.title}
+                description={
+                  user.role === Role.ADMIN
+                    ? "Escolha abaixo quem pode ver e responder este link."
+                    : "Qualquer pessoa com o link vê a primeira questão. Quem criar conta consegue responder o bloco inteiro."
+                }
+                revokedNotice="Link revogado — quem já tinha o link não consegue mais abrir."
+                initialShareUrl={
+                  selectedSet.share && !selectedSet.share.revokedAt
+                    ? questionSetShareUrl(selectedSet.share.id)
+                    : null
+                }
+                createAction={shareQuestionSetAction.bind(null, selectedSet.id)}
+                revokeAction={revokeQuestionSetShareAction.bind(null, selectedSet.id)}
+              >
+                {user.role === Role.ADMIN && (
+                  <QuestionSetShareVisibilityControl
+                    questionSetId={selectedSet.id}
+                    initialVisibility={selectedSet.share?.visibility ?? QuestionSetShareVisibility.EVERYONE}
+                  />
+                )}
+              </ShareLinkModal>
+            )}
+          </div>
         </div>
         <QuestionRunner
           questions={questionsWithMeta}
